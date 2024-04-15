@@ -26,3 +26,8 @@ Private Key for test 0x012345678901234567890123456789012345678901234567890123456
 cd /hook
 cargo stylus deploy --private-key 0x0123456789012345678901234567890123456789012345678901234567890123 -e http://localhost:8547/
 ```
+
+
+## WSL Issue with nitro
+
+[Install docker](https://dev.to/kenji_goh/got-permission-denied-while-trying-to-connect-to-the-docker-daemon-socket-3dne)
