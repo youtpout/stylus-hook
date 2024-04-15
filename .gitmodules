@@ -7,3 +7,6 @@
 [submodule "v4-template/lib/v4-core"]
 	path = v4-template/lib/v4-core
 	url = https://github.com/uniswap/v4-core
+[submodule "hook/nitro-testnode"]
+	path = hook/nitro-testnode
+	url = https://github.com/OffchainLabs/nitro-testnode
