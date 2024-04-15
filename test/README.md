@@ -1,21 +1,18 @@
-# stylus-hook
+# Test scripts
 
-## Launch node
+Test script to call smartcontract deployed on local node
 
-First launch
+## Install
+
 ```bash
-cd /hook/nitro-testnode
-./test-node.bash --init --blockscout
+npm i
 ```
 
-Don't use init if you want to preserve data to next launch
-```bash
-./test-node.bash --blockscout
-```
+## Execute
 
-Add some ethereum to the test account
+Launch for counter default contract
 ```bash
-./test-node.bash script send-l2 --to address_0x14791697260E4c9A71f18484C9f997B308e59325 --ethamount 5
+npm run counter
 ```
 
 ## Deploy stylus contract on local
