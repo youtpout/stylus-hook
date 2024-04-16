@@ -34,7 +34,7 @@ forge test
 Other than writing unit tests (recommended!), you can only deploy & test hooks on [anvil](https://book.getfoundry.sh/anvil/)
 
 ```bash
-# start anvil with TSTORE support
+# start anvil with sstore support
 # (`foundryup`` to update if cancun is not an option)
 anvil --hardfork cancun
 

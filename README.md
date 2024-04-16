@@ -38,15 +38,21 @@ forge script script/01_CreatePool.s.sol:CreatePoolScript --rpc-url localhost --b
 forge script script/02_AddLiquidity.s.sol:AddLiquidityScript --rpc-url localhost --broadcast -vvvvv 
 ```
 
+test Tstore support
+```bash
+cd /v4-template
+forge script script/TStore.s.sol:TStoreScript --rpc-url localhost --broadcast -vvvvv 
+```
+
 Verify contract example
 ```bash
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x2c4bFd0fBC64096D24e8Cb78dcB57eF5518Bb626 PoolManager --constructor-args $(cast abi-encode "constructor(uint256)" 500000) 
+forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x4e1BDc67863B4EE38997211bCC3Da59A9aAC9ee1 PoolManager --constructor-args $(cast abi-encode "constructor(uint256)" 500000) --force
 
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xcC946789cD835EeeD198c3A39A5B1A7C76b5C044 PoolModifyLiquidityTest --constructor-args $(cast abi-encode "constructor(address)" 0x2c4bFd0fBC64096D24e8Cb78dcB57eF5518Bb626) 
+forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xcC946789cD835EeeD198c3A39A5B1A7C76b5C044 PoolModifyLiquidityTest --constructor-args $(cast abi-encode "constructor(address)" 0x2c4bFd0fBC64096D24e8Cb78dcB57eF5518Bb626) --force
 
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x715B1228F5cA70329b25254CB140bfE28C6265Ae Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUNI" "MUNI" 0x14791697260E4c9A71f18484C9f997B308e59325) 
+forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x715B1228F5cA70329b25254CB140bfE28C6265Ae Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUNI" "MUNI" 0x14791697260E4c9A71f18484C9f997B308e59325) --force
 
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x8f432D45CC8C546Ff104fB1df0e2fe03a3963db8 Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUSDC" "MUSDC" 0x14791697260E4c9A71f18484C9f997B308e59325) 
+forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x8f432D45CC8C546Ff104fB1df0e2fe03a3963db8 Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUSDC" "MUSDC" 0x14791697260E4c9A71f18484C9f997B308e59325) --force
 ```
 
 
