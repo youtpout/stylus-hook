@@ -11,10 +11,6 @@ GAS_COST="0x10000000000000000"
 TRANSACTION="0xf8a58085174876e800830186a08080b853604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf31ba02222222222222222222222222222222222222222222222222222222222222222a02222222222222222222222222222222222222222222222222222222222222222"
 DEPLOYER_ADDRESS="0x4e59b44847b379578588920ca78fbf26c0b4956c"
 
-
-# send gas money to signer
-../hook/nitro-testnode/test-node.bash script send-l2 --to address_0x3fab184622dc19b6109349b94811493bf2a45362 --ethamount 5
-
 # deploy the deployer contract
 curl $JSON_RPC -X 'POST' -H 'Content-Type: application/json' --data "{\"jsonrpc\":\"2.0\", \"id\":1, \"method\": \"eth_sendRawTransaction\", \"params\": [\"$TRANSACTION\"]}"
 
@@ -29,5 +25,3 @@ MY_CONTRACT_METHOD_SIGNATURE="c3cafc6f"
 curl $JSON_RPC -X 'POST' -H 'Content-Type: application/json' --data "{\"jsonrpc\":\"2.0\", \"id\":1, \"method\": \"eth_call\", \"params\": [{\"to\":\"$MY_CONTRACT_ADDRESS\", \"data\":\"0x$MY_CONTRACT_METHOD_SIGNATURE\"}, \"latest\"]}"
 # expected result is 0x000000000000000000000000000000000000000000000000000000000000002a (hex encoded 42)
 
-# shutdown Parity
-docker container stop deployment-proxy-geth

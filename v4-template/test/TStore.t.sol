@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {TStore} from "../src/TStore.sol";
 
-contract TstoreTest is Test {
+contract TStoreTest is Test {
 
     TStore tStore;
 

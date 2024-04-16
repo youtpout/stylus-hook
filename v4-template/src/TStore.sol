@@ -6,7 +6,7 @@ contract TStore {
 
     modifier nonreentrant() {
         assembly {
-            if tload(0) {
+            if sload(0) {
                 revert(0, 0)
             }
             tstore(0, 1)

@@ -9,18 +9,23 @@ SECRET_KEY_BASE=VTIB3uHDNbvrY0+60ZWgUoUBKDn9ppLR8MI4CpRz4/qLyEFs54ktJfaNT6Z221No
 
 First launch
 ```bash
-cd /hook/nitro-testnode
-./test-node.bash --init --blockscout
+./hook/nitro-testnode/test-node.bash --init --blockscout
 ```
 
 Don't use init if you want to preserve data to next launch
 ```bash
-./test-node.bash --blockscout
+./hook/nitro-testnode/test-node.bash --blockscout
 ```
 
 Add some ethereum to the test account
 ```bash
-./test-node.bash script send-l2 --to address_0x14791697260E4c9A71f18484C9f997B308e59325 --ethamount 5
+./hook/nitro-testnode/test-node.bash script send-l2 --to address_0x14791697260E4c9A71f18484C9f997B308e59325 --ethamount 5
+```
+
+## Deploy create2 proxy for uniswap
+```bash
+./hook/nitro-testnode/test-node.bash script send-l2 --to address_0x3fab184622dc19b6109349b94811493bf2a45362 --ethamount 5
+./create-proxy/scripts/deploy.sh
 ```
 
 ## Deploy uniswap v4
@@ -55,12 +60,6 @@ forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:400
 forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x8f432D45CC8C546Ff104fB1df0e2fe03a3963db8 Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUSDC" "MUSDC" 0x14791697260E4c9A71f18484C9f997B308e59325) --force
 ```
 
-
-
-## Deploy create2 proxy for uniswap
-```bash
-./create-proxy/scripts/deploy.sh
-```
 
 ## Deploy stylus contract on local
 // 0x14791697260E4c9A71f18484C9f997B308e59325
