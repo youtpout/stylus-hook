@@ -49,8 +49,39 @@ contract DeployHookScript is Script {
         lpRouter = new PoolModifyLiquidityTest(manager);
         swapRouter = new PoolSwapTest(manager);
 
+        console.logString(
+            string.concat(
+                "manager deployed at: ",
+                vm.toString(address(manager))
+            )
+        );
+        console.logString(
+            string.concat(
+                "lpRouter deployed at: ",
+                vm.toString(address(lpRouter))
+            )
+        );
+        console.logString(
+            string.concat(
+                "swapRouter deployed at: ",
+                vm.toString(address(swapRouter))
+            )
+        );
+
         MUNI_ADDRESS = new Token("MUNI", "MUNI", deployer);
         MUSDC_ADDRESS = new Token("MUSDC", " MUSDC", deployer);
+        console.logString(
+            string.concat(
+                "MUNI deployed at: ",
+                vm.toString(address(MUNI_ADDRESS))
+            )
+        );
+        console.logString(
+            string.concat(
+                "MUSDC deployed at: ",
+                vm.toString(address(MUSDC_ADDRESS))
+            )
+        );
 
         // Deploy the hook to an address with the correct flags
         uint160 flags = uint160(
@@ -64,6 +95,12 @@ contract DeployHookScript is Script {
             flags,
             type(Counter).creationCode,
             abi.encode(address(manager))
+        );
+        console.logString(
+            string.concat(
+                "hookAddress deployed at: ",
+                vm.toString(address(hookAddress))
+            )
         );
         counter = new Counter{salt: salt}(IPoolManager(address(manager)));
         require(
@@ -113,20 +150,5 @@ contract DeployHookScript is Script {
         );
 
         vm.stopBroadcast();
-    }
-
-    function deployBytecode(
-        bytes memory bytecode
-    ) internal returns (address deployedAddress) {
-        deployedAddress;
-        assembly {
-            deployedAddress := create(0, add(bytecode, 0x20), mload(bytecode))
-        }
-
-        ///@notice check that the deployment was successful
-        require(
-            deployedAddress != address(0),
-            "YulDeployer could not deploy contract"
-        );
     }
 }
