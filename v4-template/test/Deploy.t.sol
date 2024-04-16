@@ -44,6 +44,22 @@ contract DeployTest is Test {
     address charlie = makeAddr("Charlie");
     address daniel = makeAddr("Daniel");
 
+    function deployBytecode(
+        bytes memory bytecode
+    ) internal returns (address deployedAddress) {
+        deployedAddress;
+        assembly {
+            deployedAddress := create(0, add(bytecode, 0x20), mload(bytecode))
+        }
+
+        ///@notice check that the deployment was successful
+        require(
+            deployedAddress != address(0),
+            "YulDeployer could not deploy contract"
+        );
+    }
+
+
     function setUp() public {
         // create pool manage 500k gas max
         manager = new PoolManager(500000);
@@ -171,6 +187,4 @@ contract DeployTest is Test {
                 hookData
             );
     }
-
-  
 }

@@ -9,3 +9,6 @@ evm_version = "cancun"
 
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
+
+[rpc_endpoints]
+localhost = "http://127.0.0.1:8547"

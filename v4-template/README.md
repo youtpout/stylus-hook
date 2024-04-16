@@ -85,6 +85,10 @@ forge create script/mocks/mUSDC.sol:MockUSDC \
 --private-key [your_private_key_on_goerli_here]
 ```
 
+```shell
+$ forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvv
+```
+
 </details>
 
 ---
