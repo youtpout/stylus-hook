@@ -30,7 +30,7 @@ contract DeployHookScript is Script {
     PoolKey key;
     PoolModifyLiquidityTest lpRouter;
     PoolSwapTest swapRouter;
-    address createProxy;
+    address createProxy = address(0x4e59b44847b379578588920cA78FbF26c0B4956C);
 
     Token MUNI_ADDRESS;
     Token MUSDC_ADDRESS;
@@ -43,12 +43,6 @@ contract DeployHookScript is Script {
     function run() external {
         uint256 privateKey = 0x0123456789012345678901234567890123456789012345678901234567890123;
         address deployer = 0x14791697260E4c9A71f18484C9f997B308e59325;
-
-         bytes
-            memory bytecode = hex"602080600a5f395ff3fe36601f19018060205f375f35905f34f58015601c575f526014600cf35b5f80fd";
-
-        createProxy = deployBytecode(bytecode);
-        console.log("proxy %s", createProxy);
 
         vm.startBroadcast(privateKey);
         manager = new PoolManager(500000);
@@ -121,7 +115,7 @@ contract DeployHookScript is Script {
         vm.stopBroadcast();
     }
 
-      function deployBytecode(
+    function deployBytecode(
         bytes memory bytecode
     ) internal returns (address deployedAddress) {
         deployedAddress;

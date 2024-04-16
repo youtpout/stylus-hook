@@ -18,6 +18,11 @@ Add some ethereum to the test account
 ./test-node.bash script send-l2 --to address_0x14791697260E4c9A71f18484C9f997B308e59325 --ethamount 5
 ```
 
+## Deploy create2 proxy for uniswap
+```bash
+./create-proxy/scripts/deploy.sh
+```
+
 ## Deploy stylus contract on local
 // 0x14791697260E4c9A71f18484C9f997B308e59325
 Private Key for test 0x0123456789012345678901234567890123456789012345678901234567890123 
