@@ -30,6 +30,14 @@ cd /v4-template
 forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
 ```
 
+```bash
+cd /v4-template
+forge script script/00_Contract.s.sol:ContractScript --rpc-url localhost --broadcast -vvvvv 
+forge script script/00_Counter.s.sol:CounterScript --rpc-url localhost --broadcast -vvvvv 
+forge script script/01_CreatePool.s.sol:CreatePoolScript --rpc-url localhost --broadcast -vvvvv 
+forge script script/02_AddLiquidity.s.sol:AddLiquidityScript --rpc-url localhost --broadcast -vvvvv 
+```
+
 Verify contract example
 ```bash
 forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x2c4bFd0fBC64096D24e8Cb78dcB57eF5518Bb626 PoolManager --constructor-args $(cast abi-encode "constructor(uint256)" 500000) 

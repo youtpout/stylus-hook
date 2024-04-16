@@ -14,17 +14,31 @@ import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 contract AddLiquidityScript is Script {
     using CurrencyLibrary for Currency;
 
-    address constant GOERLI_POOLMANAGER = address(0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b); // pool manager deployed to GOERLI
-    address constant MUNI_ADDRESS = address(0xbD97BF168FA913607b996fab823F88610DCF7737); // mUNI deployed to GOERLI -- insert your own contract address here
-    address constant MUSDC_ADDRESS = address(0xa468864e673a807572598AB6208E49323484c6bF); // mUSDC deployed to GOERLI -- insert your own contract address here
-    address constant HOOK_ADDRESS = address(0x3CA2cD9f71104a6e1b67822454c725FcaeE35fF6); // address of the hook contract deployed to goerli -- you can use this hook address or deploy your own!
+    address constant GOERLI_POOLMANAGER =
+        address(0x7B5cd09c909891b26305d37CA8731E442120ceD2); // pool manager deployed to GOERLI
+    address constant MUNI_ADDRESS =
+        address(0x0c56F1e4e1fA9F3f2Fe8bF8865fDbC001204859C); // mUNI deployed to GOERLI -- insert your own contract address here
+    address constant MUSDC_ADDRESS =
+        address(0xed723EF571F990d967EB0eD31a50351d6818446a); // mUSDC deployed to GOERLI -- insert your own contract address here
+    address constant HOOK_ADDRESS =
+        address(0x2b0e534B1BD6cd85C036E7b33856EA15c203403b); // address of the hook contract deployed to goerli -- you can use this hook address or deploy your own!
 
-    PoolModifyLiquidityTest lpRouter = PoolModifyLiquidityTest(address(0x83feDBeD11B3667f40263a88e8435fca51A03F8C));
+    PoolModifyLiquidityTest lpRouter =
+        PoolModifyLiquidityTest(
+            address(0xB8368640D1aB0684FA0c670C3c1F74831764F591)
+        );
 
     function run() external {
+        uint256 privateKey = 0x0123456789012345678901234567890123456789012345678901234567890123;
+
+        vm.startBroadcast(privateKey);
         // sort the tokens!
-        address token0 = uint160(MUSDC_ADDRESS) < uint160(MUNI_ADDRESS) ? MUSDC_ADDRESS : MUNI_ADDRESS;
-        address token1 = uint160(MUSDC_ADDRESS) < uint160(MUNI_ADDRESS) ? MUNI_ADDRESS : MUSDC_ADDRESS;
+        address token0 = uint160(MUSDC_ADDRESS) < uint160(MUNI_ADDRESS)
+            ? MUSDC_ADDRESS
+            : MUNI_ADDRESS;
+        address token1 = uint160(MUSDC_ADDRESS) < uint160(MUNI_ADDRESS)
+            ? MUNI_ADDRESS
+            : MUSDC_ADDRESS;
         uint24 swapFee = 4000; // 0.40% fee tier
         int24 tickSpacing = 10;
 
@@ -37,9 +51,7 @@ contract AddLiquidityScript is Script {
         });
 
         // approve tokens to the LP Router
-        vm.broadcast();
         IERC20(token0).approve(address(lpRouter), 1000e18);
-        vm.broadcast();
         IERC20(token1).approve(address(lpRouter), 1000e18);
 
         // optionally specify hookData if the hook depends on arbitrary data for liquidity modification
@@ -52,7 +64,13 @@ contract AddLiquidityScript is Script {
         console.logBytes32(bytes32(idBytes));
 
         // Provide 10_000e18 worth of liquidity on the range of [-600, 600]
-        vm.broadcast();
-        lpRouter.modifyLiquidity(pool, IPoolManager.ModifyLiquidityParams(-600, 600, 10_000e18), hookData);
+
+        lpRouter.modifyLiquidity(
+            pool,
+            IPoolManager.ModifyLiquidityParams(-600, 600, 10_000e18),
+            hookData
+        );
+
+        vm.stopBroadcast();
     }
 }
