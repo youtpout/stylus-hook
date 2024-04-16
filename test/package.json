@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "counter": "tsx counter.ts"
+    "counter": "tsx src/counter.ts",
+    "liquidity": "tsx src/liquidity.ts"
   },
   "keywords": [],
   "author": "",
