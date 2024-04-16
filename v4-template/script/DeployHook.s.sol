@@ -146,7 +146,7 @@ contract DeployHookScript is Script {
         lpRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(-600, 600, 10_000e18),
-            hookData
+            ZERO_BYTES
         );
 
         vm.stopBroadcast();
