@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Compatible with OpenZeppelin Contracts ^5.0.0
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
@@ -11,7 +11,7 @@ contract Token is ERC20, ERC20Burnable, Ownable {
         string memory name,
         string memory symbol,
         address initialOwner
-    ) ERC20(name, symbol) Ownable(initialOwner) {
+    ) ERC20(name, symbol) {
         _mint(msg.sender, 10000000 * 10 ** decimals());
     }
 
