@@ -8,6 +8,12 @@ git clone --recurse-submodules https://github.com/youtpout/stylus-hook
 
 If you forget submodules
 ```bash
+git pull --recurse-submodules
+```
+
+or
+
+```bash
 git submodule update --init --recursive
 ```
 
