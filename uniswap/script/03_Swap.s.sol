@@ -13,21 +13,33 @@ import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 
 contract SwapScript is Script {
     // PoolSwapTest Contract address on Goerli
-    PoolSwapTest swapRouter = PoolSwapTest(0xF8AADC65Bf1Ec1645ef931317fD48ffa734a185c);
+    PoolSwapTest swapRouter =
+        PoolSwapTest(0x4aa4365da82ACD46e378A6f3c92a863f3e763d34);
 
-    address constant MUNI_ADDRESS = address(0xbD97BF168FA913607b996fab823F88610DCF7737); //-- insert your own contract address here -- mUNI deployed to GOERLI
-    address constant MUSDC_ADDRESS = address(0xa468864e673a807572598AB6208E49323484c6bF); //-- insert your own contract address here -- mUSDC deployed to GOERLI
-    address constant HOOK_ADDRESS = address(0x3CA2cD9f71104a6e1b67822454c725FcaeE35fF6); // address of the hook contract deployed to goerli -- you can use this hook address or deploy your own!
+    address constant MUNI_ADDRESS =
+        address(0x2dC942dcba13E4BE27721980FE01f2221610A93b); //-- insert your own contract address here -- mUNI deployed to GOERLI
+    address constant MUSDC_ADDRESS =
+        address(0xFB9a956c4875826a76d47C360234FC1633C078A8); //-- insert your own contract address here -- mUSDC deployed to GOERLI
+    address constant HOOK_ADDRESS =
+        address(0x2b02aBF3572e805547A7029f304aA6bbf6e0031F); // address of the hook contract deployed to goerli -- you can use this hook address or deploy your own!
 
     // slippage tolerance to allow for unlimited price impact
     uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_RATIO + 1;
     uint160 public constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_RATIO - 1;
 
     function run() external {
-        address token0 = uint160(MUSDC_ADDRESS) < uint160(MUNI_ADDRESS) ? MUSDC_ADDRESS : MUNI_ADDRESS;
-        address token1 = uint160(MUSDC_ADDRESS) < uint160(MUNI_ADDRESS) ? MUNI_ADDRESS : MUSDC_ADDRESS;
-        uint24 swapFee = 4000;
-        int24 tickSpacing = 10;
+        uint256 privateKey = 0x0123456789012345678901234567890123456789012345678901234567890123;
+        address deployer = 0x14791697260E4c9A71f18484C9f997B308e59325;
+
+        vm.startBroadcast(privateKey);
+        address token0 = uint160(MUSDC_ADDRESS) < uint160(MUNI_ADDRESS)
+            ? MUSDC_ADDRESS
+            : MUNI_ADDRESS;
+        address token1 = uint160(MUSDC_ADDRESS) < uint160(MUNI_ADDRESS)
+            ? MUNI_ADDRESS
+            : MUSDC_ADDRESS;
+        uint24 swapFee = 3000;
+        int24 tickSpacing = 60;
 
         // Using a hooked pool
         PoolKey memory pool = PoolKey({
@@ -39,9 +51,7 @@ contract SwapScript is Script {
         });
 
         // approve tokens to the swap router
-        vm.broadcast();
         IERC20(token0).approve(address(swapRouter), type(uint256).max);
-        vm.broadcast();
         IERC20(token1).approve(address(swapRouter), type(uint256).max);
 
         // ---------------------------- //
@@ -56,11 +66,15 @@ contract SwapScript is Script {
 
         // in v4, users have the option to receieve native ERC20s or wrapped ERC1155 tokens
         // here, we'll take the ERC20s
-        PoolSwapTest.TestSettings memory testSettings =
-            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true, currencyAlreadySent: false});
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest
+            .TestSettings({
+                withdrawTokens: true,
+                settleUsingTransfer: true,
+                currencyAlreadySent: false
+            });
 
         bytes memory hookData = new bytes(0);
-        vm.broadcast();
         swapRouter.swap(pool, params, testSettings, hookData);
+        vm.stopBroadcast();
     }
 }

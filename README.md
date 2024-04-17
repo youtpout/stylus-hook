@@ -60,14 +60,11 @@ cd /uniswap
 forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
 ```
 
-or
 
+Make a swap
 ```bash
 cd /uniswap
-forge script script/00_Contract.s.sol:ContractScript --rpc-url localhost --broadcast -vvvvv 
-forge script script/00_Counter.s.sol:CounterScript --rpc-url localhost --broadcast -vvvvv 
-forge script script/01_CreatePool.s.sol:CreatePoolScript --rpc-url localhost --broadcast -vvvvv 
-forge script script/02_AddLiquidity.s.sol:AddLiquidityScript --rpc-url localhost --broadcast -vvvvv 
+forge script script/03_Swap.s.sol:SwapScript --rpc-url localhost --broadcast -vvvvv 
 ```
 
 
