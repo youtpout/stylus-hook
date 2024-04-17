@@ -11,6 +11,12 @@ If you forget submodules
 git submodule update --init --recursive
 ```
 
+## dependencies
+You need docker, stylus and foundry
+[Docker](https://docs.docker.com/engine/install/) 
+[Stylus](https://docs.arbitrum.io/stylus/stylus-quickstart)
+[Foundry](https://book.getfoundry.sh/getting-started/installation)
+
 ## Launch node
 
 First launch, remove all previous data
@@ -25,6 +31,12 @@ Classic launch will restore all previous transactions
 Add some ethereum to the an address
 ```bash
 ./nitro-testnode/test-node.bash script send-l2 --to address_0xyouraddress --ethamount 5
+```
+
+if you have file error access use the good old one chmod
+```bash
+chmod 777 nitro-testnode/test-node.bash
+chmod 777 first-launch.bash 
 ```
 
 ## Deploy uniswap on create2 proxy

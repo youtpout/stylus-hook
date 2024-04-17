@@ -1,2 +1,2 @@
-# launch node and deploys all necessary contracts
-./nitro-testnode-stylus/test-node.bash --init --blockscout
+# launch node 
+./nitro-testnode/test-node.bash --init --blockscout
