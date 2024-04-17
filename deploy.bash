@@ -2,7 +2,7 @@
 ./nitro-testnode/test-node.bash script send-l2 --to address_0x14791697260E4c9A71f18484C9f997B308e59325 --ethamount 5
 ./nitro-testnode/test-node.bash script send-l2 --to address_0x3fab184622dc19b6109349b94811493bf2a45362 --ethamount 5
 ./create-proxy/scripts/deploy.sh
-cd v4-template
+cd uniswap
 forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
 # verify deployed contracts
 forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x8cde56336e289c028c8f7cf5c20283ff02272182 PoolManager --constructor-args $(cast abi-encode "constructor(uint256)" 500000) --force
