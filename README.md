@@ -56,14 +56,14 @@ or
 ```
 
 ```bash
-cd /v4-template
+cd /uniswap
 forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
 ```
 
 or
 
 ```bash
-cd /v4-template
+cd /uniswap
 forge script script/00_Contract.s.sol:ContractScript --rpc-url localhost --broadcast -vvvvv 
 forge script script/00_Counter.s.sol:CounterScript --rpc-url localhost --broadcast -vvvvv 
 forge script script/01_CreatePool.s.sol:CreatePoolScript --rpc-url localhost --broadcast -vvvvv 
