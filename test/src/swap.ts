@@ -17,7 +17,7 @@ const swapRouter = PoolSwapTest__factory.connect("0x4aa4365da82ACD46e378A6f3c92a
 
 
 // 100 $
-const amount = BigInt(1000) ** BigInt(18);
+const amount = BigInt(1) * (BigInt(10) ** BigInt(18));
 let zeroForOne = true;
 
 console.log("amount", amount);
