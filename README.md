@@ -1,65 +1,36 @@
 # stylus-hook
 
+Clone with all submodules
+
+```bash
+git clone --recurse-submodules https://github.com/youtpout/stylus-hook
+```
+
+If you forget submodules
+```bash
+git submodule update --init --recursive
+```
+
 ## Launch node
 
-Define a secret key for blockscout folder /hook/nitro-tesnode/blockscout/nitro.env
-```
-SECRET_KEY_BASE=VTIB3uHDNbvrY0+60ZWgUoUBKDn9ppLR8MI4CpRz4/qLyEFs54ktJfaNT6Z221No
-```
-
-First launch
+First launch, remove all previous data
 ```bash
-./hook/nitro-testnode/test-node.bash --init --blockscout
+./first-launch.bash
 ```
-
-Don't use init if you want to preserve data to next launch
+Classic launch will restore all previous transactions
 ```bash
-./hook/nitro-testnode/test-node.bash --blockscout
+./launch.bash
 ```
 
-Add some ethereum to the test account
+Add some ethereum to the an address
 ```bash
-./hook/nitro-testnode/test-node.bash script send-l2 --to address_0x14791697260E4c9A71f18484C9f997B308e59325 --ethamount 5
+./nitro-testnode/test-node.bash script send-l2 --to address_0xyouraddress --ethamount 5
 ```
 
-## Deploy create2 proxy for uniswap
+## Deploy uniswap on create2 proxy
 ```bash
-./hook/nitro-testnode/test-node.bash script send-l2 --to address_0x3fab184622dc19b6109349b94811493bf2a45362 --ethamount 5
-./create-proxy/scripts/deploy.sh
+./deploy.bash
 ```
-
-## Deploy uniswap v4
-Deploy on local node
-```bash
-cd /v4-template
-forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
-```
-
-```bash
-cd /v4-template
-forge script script/00_Contract.s.sol:ContractScript --rpc-url localhost --broadcast -vvvvv 
-forge script script/00_Counter.s.sol:CounterScript --rpc-url localhost --broadcast -vvvvv 
-forge script script/01_CreatePool.s.sol:CreatePoolScript --rpc-url localhost --broadcast -vvvvv 
-forge script script/02_AddLiquidity.s.sol:AddLiquidityScript --rpc-url localhost --broadcast -vvvvv 
-```
-
-test Tstore support
-```bash
-cd /v4-template
-forge script script/TStore.s.sol:TStoreScript --rpc-url localhost --broadcast -vvvvv 
-```
-
-Verify contract example
-```bash
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x4e1BDc67863B4EE38997211bCC3Da59A9aAC9ee1 PoolManager --constructor-args $(cast abi-encode "constructor(uint256)" 500000) --force
-
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xcC946789cD835EeeD198c3A39A5B1A7C76b5C044 PoolModifyLiquidityTest --constructor-args $(cast abi-encode "constructor(address)" 0x2c4bFd0fBC64096D24e8Cb78dcB57eF5518Bb626) --force
-
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x715B1228F5cA70329b25254CB140bfE28C6265Ae Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUNI" "MUNI" 0x14791697260E4c9A71f18484C9f997B308e59325) --force
-
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x8f432D45CC8C546Ff104fB1df0e2fe03a3963db8 Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUSDC" "MUSDC" 0x14791697260E4c9A71f18484C9f997B308e59325) --force
-```
-
 
 ## Deploy stylus contract on local
 // 0x14791697260E4c9A71f18484C9f997B308e59325
