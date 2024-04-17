@@ -45,10 +45,32 @@ chmod 777 nitro-testnode/test-node.bash
 chmod 777 first-launch.bash 
 ```
 
-## Deploy uniswap on create2 proxy
+## Deploy uniswap and create2 proxy
 ```bash
 ./deploy.bash
 ```
+
+or 
+```bash
+./create-proxy/scripts/deploy.sh
+```
+
+```bash
+cd /v4-template
+forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
+```
+
+or
+
+```bash
+cd /v4-template
+forge script script/00_Contract.s.sol:ContractScript --rpc-url localhost --broadcast -vvvvv 
+forge script script/00_Counter.s.sol:CounterScript --rpc-url localhost --broadcast -vvvvv 
+forge script script/01_CreatePool.s.sol:CreatePoolScript --rpc-url localhost --broadcast -vvvvv 
+forge script script/02_AddLiquidity.s.sol:AddLiquidityScript --rpc-url localhost --broadcast -vvvvv 
+```
+
+
 
 ## Deploy stylus contract on local
 // 0x14791697260E4c9A71f18484C9f997B308e59325

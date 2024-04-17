@@ -12,3 +12,4 @@ evm_version = "cancun"
 
 [rpc_endpoints]
 localhost = "http://127.0.0.1:8547"
+stylus = "https://stylus-testnet.arbitrum.io/rpc"
