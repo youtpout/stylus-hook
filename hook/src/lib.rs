@@ -1,3 +1,4 @@
+
 // Allow `cargo stylus export-abi` to generate a main function.
 #![cfg_attr(not(feature = "export-abi"), no_main)]
 extern crate alloc;
@@ -6,66 +7,81 @@ extern crate alloc;
 #[global_allocator]
 static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
-use alloy_primitives::{Address, uint, U256, FixedBytes};
+/// Import items from the SDK. The prelude contains common traits and macros.
+use alloc::{string::String, vec, vec::Vec};
+use alloy_primitives::{Address, U256, FixedBytes};
 use alloy_sol_types::{sol};
-/// Import the Stylus SDK along with alloy primitive types for use in our program.
+use core::{borrow::BorrowMut, marker::PhantomData};
 use stylus_sdk::{
-    abi::Bytes, call::Call, contract, msg, prelude::*, storage::StorageAddress
+    abi::Bytes,
+    evm,
+    msg,
+    prelude::*,
+    deploy::*
 };
+use std::convert::TryInto;
+
+mod hook;
+
+use hook::Counter;
+
+/// Represents the ways methods may fail.
+pub enum DeployError {
+    ExternalCall(stylus_sdk::call::Error),
+}
+
+impl From<stylus_sdk::call::Error> for DeployError {
+    fn from(err: stylus_sdk::call::Error) -> Self {
+        Self::ExternalCall(err)
+    }
+}
+
+/// We will soon provide a `#[derive(SolidityError)]` to clean this up.
+impl From<DeployError> for Vec<u8> {
+    fn from(val: DeployError) -> Self {
+        match val {
+            DeployError::ExternalCall(err) => err.into(),
+        }
+    }
+}
+
+
+/// Simplifies the result type for the contract's methods.
+type Result<T, E = DeployError> = core::result::Result<T, E>;
+
 
 // Define some persistent storage using the Solidity ABI.
 // `Counter` will be the entrypoint.
 sol_storage! {
     #[entrypoint]
-    pub struct Counter {
-        mapping(bytes32 => uint256) before_swap_count;
-        mapping(bytes32 => uint256) after_swap_count;
-        mapping(bytes32 => uint256) before_add_liquidity_count;
-        mapping(bytes32 => uint256) before_remove_liquidity_count;
+    pub struct DeployContract {
+       
     }
-
-    
 }
 
+sol! {
+    event Deploy(address indexed contract);
+}
 
 /// Declare that `Counter` is a contract with the following external methods.
 #[external]
-impl Counter {
-
+impl DeployContract {
     /// Gets the number from storage.
-    pub fn before_swap_count(&self,  pool_id :FixedBytes<32>) -> U256 {
-        self.before_swap_count.get(pool_id)
+    pub fn deploy_deterministic(&self) -> Result<Address,Vec<u8>> {
+        let raw : RawDeploy = RawDeploy::new();
+        let input = "0x0123456789012345678901234567890123456789012345678901234567890123";
+        let decoded = hex::decode(input).expect("Decoding failed");
+        let fix = decoded.try_into().unwrap();
+        let salt = FixedBytes::<32>::new(fix);
+        raw.salt(salt);
+        //let code = Counter.self;
+        let result = raw.deploy([1001]);
+        let newAddress = result.unwrap();
+        evm::log(Deploy { contract :  newAddress });
+
+        result
     }
 
-    pub fn after_swap_count(&self, pool_id :FixedBytes<32>) -> U256 {
-        self.after_swap_count.get(pool_id)
-    }
+    
 
-
-    pub fn before_add_liquidity_count(&self, pool_id :FixedBytes<32>) -> U256 {
-        self.before_add_liquidity_count.get(pool_id)
-    }
-
-
-    pub fn before_remove_liquidity_count(&self, pool_id :FixedBytes<32>) -> U256 {
-        self.before_remove_liquidity_count.get(pool_id)
-    }
-
-    pub fn get_hook_permissions(&self) -> (bool,bool,bool,bool,bool,bool,bool,bool,bool,bool) {
-        // doesn't support struct in return so use tuple
-       let permissions =  (
-         false,
-         false,
-         true,
-         false,
-         true,
-         false,
-         true,
-         true,
-         false,
-         false
-       );
-
-        permissions
-    }
 }
