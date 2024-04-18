@@ -7,16 +7,12 @@ extern crate alloc;
 static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
 /// Import items from the SDK. The prelude contains common traits and macros.
-use alloc::{string::String, vec, vec::Vec};
-use alloy_primitives::{Address, U256, FixedBytes,uint,Uint};
-use alloy_sol_types::{sol};
-use core::{borrow::BorrowMut, marker::PhantomData};
+use alloc::{vec};
+use alloy_primitives::{U256, FixedBytes};
+
+
 use stylus_sdk::{
-    abi::Bytes,
-    evm,
-    msg,
-    prelude::*,
-    deploy::*
+    prelude::*
 };
 // Define some persistent storage using the Solidity ABI.
 // `Counter` will be the entrypoint.
