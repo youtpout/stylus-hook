@@ -29,13 +29,22 @@ contract CounterTest is Test, Deployers {
 
         // Deploy the hook to an address with the correct flags
         uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
-                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+            Hooks.BEFORE_SWAP_FLAG |
+                Hooks.AFTER_SWAP_FLAG |
+                Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
+                Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
         );
-        (address hookAddress, bytes32 salt) =
-            HookMiner.find(address(this), flags, type(Counter).creationCode, abi.encode(address(manager)));
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            address(this),
+            flags,
+            type(Counter).creationCode,
+            abi.encode(address(manager))
+        );
         counter = new Counter{salt: salt}(IPoolManager(address(manager)));
-        require(address(counter) == hookAddress, "CounterTest: hook address mismatch");
+        require(
+            address(counter) == hookAddress,
+            "CounterTest: hook address mismatch"
+        );
 
         // Create the pool
         key = PoolKey(currency0, currency1, 3000, 60, IHooks(address(counter)));
@@ -43,11 +52,23 @@ contract CounterTest is Test, Deployers {
         manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         // Provide liquidity to the pool
-        modifyLiquidityRouter.modifyLiquidity(key, IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether), ZERO_BYTES);
-        modifyLiquidityRouter.modifyLiquidity(key, IPoolManager.ModifyLiquidityParams(-120, 120, 10 ether), ZERO_BYTES);
         modifyLiquidityRouter.modifyLiquidity(
             key,
-            IPoolManager.ModifyLiquidityParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether),
+            IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether),
+            ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(-120, 120, 10 ether),
+            ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(60),
+                TickMath.maxUsableTick(60),
+                10 ether
+            ),
             ZERO_BYTES
         );
     }
@@ -63,15 +84,23 @@ contract CounterTest is Test, Deployers {
         // Perform a test swap //
         bool zeroForOne = true;
         int256 amountSpecified = -1e18; // negative number indicates exact input swap!
-        BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
+        BalanceDelta swapDelta = swap(
+            key,
+            zeroForOne,
+            amountSpecified,
+            ZERO_BYTES
+        );
         // ------------------- //
 
         assertEq(int256(swapDelta.amount0()), amountSpecified);
 
         assertEq(counter.beforeSwapCount(poolId), 1);
         assertEq(counter.afterSwapCount(poolId), 1);
+
+        bytes memory res = abi.encode(counter.getHookPermissions());
+        console.logBytes(res);
     }
-    
+
     function testLiquidityHooks() public {
         // positions were created in setup()
         assertEq(counter.beforeAddLiquidityCount(poolId), 3);
@@ -79,7 +108,11 @@ contract CounterTest is Test, Deployers {
 
         // remove liquidity
         int256 liquidityDelta = -1e18;
-        modifyLiquidityRouter.modifyLiquidity(key, IPoolManager.ModifyLiquidityParams(-60, 60, liquidityDelta), ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(-60, 60, liquidityDelta),
+            ZERO_BYTES
+        );
 
         assertEq(counter.beforeAddLiquidityCount(poolId), 3);
         assertEq(counter.beforeRemoveLiquidityCount(poolId), 1);

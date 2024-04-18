@@ -6,7 +6,7 @@ extern crate alloc;
 #[global_allocator]
 static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
-use alloy_primitives::{Address, uint, U256, FixedBytes, bool};
+use alloy_primitives::{Address, uint, U256, FixedBytes};
 use alloy_sol_types::{sol};
 /// Import the Stylus SDK along with alloy primitive types for use in our program.
 use stylus_sdk::{
@@ -18,89 +18,54 @@ use stylus_sdk::{
 sol_storage! {
     #[entrypoint]
     pub struct Counter {
-        mapping(bytes32 => uint256) beforeSwapCount;
-        mapping(bytes32 => uint256) afterSwapCount;
-        mapping(bytes32 => uint256) beforeAddLiquidityCount;
-        mapping(bytes32 => uint256) beforeRemoveLiquidityCount;
+        mapping(bytes32 => uint256) before_swap_count;
+        mapping(bytes32 => uint256) after_swap_count;
+        mapping(bytes32 => uint256) before_add_liquidity_count;
+        mapping(bytes32 => uint256) before_remove_liquidity_count;
     }
 
     
 }
 
-pub struct Permissions {
-    bool beforeInitialize;
-    bool afterInitialize;
-    bool beforeAddLiquidity;
-    bool afterAddLiquidity;
-    bool beforeRemoveLiquidity;
-    bool afterRemoveLiquidity;
-    bool beforeSwap;
-    bool afterSwap;
-    bool beforeDonate;       
-    bool afterDonate;
-}
-
-impl Permissions {
-    pub fn new(  beforeInitialize: bool,
-        afterInitialize: bool,
-        beforeAddLiquidity: bool,
-        afterAddLiquidity: bool,
-        beforeRemoveLiquidity: bool,
-        afterRemoveLiquidity: bool,
-        beforeSwap: bool,
-        afterSwap: bool,
-        beforeDonate: bool,
-        afterDonate: bool) -> Permissions {
-        Permissions { beforeInitialize,
-            afterInitialize,
-            beforeAddLiquidity,
-            afterAddLiquidity,
-            beforeRemoveLiquidity,
-            afterRemoveLiquidity,
-            beforeSwap,
-            afterSwap,
-            beforeDonate,
-            afterDonate}
-    }
-}
 
 /// Declare that `Counter` is a contract with the following external methods.
 #[external]
 impl Counter {
 
     /// Gets the number from storage.
-    pub fn beforeSwapCount(&self,  pool_id :FixedBytes<32>) -> U256 {
-        self.beforeSwapCount.get(pool_id)
+    pub fn before_swap_count(&self,  pool_id :FixedBytes<32>) -> U256 {
+        self.before_swap_count.get(pool_id)
     }
 
-    pub fn afterSwapCount(&self, pool_id :FixedBytes<32>) -> U256 {
-        self.afterSwapCount.get(pool_id)
-    }
-
-
-    pub fn beforeAddLiquidityCount(&self, pool_id :FixedBytes<32>) -> U256 {
-        self.beforeAddLiquidityCount.get(pool_id)
+    pub fn after_swap_count(&self, pool_id :FixedBytes<32>) -> U256 {
+        self.after_swap_count.get(pool_id)
     }
 
 
-    pub fn beforeRemoveLiquidityCount(&self, pool_id :FixedBytes<32>) -> U256 {
-        self.beforeRemoveLiquidityCount.get(pool_id)
+    pub fn before_add_liquidity_count(&self, pool_id :FixedBytes<32>) -> U256 {
+        self.before_add_liquidity_count.get(pool_id)
     }
 
-    pub fn getHookPermissions(&self) -> Permissions {
-       let permissions =  Permissions {
-        beforeInitialize: false,
-        afterInitialize: false,
-        beforeAddLiquidity: true,
-        afterAddLiquidity: false,
-        beforeRemoveLiquidity: true,
-        afterRemoveLiquidity: false,
-        beforeSwap: true,
-        afterSwap: true,
-        beforeDonate: false,
-        afterDonate: false
-    };
 
-    permissions
+    pub fn before_remove_liquidity_count(&self, pool_id :FixedBytes<32>) -> U256 {
+        self.before_remove_liquidity_count.get(pool_id)
+    }
+
+    pub fn get_hook_permissions(&self) -> (bool,bool,bool,bool,bool,bool,bool,bool,bool,bool) {
+        // doesn't support struct in return so use tuple
+       let permissions =  (
+         false,
+         false,
+         true,
+         false,
+         true,
+         false,
+         true,
+         true,
+         false,
+         false
+       );
+
+        permissions
     }
 }
