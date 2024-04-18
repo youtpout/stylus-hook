@@ -210,5 +210,3 @@ This project is fully open source, including an Apache-2.0 or MIT license at you
 cd nitro-testnode
 git submodule update --init --recursive
 ```
-
- cargo stylus deploy --expected-program-address 0x2b02aBF3572e805547A7029f304aA6bbf6e0031F --private-key 0x0123456789012345678901234567890123456789012345678901234567890123 -e http://localhost:8547/ 

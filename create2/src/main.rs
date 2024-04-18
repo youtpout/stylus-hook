@@ -2,5 +2,5 @@
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    create2::main();
+    stylus_create2::main();
 }
