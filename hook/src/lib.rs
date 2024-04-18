@@ -6,7 +6,7 @@ extern crate alloc;
 #[global_allocator]
 static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
-use alloy_primitives::{Address, uint, U256, FixedBytes};
+use alloy_primitives::{Address, uint, U256, FixedBytes, bool};
 use alloy_sol_types::{sol};
 /// Import the Stylus SDK along with alloy primitive types for use in our program.
 use stylus_sdk::{
@@ -27,22 +27,46 @@ sol_storage! {
     
 }
 
+pub struct Permissions {
+    bool beforeInitialize;
+    bool afterInitialize;
+    bool beforeAddLiquidity;
+    bool afterAddLiquidity;
+    bool beforeRemoveLiquidity;
+    bool afterRemoveLiquidity;
+    bool beforeSwap;
+    bool afterSwap;
+    bool beforeDonate;       
+    bool afterDonate;
+}
+
+impl Permissions {
+    pub fn new(  beforeInitialize: bool,
+        afterInitialize: bool,
+        beforeAddLiquidity: bool,
+        afterAddLiquidity: bool,
+        beforeRemoveLiquidity: bool,
+        afterRemoveLiquidity: bool,
+        beforeSwap: bool,
+        afterSwap: bool,
+        beforeDonate: bool,
+        afterDonate: bool) -> Permissions {
+        Permissions { beforeInitialize,
+            afterInitialize,
+            beforeAddLiquidity,
+            afterAddLiquidity,
+            beforeRemoveLiquidity,
+            afterRemoveLiquidity,
+            beforeSwap,
+            afterSwap,
+            beforeDonate,
+            afterDonate}
+    }
+}
+
 /// Declare that `Counter` is a contract with the following external methods.
 #[external]
 impl Counter {
-  /*  pub struct Permissions {
-        bool beforeInitialize;
-        bool afterInitialize;
-        bool beforeAddLiquidity;
-        bool afterAddLiquidity;
-        bool beforeRemoveLiquidity;
-        bool afterRemoveLiquidity;
-        bool beforeSwap;
-        bool afterSwap;
-        bool beforeDonate;
-       
-        bool afterDonate;
-    }*/
 
     /// Gets the number from storage.
     pub fn beforeSwapCount(&self,  pool_id :FixedBytes<32>) -> U256 {
@@ -63,7 +87,7 @@ impl Counter {
         self.beforeRemoveLiquidityCount.get(pool_id)
     }
 
-  /*  pub fn getHookPermissions(&self) -> bool {
+    pub fn getHookPermissions(&self) -> Permissions {
        let permissions =  Permissions {
         beforeInitialize: false,
         afterInitialize: false,
@@ -77,6 +101,6 @@ impl Counter {
         afterDonate: false
     };
 
-    permissions;
-    }*/
+    permissions
+    }
 }
