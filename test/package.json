@@ -8,7 +8,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "counter": "tsx src/counter.ts",
     "liquidity": "tsx src/liquidity.ts",
-    "swap": "tsx src/swap.ts"
+    "swap": "tsx src/swap.ts",
+    "hook": "tsx src/hook.ts"
   },
   "keywords": [],
   "author": "",
