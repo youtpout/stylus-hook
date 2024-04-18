@@ -66,7 +66,7 @@ forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:400
 ```bash
 cd /uniswap
 forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
-forge script script/DeployStylusHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
+forge script script/DeployProxyHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
 forge script script/Redeploy.s.sol:RedeployScript --rpc-url localhost --broadcast -vvvvv 
 forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x76Eec016f5bB4360BCA1425E26A8Af360D3793f5 Redeploy --force
 ```
@@ -86,7 +86,7 @@ forge script script/03_Swap.s.sol:SwapScript --rpc-url localhost --broadcast -vv
 Private Key for test 0x0123456789012345678901234567890123456789012345678901234567890123 
 
 ```bash
-cd /hook
+cd /hook-proxy
 cargo stylus deploy --private-key 0x0123456789012345678901234567890123456789012345678901234567890123 -e http://localhost:8547/
 ```
 

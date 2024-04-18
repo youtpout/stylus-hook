@@ -4,48 +4,60 @@
 //! and check the value again. The deployed program is fully written in Rust and compiled to WASM
 //! but with Stylus, it is accessible just as a normal Solidity smart contract is via an ABI.
 
+use alloy_primitives::bytes;
 use ethers::{
     middleware::SignerMiddleware,
     prelude::abigen,
     providers::{Http, Middleware, Provider},
     signers::{LocalWallet, Signer},
     types::Address,
+    types::Bytes,
 };
 use eyre::eyre;
+use std::convert::TryInto;
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::str::FromStr;
 use std::sync::Arc;
 
 /// Your private key file path.
-const PRIV_KEY_PATH: &str = "PRIV_KEY_PATH";
+const PRIV_KEY: &str = "0x0123456789012345678901234567890123456789012345678901234567890123";
 
 /// Stylus RPC endpoint url.
-const RPC_URL: &str = "RPC_URL";
+const RPC_URL: &str = "http://localhost:8547/";
 
 /// Deployed pragram address.
-const STYLUS_PROGRAM_ADDRESS: &str = "STYLUS_PROGRAM_ADDRESS";
+const STYLUS_PROGRAM_ADDRESS: &str = "0x0Ed68D3f0567Dd93145Bedb7bADB775B8b1afd38";
+
+const HOOK_ADDRESS: &str = "0x2B05B3EFf0B04d2872F3AA4070e223AAA0F97613";
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    let priv_key_path =
-        std::env::var(PRIV_KEY_PATH).map_err(|_| eyre!("No {} env var set", PRIV_KEY_PATH))?;
-    let rpc_url = std::env::var(RPC_URL).map_err(|_| eyre!("No {} env var set", RPC_URL))?;
-    let program_address = std::env::var(STYLUS_PROGRAM_ADDRESS)
-        .map_err(|_| eyre!("No {} env var set", STYLUS_PROGRAM_ADDRESS))?;
+    let priv_key_path = PRIV_KEY;
+    let rpc_url = RPC_URL;
+    let program_address = STYLUS_PROGRAM_ADDRESS;
     abigen!(
         Counter,
         r#"[
-            function number() external view returns (uint256)
-            function setNumber(uint256 number) external
-            function increment() external
+            function beforeSwapCount(bytes32 pool_id) external view returns (uint256)
+            function afterSwapCount(bytes32 pool_id) external view returns (uint256)        
+            function beforeAddLiquidityCount(bytes32 pool_id) external view returns (uint256)        
+            function beforeRemoveLiquidityCount(bytes32 pool_id) external view returns (uint256)        
+            function setHook(address value) external        
+            function addBeforeSwap(bytes32 key) external        
+            function addAfterSwap(bytes32 key) external        
+            function addBeforeAddLiquidity(bytes32 key) external        
+            function addBeforeRemoveLiquidity(bytes32 key) external        
+            error NotHook()       
+            error HookAlreadyDefined()
         ]"#
     );
 
     let provider = Provider::<Http>::try_from(rpc_url)?;
     let address: Address = program_address.parse()?;
 
-    let privkey = read_secret_from_file(&priv_key_path)?;
-    let wallet = LocalWallet::from_str(&privkey)?;
+    //let privkey = read_secret_from_file(&priv_key_path)?;
+    let wallet = LocalWallet::from_str(&priv_key_path)?;
     let chain_id = provider.get_chainid().await?.as_u64();
     let client = Arc::new(SignerMiddleware::new(
         provider,
@@ -53,14 +65,10 @@ async fn main() -> eyre::Result<()> {
     ));
 
     let counter = Counter::new(address, client);
-    let num = counter.number().call().await;
-    println!("Counter number value = {:?}", num);
 
-    let _ = counter.increment().send().await?.await?;
-    println!("Successfully incremented counter via a tx");
-
-    let num = counter.number().call().await;
-    println!("New counter number value = {:?}", num);
+    let addr: Address = HOOK_ADDRESS.parse()?;
+    let deploy = counter.set_hook(addr).send().await?.await?;
+    println!("set hook");
     Ok(())
 }
 
