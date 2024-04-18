@@ -26,10 +26,9 @@ debug = ["stylus-sdk/debug"]
 
 [[bin]]
 name = "create2"
-path = "main.rs"
+path = "src/main.rs"
 
 [lib]
-path = "lib.rs"
 crate-type = ["lib", "cdylib"]
 
 [profile.release]

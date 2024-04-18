@@ -2937,7 +2937,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "stylus-hello-world"
+name = "stylus-create2"
+version = "0.1.5"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "ethers",
+ "eyre",
+ "hex",
+ "mini-alloc",
+ "stylus-sdk",
+ "tokio",
+]
+
+[[package]]
+name = "stylus-hook"
 version = "0.1.5"
 dependencies = [
  "alloy-primitives",
