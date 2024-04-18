@@ -2951,20 +2951,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stylus-hook"
-version = "0.1.5"
-dependencies = [
- "alloy-primitives",
- "alloy-sol-types",
- "ethers",
- "eyre",
- "hex",
- "mini-alloc",
- "stylus-sdk",
- "tokio",
-]
-
-[[package]]
 name = "stylus-proc"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

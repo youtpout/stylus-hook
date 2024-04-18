@@ -17,7 +17,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 /// Your private key file path.
-const PRIV_KEY_PATH: &str = "PRIV_KEY_PATH";
+const PRIV_KEY: &str = "";
 
 /// Stylus RPC endpoint url.
 const RPC_URL: &str = "RPC_URL";
