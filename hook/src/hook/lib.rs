@@ -1,10 +1,23 @@
-use alloy_primitives::{Address, uint, U256, FixedBytes};
-use alloy_sol_types::{sol};
-/// Import the Stylus SDK along with alloy primitive types for use in our program.
-use stylus_sdk::{
-    abi::Bytes, call::Call, contract, msg, prelude::*, storage::StorageAddress
-};
+// Allow `cargo stylus export-abi` to generate a main function.
+#![cfg_attr(not(feature = "export-abi"), no_main)]
+extern crate alloc;
 
+/// Use an efficient WASM allocator.
+#[global_allocator]
+static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
+
+/// Import items from the SDK. The prelude contains common traits and macros.
+use alloc::{string::String, vec, vec::Vec};
+use alloy_primitives::{Address, U256, FixedBytes,uint,Uint};
+use alloy_sol_types::{sol};
+use core::{borrow::BorrowMut, marker::PhantomData};
+use stylus_sdk::{
+    abi::Bytes,
+    evm,
+    msg,
+    prelude::*,
+    deploy::*
+};
 // Define some persistent storage using the Solidity ABI.
 // `Counter` will be the entrypoint.
 sol_storage! {
