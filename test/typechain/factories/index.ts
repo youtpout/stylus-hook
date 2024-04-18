@@ -14,6 +14,8 @@ export * as deployTSol from "./Deploy.t.sol";
 export * as deployHookSSol from "./DeployHook.s.sol";
 export * as poolNestedActionsTestSol from "./PoolNestedActionsTest.sol";
 export * as protocolFeeControllerTestSol from "./ProtocolFeeControllerTest.sol";
+export * as redeploySSol from "./Redeploy.s.sol";
+export * as redeploySol from "./Redeploy.sol";
 export * as stdErrorSol from "./StdError.sol";
 export * as stdStorageSol from "./StdStorage.sol";
 export * as vmSol from "./Vm.sol";

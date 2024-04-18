@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "typechain": "typechain --target=ethers-v6 --out-dir typechain out/**/*.json"
+    "typechain": "typechain --target=ethers-v6 --out-dir ../test/typechain out/**/*.json"
   },
   "devDependencies": {
     "typechain": "^8.3.2"
