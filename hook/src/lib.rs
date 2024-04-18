@@ -1,26 +1,3 @@
-//!
-//! Stylus Hello World
-//!
-//! The following contract implements the Counter example from Foundry.
-//!
-//! ```
-//! contract Counter {
-//!     uint256 public number;
-//!     function setNumber(uint256 newNumber) public {
-//!         number = newNumber;
-//!     }
-//!     function increment() public {
-//!         number++;
-//!     }
-//! }
-//! ```
-//!
-//! The program is ABI-equivalent with Solidity, which means you can call it from both Solidity and Rust.
-//! To do this, run `cargo stylus export-abi`.
-//!
-//! Note: this code is a template-only and has not been audited.
-//!
-
 // Allow `cargo stylus export-abi` to generate a main function.
 #![cfg_attr(not(feature = "export-abi"), no_main)]
 extern crate alloc;
@@ -29,34 +6,77 @@ extern crate alloc;
 #[global_allocator]
 static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
-/// Import items from the SDK. The prelude contains common traits and macros.
-use stylus_sdk::{alloy_primitives::U256, prelude::*};
+use alloy_primitives::{Address, uint, U256, FixedBytes};
+use alloy_sol_types::{sol};
+/// Import the Stylus SDK along with alloy primitive types for use in our program.
+use stylus_sdk::{
+    abi::Bytes, call::Call, contract, msg, prelude::*, storage::StorageAddress
+};
 
 // Define some persistent storage using the Solidity ABI.
 // `Counter` will be the entrypoint.
 sol_storage! {
     #[entrypoint]
     pub struct Counter {
-        uint256 number;
+        mapping(bytes32 => uint256) beforeSwapCount;
+        mapping(bytes32 => uint256) afterSwapCount;
+        mapping(bytes32 => uint256) beforeAddLiquidityCount;
+        mapping(bytes32 => uint256) beforeRemoveLiquidityCount;
     }
+
+    
 }
 
 /// Declare that `Counter` is a contract with the following external methods.
 #[external]
 impl Counter {
+  /*  pub struct Permissions {
+        bool beforeInitialize;
+        bool afterInitialize;
+        bool beforeAddLiquidity;
+        bool afterAddLiquidity;
+        bool beforeRemoveLiquidity;
+        bool afterRemoveLiquidity;
+        bool beforeSwap;
+        bool afterSwap;
+        bool beforeDonate;
+       
+        bool afterDonate;
+    }*/
+
     /// Gets the number from storage.
-    pub fn number(&self) -> U256 {
-        self.number.get()
+    pub fn beforeSwapCount(&self,  pool_id :FixedBytes<32>) -> U256 {
+        self.beforeSwapCount.get(pool_id)
     }
 
-    /// Sets a number in storage to a user-specified value.
-    pub fn set_number(&mut self, new_number: U256) {
-        self.number.set(new_number);
+    pub fn afterSwapCount(&self, pool_id :FixedBytes<32>) -> U256 {
+        self.afterSwapCount.get(pool_id)
     }
 
-    /// Increments `number` and updates its value in storage.
-    pub fn increment(&mut self) {
-        let number = self.number.get();
-        self.set_number(number + U256::from(1));
+
+    pub fn beforeAddLiquidityCount(&self, pool_id :FixedBytes<32>) -> U256 {
+        self.beforeAddLiquidityCount.get(pool_id)
     }
+
+
+    pub fn beforeRemoveLiquidityCount(&self, pool_id :FixedBytes<32>) -> U256 {
+        self.beforeRemoveLiquidityCount.get(pool_id)
+    }
+
+  /*  pub fn getHookPermissions(&self) -> bool {
+       let permissions =  Permissions {
+        beforeInitialize: false,
+        afterInitialize: false,
+        beforeAddLiquidity: true,
+        afterAddLiquidity: false,
+        beforeRemoveLiquidity: true,
+        afterRemoveLiquidity: false,
+        beforeSwap: true,
+        afterSwap: true,
+        beforeDonate: false,
+        afterDonate: false
+    };
+
+    permissions;
+    }*/
 }
