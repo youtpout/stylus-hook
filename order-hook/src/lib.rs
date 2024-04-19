@@ -70,9 +70,18 @@ impl LimitOrder {
         self.epochs.get(pool_id)
     }
 
-    pub fn getEpochLiquidity(&self, epoch: U256, owner: Address) -> u128 {
-        let epochInfo = self.epoch_infos.get(epoch);
-        epochInfo.liquidity.get(owner).to::<u128>()
+    pub fn get_epoch_liquidity(&self, epoch: U256, owner: Address) -> u128 {
+        let epoch_info = self.epoch_infos.get(epoch);
+        epoch_info.liquidity.get(owner).to::<u128>()
+    }
+
+    pub fn get_epoch(&self, id: FixedBytes<32>) -> U256 {
+        self.epochs.get(id)
+    }
+
+    fn set_epoch(&mut self, id: FixedBytes<32>, epoch: U256) -> Result<()> {
+        self.epochs.replace(id, epoch);
+        return Ok(());
     }
 
     pub fn epoch_next(&self) -> U256 {
