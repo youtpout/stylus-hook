@@ -66,6 +66,13 @@ impl LimitOrder {
         self.tick_lower_lasts.get(pool_id).as_i32()
     }
 
+    fn set_tick_lower_lasts(&mut self, pool_id: FixedBytes<32>, tick_lower: i32) -> Result<()> {
+        // why I need cas between i32 and Signed<32,i> is boring
+        self.tick_lower_lasts
+            .replace(pool_id, Signed::<32, 1>::unchecked_from(tick_lower));
+        return Ok(());
+    }
+
     pub fn epochs(&self, pool_id: FixedBytes<32>) -> U256 {
         self.epochs.get(pool_id)
     }
@@ -88,7 +95,19 @@ impl LimitOrder {
         self.epoch_next.get()
     }
 
-    pub fn initialize(
+    pub fn after_initialize(
+        &mut self,
+        pool_id: FixedBytes<32>,
+        tick: i32,
+        tick_spacing: i32,
+    ) -> Result<()> {
+        let last = self.get_tick_lower(tick, tick_spacing);
+        let converted: Signed<32, 1> = Signed::<32, 1>::unchecked_from(last);
+        self.tick_lower_lasts.replace(pool_id, converted);
+        return Ok(());
+    }
+
+    pub fn after_swap(
         &mut self,
         pool_id: FixedBytes<32>,
         tick: i32,
