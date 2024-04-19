@@ -13,7 +13,7 @@ import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 
-type Epoch is uint232;
+type Epoch is uint256;
 
 library EpochLibrary {
     function equals(Epoch a, Epoch b) internal pure returns (bool) {

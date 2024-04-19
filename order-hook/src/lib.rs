@@ -8,8 +8,9 @@ static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
 /// Import items from the SDK. The prelude contains common traits and macros.
 use alloc::vec;
-use alloy_primitives::{Address, FixedBytes, U128, U256};
+use alloy_primitives::{Address, FixedBytes, Signed, I32, U128, U256};
 use alloy_sol_types::sol;
+use std::convert::TryInto;
 use stylus_sdk::{msg, prelude::*};
 
 // Define some persistent storage using the Solidity ABI.
@@ -17,18 +18,20 @@ use stylus_sdk::{msg, prelude::*};
 sol_storage! {
     #[entrypoint]
     pub struct LimitOrder {
-        uint256 epochNext;
+        uint256 epoch_next;
         address hook;
-        mapping(bytes32 => uint32) tickLowerLasts;
+        mapping(bytes32 => int32) tick_lower_lasts;
+        mapping(bytes32 => uint256) epochs;
+        mapping(uint256 => EpochInfo) epoch_infos;
     }
 
     pub struct EpochInfo {
         bool filled;
         address currency0;
         address currency1;
-        uint256 token0Total;
-        uint256 token1Total;
-        uint128 liquidityTotal;
+        uint256 token0_total;
+        uint256 token1_total;
+        uint128 liquidity_total;
         mapping(address => uint128) liquidity;
     }
 
@@ -59,7 +62,40 @@ type Result<T, E = HookError> = core::result::Result<T, E>;
 /// Declare that `Counter` is a contract with the following external methods.
 #[external]
 impl LimitOrder {
-    pub fn tickLowerLasts(&self, pool_id: FixedBytes<32>) -> U256 {
-        self.tickLowerLasts(pool_id)
+    pub fn tick_lower_lasts(&self, pool_id: FixedBytes<32>) -> i32 {
+        self.tick_lower_lasts.get(pool_id).as_i32()
+    }
+
+    pub fn epochs(&self, pool_id: FixedBytes<32>) -> U256 {
+        self.epochs.get(pool_id)
+    }
+
+    pub fn getEpochLiquidity(&self, epoch: U256, owner: Address) -> u128 {
+        let epochInfo = self.epoch_infos.get(epoch);
+        epochInfo.liquidity.get(owner).to::<u128>()
+    }
+
+    pub fn epoch_next(&self) -> U256 {
+        self.epoch_next.get()
+    }
+
+    pub fn initialize(
+        &mut self,
+        pool_id: FixedBytes<32>,
+        tick: i32,
+        tick_spacing: i32,
+    ) -> Result<()> {
+        let last = self.get_tick_lower(tick, tick_spacing);
+        let converted: Signed<32, 1> = Signed::<32, 1>::unchecked_from(last);
+        self.tick_lower_lasts.replace(pool_id, converted);
+        return Ok(());
+    }
+
+    fn get_tick_lower(&self, tick: i32, tick_spacing: i32) -> i32 {
+        let mut compressed = tick / tick_spacing;
+        if (tick < 0 && tick % tick_spacing != 0) {
+            compressed -= 1; // round towards negative infinity
+        }
+        return compressed * tick_spacing;
     }
 }
