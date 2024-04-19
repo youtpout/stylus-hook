@@ -14,6 +14,7 @@ import {CurrencyLibrary, Currency} from "v4-core/src/types/Currency.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {Deployers} from "v4-core/test/utils/Deployers.sol";
 import {CounterProxy} from "../src/CounterProxy.sol";
+import {Counter} from "../src/Counter.sol";
 import {HookMiner} from "../test/utils/HookMiner.sol";
 import {PoolManager} from "v4-core/src/PoolManager.sol";
 import {PoolModifyLiquidityTest} from "v4-core/src/test/PoolModifyLiquidityTest.sol";
@@ -25,7 +26,8 @@ contract DeployHookScript is Script {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
 
-    CounterProxy counter;
+    Counter counter;
+    CounterProxy counterProxy;
     PoolId poolId;
     PoolManager manager;
     PoolKey key;
@@ -97,16 +99,37 @@ contract DeployHookScript is Script {
             type(CounterProxy).creationCode,
             abi.encode(address(manager))
         );
+        (address hookCounterAddress, bytes32 salt2) = HookMiner.find(
+            address(createProxy),
+            flags,
+            type(Counter).creationCode,
+            abi.encode(address(manager))
+        );
         console.logString(
             string.concat(
-                "hookAddress deployed at: ",
+                "hookAddress counter proxy deployed at: ",
                 vm.toString(address(hookAddress))
             )
         );
-        counter = new CounterProxy{salt: salt}(IPoolManager(address(manager)));
+
+        console.logString(
+            string.concat(
+                "hookAddress counter deployed at: ",
+                vm.toString(address(hookCounterAddress))
+            )
+        );
+        counterProxy = new CounterProxy{salt: salt}(
+            IPoolManager(address(manager))
+        );
         require(
-            address(counter) == hookAddress,
+            address(counterProxy) == hookAddress,
             "CounterTest: hook address mismatch"
+        );
+
+        counter = new Counter{salt: salt2}(IPoolManager(address(manager)));
+        require(
+            address(counter) == hookCounterAddress,
+            "CounterTest: hook counter address mismatch"
         );
 
         address token0 = uint160(address(MUSDC_ADDRESS)) <
@@ -124,19 +147,31 @@ contract DeployHookScript is Script {
             Currency.wrap(token1),
             3000,
             60,
-            IHooks(address(counter))
+            IHooks(address(counterProxy))
         );
         poolId = key.toId();
+
+        PoolKey memory key2 = PoolKey(
+            Currency.wrap(token0),
+            Currency.wrap(token1),
+            3000,
+            60,
+            IHooks(address(counter))
+        );
+        PoolId poolId2 = key2.toId();
 
         bytes memory hookData = abi.encode(block.timestamp);
         // floor(sqrt(1) * 2^96)
         uint160 startingPrice = 79228162514264337593543950336;
         manager.initialize(key, startingPrice, hookData);
+        manager.initialize(key2, startingPrice, hookData);
 
         bytes32 idBytes = PoolId.unwrap(poolId);
-
-        console.log("Pool ID Below");
+        bytes32 idBytes2 = PoolId.unwrap(poolId2);
+        console.log("Pool ID proxy Below");
         console.logBytes32(bytes32(idBytes));
+        console.log("Pool ID Below");
+        console.logBytes32(bytes32(idBytes2));
 
         // Provide liquidity to the pool
         // Provide liquidity to the pool
@@ -145,7 +180,8 @@ contract DeployHookScript is Script {
         IERC20(token0).approve(address(swapRouter), 100000000e18);
         IERC20(token1).approve(address(swapRouter), 100000000e18);
 
-        lpRouter.modifyLiquidity(
+        // can't have access to hook from forge, return error OpcodeNotFound
+        /*   lpRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(-600, 600, 1_000_000e18),
             ZERO_BYTES
@@ -168,7 +204,7 @@ contract DeployHookScript is Script {
             });
 
         hookData = new bytes(0);
-        swapRouter.swap(key, params, testSettings, hookData);
+        swapRouter.swap(key, params, testSettings, hookData);*/
 
         vm.stopBroadcast();
     }

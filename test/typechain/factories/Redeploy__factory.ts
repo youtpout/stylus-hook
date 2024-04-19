@@ -8,8 +8,8 @@ import {
   Interface,
 } from "ethers";
 import type { Signer, ContractDeployTransaction, ContractRunner } from "ethers";
-import type { NonPayableOverrides } from "../../common";
-import type { Redeploy, RedeployInterface } from "../../Redeploy.sol/Redeploy";
+import type { NonPayableOverrides } from "../common";
+import type { Redeploy, RedeployInterface } from "../Redeploy";
 
 const _abi = [
   {

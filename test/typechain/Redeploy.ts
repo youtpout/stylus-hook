@@ -3,11 +3,11 @@
 /* eslint-disable */
 import type {
   BaseContract,
-  BigNumberish,
   BytesLike,
   FunctionFragment,
   Result,
   Interface,
+  AddressLike,
   ContractRunner,
   ContractMethod,
   Listener,
@@ -18,24 +18,37 @@ import type {
   TypedEventLog,
   TypedListener,
   TypedContractMethod,
-} from "../common";
+} from "./common";
 
-export interface IDeployInterface extends Interface {
-  getFunction(nameOrSignature: "deploy"): FunctionFragment;
+export interface RedeployInterface extends Interface {
+  getFunction(
+    nameOrSignature: "deployDeterministic" | "predictDeterministicAddress"
+  ): FunctionFragment;
 
   encodeFunctionData(
-    functionFragment: "deploy",
-    values: [BytesLike, BigNumberish]
+    functionFragment: "deployDeterministic",
+    values: [AddressLike, BytesLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "predictDeterministicAddress",
+    values: [AddressLike, BytesLike]
   ): string;
 
-  decodeFunctionResult(functionFragment: "deploy", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "deployDeterministic",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "predictDeterministicAddress",
+    data: BytesLike
+  ): Result;
 }
 
-export interface IDeploy extends BaseContract {
-  connect(runner?: ContractRunner | null): IDeploy;
+export interface Redeploy extends BaseContract {
+  connect(runner?: ContractRunner | null): Redeploy;
   waitForDeployment(): Promise<this>;
 
-  interface: IDeployInterface;
+  interface: RedeployInterface;
 
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,
@@ -74,10 +87,16 @@ export interface IDeploy extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
-  deploy: TypedContractMethod<
-    [_data: BytesLike, _salt: BigNumberish],
+  deployDeterministic: TypedContractMethod<
+    [from: AddressLike, salt: BytesLike],
     [string],
     "payable"
+  >;
+
+  predictDeterministicAddress: TypedContractMethod<
+    [implementation: AddressLike, salt: BytesLike],
+    [string],
+    "view"
   >;
 
   getFunction<T extends ContractMethod = ContractMethod>(
@@ -85,11 +104,18 @@ export interface IDeploy extends BaseContract {
   ): T;
 
   getFunction(
-    nameOrSignature: "deploy"
+    nameOrSignature: "deployDeterministic"
   ): TypedContractMethod<
-    [_data: BytesLike, _salt: BigNumberish],
+    [from: AddressLike, salt: BytesLike],
     [string],
     "payable"
+  >;
+  getFunction(
+    nameOrSignature: "predictDeterministicAddress"
+  ): TypedContractMethod<
+    [implementation: AddressLike, salt: BytesLike],
+    [string],
+    "view"
   >;
 
   filters: {};

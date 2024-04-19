@@ -14,7 +14,7 @@ contract CounterProxy is BaseHook {
     using PoolIdLibrary for PoolKey;
 
     ICounter public HOOK_PROXY =
-        ICounter(0xd4F8E64864b6721A22b73EA60b02b2Ef2A99D7ba);
+        ICounter(0x8cDE56336E289c028C8f7CF5c20283fF02272182);
 
     function beforeSwapCount(bytes32 pool_id) external view returns (uint256) {
         return HOOK_PROXY.beforeSwapCount(pool_id);

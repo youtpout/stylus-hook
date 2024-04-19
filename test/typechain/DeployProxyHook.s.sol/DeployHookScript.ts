@@ -7,7 +7,6 @@ import type {
   FunctionFragment,
   Result,
   Interface,
-  AddressLike,
   ContractRunner,
   ContractMethod,
   Listener,
@@ -20,35 +19,39 @@ import type {
   TypedContractMethod,
 } from "../common";
 
-export interface RedeployInterface extends Interface {
+export interface DeployHookScriptInterface extends Interface {
   getFunction(
-    nameOrSignature: "deployDeterministic" | "predictDeterministicAddress"
+    nameOrSignature: "IS_SCRIPT" | "MAX_PRICE_LIMIT" | "MIN_PRICE_LIMIT" | "run"
   ): FunctionFragment;
 
+  encodeFunctionData(functionFragment: "IS_SCRIPT", values?: undefined): string;
   encodeFunctionData(
-    functionFragment: "deployDeterministic",
-    values: [AddressLike, BytesLike]
+    functionFragment: "MAX_PRICE_LIMIT",
+    values?: undefined
   ): string;
   encodeFunctionData(
-    functionFragment: "predictDeterministicAddress",
-    values: [AddressLike, BytesLike]
+    functionFragment: "MIN_PRICE_LIMIT",
+    values?: undefined
   ): string;
+  encodeFunctionData(functionFragment: "run", values?: undefined): string;
 
+  decodeFunctionResult(functionFragment: "IS_SCRIPT", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "deployDeterministic",
+    functionFragment: "MAX_PRICE_LIMIT",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "predictDeterministicAddress",
+    functionFragment: "MIN_PRICE_LIMIT",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "run", data: BytesLike): Result;
 }
 
-export interface Redeploy extends BaseContract {
-  connect(runner?: ContractRunner | null): Redeploy;
+export interface DeployHookScript extends BaseContract {
+  connect(runner?: ContractRunner | null): DeployHookScript;
   waitForDeployment(): Promise<this>;
 
-  interface: RedeployInterface;
+  interface: DeployHookScriptInterface;
 
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,
@@ -87,36 +90,30 @@ export interface Redeploy extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
-  deployDeterministic: TypedContractMethod<
-    [from: AddressLike, salt: BytesLike],
-    [string],
-    "payable"
-  >;
+  IS_SCRIPT: TypedContractMethod<[], [boolean], "view">;
 
-  predictDeterministicAddress: TypedContractMethod<
-    [implementation: AddressLike, salt: BytesLike],
-    [string],
-    "view"
-  >;
+  MAX_PRICE_LIMIT: TypedContractMethod<[], [bigint], "view">;
+
+  MIN_PRICE_LIMIT: TypedContractMethod<[], [bigint], "view">;
+
+  run: TypedContractMethod<[], [void], "nonpayable">;
 
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
 
   getFunction(
-    nameOrSignature: "deployDeterministic"
-  ): TypedContractMethod<
-    [from: AddressLike, salt: BytesLike],
-    [string],
-    "payable"
-  >;
+    nameOrSignature: "IS_SCRIPT"
+  ): TypedContractMethod<[], [boolean], "view">;
   getFunction(
-    nameOrSignature: "predictDeterministicAddress"
-  ): TypedContractMethod<
-    [implementation: AddressLike, salt: BytesLike],
-    [string],
-    "view"
-  >;
+    nameOrSignature: "MAX_PRICE_LIMIT"
+  ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
+    nameOrSignature: "MIN_PRICE_LIMIT"
+  ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
+    nameOrSignature: "run"
+  ): TypedContractMethod<[], [void], "nonpayable">;
 
   filters: {};
 }

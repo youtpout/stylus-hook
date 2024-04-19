@@ -210,3 +210,12 @@ This project is fully open source, including an Apache-2.0 or MIT license at you
 cd nitro-testnode
 git submodule update --init --recursive
 ```
+
+### Pool Id 
+
+  Pool ID Below
+  0xe0f194102b8052de15b5004641e18d5696aee1d467a0b5e5d47e7686e65e60a8
+
+  Pool ID proxy Below
+  0x725620af56049922e5bc7a2a05f4b297e2f7d5fce338c5336128a0d8239f0377
+  

@@ -1,20 +1,41 @@
 import { Signature, ethers, Wallet, BaseWallet, SigningKey, Contract } from "ethers";
+import { IPoolManager, PoolModifyLiquidityTest__factory, PoolModifyLiquidityTest, Token, Token__factory } from "../typechain";
+import { PoolKeyStruct } from "../typechain/PoolModifyLiquidityTest";
 
 // replace by your configuration
 const url = "http://localhost:8547/";
 // address 0x14791697260E4c9A71f18484C9f997B308e59325
 const privateKey = "0x0123456789012345678901234567890123456789012345678901234567890123";
-const addressContract = "0xcC946789cD835EeeD198c3A39A5B1A7C76b5C044";
-const abi = [{ "type": "constructor", "stateMutability": "nonpayable", "inputs": [{ "type": "address", "name": "_manager", "internalType": "contract IPoolManager" }] }, { "type": "error", "name": "ERC20TransferFailed", "inputs": [] }, { "type": "error", "name": "NativeTransferFailed", "inputs": [] }, { "type": "function", "stateMutability": "view", "outputs": [{ "type": "address", "name": "", "internalType": "contract IPoolManager" }], "name": "manager", "inputs": [] }, { "type": "function", "stateMutability": "payable", "outputs": [{ "type": "int256", "name": "delta", "internalType": "BalanceDelta" }], "name": "modifyLiquidity", "inputs": [{ "type": "tuple", "name": "key", "internalType": "struct PoolKey", "components": [{ "type": "address", "name": "currency0", "internalType": "Currency" }, { "type": "address", "name": "currency1", "internalType": "Currency" }, { "type": "uint24", "name": "fee", "internalType": "uint24" }, { "type": "int24", "name": "tickSpacing", "internalType": "int24" }, { "type": "address", "name": "hooks", "internalType": "contract IHooks" }] }, { "type": "tuple", "name": "params", "internalType": "struct IPoolManager.ModifyLiquidityParams", "components": [{ "type": "int24", "name": "tickLower", "internalType": "int24" }, { "type": "int24", "name": "tickUpper", "internalType": "int24" }, { "type": "int256", "name": "liquidityDelta", "internalType": "int256" }] }, { "type": "bytes", "name": "hookData", "internalType": "bytes" }, { "type": "bool", "name": "settleUsingTransfer", "internalType": "bool" }, { "type": "bool", "name": "withdrawTokens", "internalType": "bool" }] }, { "type": "function", "stateMutability": "payable", "outputs": [{ "type": "int256", "name": "delta", "internalType": "BalanceDelta" }], "name": "modifyLiquidity", "inputs": [{ "type": "tuple", "name": "key", "internalType": "struct PoolKey", "components": [{ "type": "address", "name": "currency0", "internalType": "Currency" }, { "type": "address", "name": "currency1", "internalType": "Currency" }, { "type": "uint24", "name": "fee", "internalType": "uint24" }, { "type": "int24", "name": "tickSpacing", "internalType": "int24" }, { "type": "address", "name": "hooks", "internalType": "contract IHooks" }] }, { "type": "tuple", "name": "params", "internalType": "struct IPoolManager.ModifyLiquidityParams", "components": [{ "type": "int24", "name": "tickLower", "internalType": "int24" }, { "type": "int24", "name": "tickUpper", "internalType": "int24" }, { "type": "int256", "name": "liquidityDelta", "internalType": "int256" }] }, { "type": "bytes", "name": "hookData", "internalType": "bytes" }] }, { "type": "function", "stateMutability": "nonpayable", "outputs": [{ "type": "bytes", "name": "", "internalType": "bytes" }], "name": "unlockCallback", "inputs": [{ "type": "bytes", "name": "rawData", "internalType": "bytes" }] }];
-
 
 const provider = new ethers.JsonRpcProvider(url);
 const signer = new Wallet(privateKey, provider);
 
-const lpRouter = new Contract(addressContract, abi, signer);
+const MUNI_ADDRESS = "0xf3e1C2DefcDfE770972D4bCF45B03498626c5594";
+const MUSDC_ADDRESS = "0xADeb1300E4860089d93233ddED31B33206ba8432";
 
-await lpRouter.modifyLiquidity(
-    [0x715b1228f5ca70329b25254cb140bfe28c6265ae, 0x8f432d45cc8c546ff104fb1df0e2fe03a3963db8, 3000, 60, 0x2b0817e76b731333be0b06989aab432866334def)],
-[-600, 600, 10000000000000000000000],
-    0x00000000000000000000000000000000000000000000000000000000661e48e7
-);
+const hooks = "0x2B0C1f3200Fc1ff47E19E91845eF0f5749E4f9E2";
+const hooksProxy = "0x2b0EF66d2Cc46C759aE5BDf2aA715b416788a385";
+
+const lpRouter: PoolModifyLiquidityTest = PoolModifyLiquidityTest__factory.connect("0x2dC942dcba13E4BE27721980FE01f2221610A93b", signer);
+const token0: Token = Token__factory.connect(MUNI_ADDRESS, signer);
+const token1: Token = Token__factory.connect(MUSDC_ADDRESS, signer);
+const approveAmount = BigInt(10000000) * (BigInt(10) ** BigInt(18));
+let tx1 = await token0.approve("0x2dC942dcba13E4BE27721980FE01f2221610A93b", approveAmount);
+await tx1.wait();
+tx1 = await token1.approve("0x2dC942dcba13E4BE27721980FE01f2221610A93b", approveAmount);
+await tx1.wait();
+
+await modifyLiquidity(hooks);
+await modifyLiquidity(hooksProxy);
+
+async function modifyLiquidity(hooks) {
+    const MIN_PRICE_LIMIT = BigInt(4295128740);
+    const MAX_PRICE_LIMIT = BigInt(1461446703485210103287273052203988822378723970341);
+
+    const poolKey: PoolKeyStruct = { currency0: MUSDC_ADDRESS, currency1: MUNI_ADDRESS, fee: 3000, tickSpacing: 60, hooks };
+    const liquidityParams: IPoolManager.ModifyLiquidityParamsStruct = { tickLower: -600, tickUpper: 600, liquidityDelta: (approveAmount / BigInt(10)) };
+    const tx = await lpRouter.modifyLiquidity(poolKey, liquidityParams, ethers.ZeroHash);
+    const res = await tx.wait();
+    console.log("result", res);
+}
+

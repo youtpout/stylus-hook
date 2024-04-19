@@ -57,17 +57,14 @@ or
 
 ```bash
 cd /uniswap
-forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
-forge script script/Redeploy.s.sol:RedeployScript --rpc-url localhost --broadcast -vvvvv 
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x76Eec016f5bB4360BCA1425E26A8Af360D3793f5 Redeploy --force
+forge script script/DeployProxyHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
 ```
 
-
+Other possibilities
 ```bash
 cd /uniswap
 forge script script/DeployHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
 forge script script/DeployProxyHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
-forge script script/Redeploy.s.sol:RedeployScript --rpc-url localhost --broadcast -vvvvv 
 forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x76Eec016f5bB4360BCA1425E26A8Af360D3793f5 Redeploy --force
 ```
 

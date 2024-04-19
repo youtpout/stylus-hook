@@ -10,7 +10,7 @@ static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 use alloc::vec;
 use alloy_primitives::{Address, FixedBytes, U256};
 use alloy_sol_types::sol;
-use stylus_sdk::{evm, msg, prelude::*};
+use stylus_sdk::{msg, prelude::*};
 
 // Define some persistent storage using the Solidity ABI.
 // `Counter` will be the entrypoint.
