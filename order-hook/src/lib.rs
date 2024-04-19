@@ -9,7 +9,7 @@ static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 /// Import items from the SDK. The prelude contains common traits and macros.
 use alloc::vec;
 use alloy_primitives::{Address, FixedBytes, Signed, I32, U128, U256};
-use alloy_sol_types::sol;
+use alloy_sol_types::{sol, SolInterface};
 use std::convert::TryInto;
 use stylus_sdk::{msg, prelude::*};
 
@@ -55,6 +55,15 @@ pub enum HookError {
     Filled(Filled),
     NotFilled(NotFilled),
     NotPoolManagerToken(NotPoolManagerToken),
+}
+
+sol_interface! {
+    interface IPoolManager {
+        function getSlot0(PoolId id)
+        external
+        view
+        returns (uint160 sqrtPriceX96, int24 tick, uint16 protocolFee, uint24 swapFee);
+    }
 }
 
 /// Simplifies the result type for the contract's methods.
@@ -127,6 +136,20 @@ impl LimitOrder {
         let converted: Signed<32, 1> = Signed::<32, 1>::unchecked_from(last);
         self.tick_lower_lasts.replace(pool_id, converted);
         return Ok(());
+    }
+
+    // fn get_crossed_ticks(
+    //     &self,
+    //     pool_id: FixedBytes<32>,
+    //     tick_spacing: i32,
+    // ) -> (i32, i32, i32) {
+    //     //let tick_lower =
+    // }
+
+    fn get_tick(&self, pool_id: FixedBytes<32>, tick_spacing: i32) {
+        //let tick_lower =
+        let i = IPoolManager::new();
+        let result = IPoolManager::from(self.pool_manager).get_slot0(self, pool_id);
     }
 
     fn get_tick_lower(&self, tick: i32, tick_spacing: i32) -> i32 {
