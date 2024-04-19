@@ -23,6 +23,7 @@ sol_storage! {
         mapping(bytes32 => int32) tick_lower_lasts;
         mapping(bytes32 => uint256) epochs;
         mapping(uint256 => EpochInfo) epoch_infos;
+        address pool_manager;
     }
 
     pub struct EpochInfo {
@@ -62,6 +63,15 @@ type Result<T, E = HookError> = core::result::Result<T, E>;
 /// Declare that `Counter` is a contract with the following external methods.
 #[external]
 impl LimitOrder {
+    pub fn set_pool_manager(&mut self, value: Address) -> Result<()> {
+        self.pool_manager.set(value);
+        Ok(())
+    }
+
+    pub fn pool_manager(&self) -> Address {
+        self.pool_manager.get()
+    }
+
     pub fn tick_lower_lasts(&self, pool_id: FixedBytes<32>) -> i32 {
         self.tick_lower_lasts.get(pool_id).as_i32()
     }
