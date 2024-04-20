@@ -8,10 +8,10 @@ static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
 /// Import items from the SDK. The prelude contains common traits and macros.
 use alloc::vec;
-use alloy_primitives::{Address, FixedBytes, Signed, I32, U128, U256};
+use alloy_primitives::{Address, FixedBytes, Signed, U256};
 use alloy_sol_types::{sol, SolError};
-use std::convert::TryInto;
-use stylus_sdk::{msg, prelude::*};
+
+use stylus_sdk::{crypto::keccak, prelude::*};
 
 // Define some persistent storage using the Solidity ABI.
 // `Counter` will be the entrypoint.
@@ -104,6 +104,10 @@ impl LimitOrder {
         self.tick_lower_lasts.get(pool_id).as_i32()
     }
 
+    pub fn get_tick_lower_last(&self, pool_id: FixedBytes<32>) -> i32 {
+        self.tick_lower_lasts.get(pool_id).as_i32()
+    }
+
     fn set_tick_lower_lasts(&mut self, pool_id: FixedBytes<32>, tick_lower: i32) -> Result<()> {
         // why I need cas between i32 and Signed<32,i> is boring
         self.tick_lower_lasts
@@ -120,12 +124,38 @@ impl LimitOrder {
         epoch_info.liquidity.get(owner).to::<u128>()
     }
 
-    pub fn get_epoch(&self, id: FixedBytes<32>) -> U256 {
+    pub fn epoch(&self, id: FixedBytes<32>) -> U256 {
         self.epochs.get(id)
     }
 
-    fn set_epoch(&mut self, id: FixedBytes<32>, epoch: U256) -> Result<()> {
-        self.epochs.replace(id, epoch);
+    pub fn get_epoch(&self, pool_id: FixedBytes<32>, tick_lower: i32, zero_for_one: bool) -> U256 {
+        let hash = keccak(
+            &[
+                pool_id,
+                keccak(tick_lower.to_be_bytes()),
+                keccak([u8::from(zero_for_one)]),
+            ]
+            .concat(),
+        );
+        self.epochs.get(hash)
+    }
+
+    fn set_epoch(
+        &mut self,
+        pool_id: FixedBytes<32>,
+        tick_lower: i32,
+        zero_for_one: bool,
+        epoch: U256,
+    ) -> Result<()> {
+        let hash = keccak(
+            &[
+                pool_id,
+                keccak(tick_lower.to_be_bytes()),
+                keccak([u8::from(zero_for_one)]),
+            ]
+            .concat(),
+        );
+        self.epochs.replace(hash, epoch);
         return Ok(());
     }
 
@@ -151,19 +181,62 @@ impl LimitOrder {
         tick: i32,
         tick_spacing: i32,
     ) -> Result<()> {
-        let last = self.get_tick_lower(tick, tick_spacing);
-        let converted: Signed<32, 1> = Signed::<32, 1>::unchecked_from(last);
-        self.tick_lower_lasts.replace(pool_id, converted);
+        let crossed_ticks: (i32, i32, i32) = self.get_crossed_ticks(pool_id, tick_spacing)?;
+        if (crossed_ticks.1 > crossed_ticks.2) {
+            return Ok(());
+        }
+
+        // note that a zeroForOne swap means that the pool is actually gaining token0, so limit
+        // order fills are the opposite of swap fills, hence the inversion below
         return Ok(());
     }
 
-    // fn get_crossed_ticks(
-    //     &self,
-    //     pool_id: FixedBytes<32>,
-    //     tick_spacing: i32,
-    // ) -> (i32, i32, i32) {
-    //     //let tick_lower =
-    // }
+    /*fn fill_epoch(  &mut self,
+        pool_id: FixedBytes<32>,
+        tick: i32,
+        tick_spacing: i32) -> Result<()> {
+            // the calc is different from original limit order to match stylus type
+            keccak([pool_id, lower ])
+        let epoch = getEpoch(key, lower, zeroForOne);
+        if (!epoch.equals(EPOCH_DEFAULT)) {
+            EpochInfo storage epochInfo = epochInfos[epoch];
+
+            epochInfo.filled = true;
+
+            (uint256 amount0, uint256 amount1) =
+                _lockAcquiredFill(key, lower, -int256(uint256(epochInfo.liquidityTotal)));
+
+            unchecked {
+                epochInfo.token0Total += amount0;
+                epochInfo.token1Total += amount1;
+            }
+
+            setEpoch(key, lower, zeroForOne, EPOCH_DEFAULT);
+
+            emit Fill(epoch, key, lower, zeroForOne);
+        }
+    }*/
+
+    fn get_crossed_ticks(
+        &self,
+        pool_id: FixedBytes<32>,
+        tick_spacing: i32,
+    ) -> Result<(i32, i32, i32)> {
+        //let tick_lower =
+        let tick = self.get_tick(pool_id)?;
+        let tick_lower = self.get_tick_lower(tick, tick_spacing);
+        let tick_lower_last = self.get_tick_lower_last(pool_id);
+        let lower;
+        let upper;
+        if tick_lower_last < tick_lower_last {
+            lower = tick_lower + tick_spacing;
+            upper = tick_lower_last;
+        } else {
+            lower = tick_lower_last;
+            upper = tick_lower - tick_spacing;
+        }
+        return Ok((tick_lower, lower, upper));
+    }
 
     fn get_tick(&self, pool_id: FixedBytes<32>) -> Result<i32, HookError> {
         //let tick_lower =
@@ -173,7 +246,7 @@ impl LimitOrder {
 
     fn get_tick_lower(&self, tick: i32, tick_spacing: i32) -> i32 {
         let mut compressed = tick / tick_spacing;
-        if (tick < 0 && tick % tick_spacing != 0) {
+        if tick < 0 && tick % tick_spacing != 0 {
             compressed -= 1; // round towards negative infinity
         }
         return compressed * tick_spacing;
