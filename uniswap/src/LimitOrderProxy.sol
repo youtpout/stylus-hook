@@ -125,7 +125,7 @@ contract LimitOrderProxy is BaseHook {
         returns (bytes4)
     {
         setTickLowerLast(key.toId(), getTickLower(tick, key.tickSpacing));
-        return LimitOrder.afterInitialize.selector;
+        return LimitOrderProxy.afterInitialize.selector;
     }
 
     function afterSwap(
@@ -136,7 +136,7 @@ contract LimitOrderProxy is BaseHook {
         bytes calldata
     ) external override poolManagerOnly returns (bytes4) {
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
-        if (lower > upper) return LimitOrder.afterSwap.selector;
+        if (lower > upper) return LimitOrderProxy.afterSwap.selector;
 
         // note that a zeroForOne swap means that the pool is actually gaining token0, so limit
         // order fills are the opposite of swap fills, hence the inversion below
@@ -146,7 +146,7 @@ contract LimitOrderProxy is BaseHook {
         }
 
         setTickLowerLast(key.toId(), tickLower);
-        return LimitOrder.afterSwap.selector;
+        return LimitOrderProxy.afterSwap.selector;
     }
 
     function _fillEpoch(PoolKey calldata key, int24 lower, bool zeroForOne) internal {
