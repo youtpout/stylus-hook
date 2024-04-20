@@ -53,36 +53,14 @@ sol_interface! {
     }
 }
 
-// #[derive(SolidityError)]
+#[derive(SolidityError)]
 pub enum HookError {
     ZeroLiquidity(ZeroLiquidity),
     InRange(InRange),
     CrossedRange(CrossedRange),
     Filled(Filled),
     NotFilled(NotFilled),
-    NotPoolManagerToken(NotPoolManagerToken),
-    ExternalCall(stylus_sdk::call::Error),
-}
-
-/// We will soon provide a `#[derive(SolidityError)]` to clean this up.
-impl From<stylus_sdk::call::Error> for HookError {
-    fn from(err: stylus_sdk::call::Error) -> Self {
-        Self::ExternalCall(err)
-    }
-}
-
-impl From<HookError> for Vec<u8> {
-    fn from(val: HookError) -> Self {
-        match val {
-            HookError::ZeroLiquidity(err) => err.encode(),
-            HookError::InRange(err) => err.encode(),
-            HookError::CrossedRange(err) => err.encode(),
-            HookError::Filled(err) => err.encode(),
-            HookError::NotFilled(err) => err.encode(),
-            HookError::NotPoolManagerToken(err) => err.encode(),
-            HookError::ExternalCall(err) => err.into(),
-        }
-    }
+    NotPoolManagerToken(NotPoolManagerToken)
 }
 
 /// Simplifies the result type for the contract's methods.
@@ -240,7 +218,7 @@ impl LimitOrder {
 
     fn get_tick(&self, pool_id: FixedBytes<32>) -> Result<i32, HookError> {
         //let tick_lower =
-        let pool_slot = IPoolManager::new(self.pool_manager.get()).get_slot_0(self, pool_id)?;
+        let pool_slot = IPoolManager::new(self.pool_manager.get()).get_slot_0(self, pool_id).ok().unwrap();
         return Ok(pool_slot.1);
     }
 
