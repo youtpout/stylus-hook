@@ -9,7 +9,7 @@ static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 /// Import items from the SDK. The prelude contains common traits and macros.
 use alloc::vec;
 use alloy_primitives::{Address, FixedBytes, Signed, U256};
-use alloy_sol_types::{sol, SolError};
+use alloy_sol_types::sol;
 
 use stylus_sdk::{crypto::keccak, prelude::*};
 
@@ -23,7 +23,6 @@ sol_storage! {
         mapping(bytes32 => int32) tick_lower_lasts;
         mapping(bytes32 => uint256) epochs;
         mapping(uint256 => EpochInfo) epoch_infos;
-        address pool_manager;
     }
 
     pub struct EpochInfo {
@@ -47,12 +46,6 @@ sol! {
     error NotPoolManagerToken();
 }
 
-sol_interface! {
-    interface IPoolManager {
-        function getSlot0(bytes32 id) external view returns (uint160 sqrtPriceX96, int24 tick, uint16 protocolFee, uint24 swapFee);
-    }
-}
-
 #[derive(SolidityError)]
 pub enum HookError {
     ZeroLiquidity(ZeroLiquidity),
@@ -60,7 +53,7 @@ pub enum HookError {
     CrossedRange(CrossedRange),
     Filled(Filled),
     NotFilled(NotFilled),
-    NotPoolManagerToken(NotPoolManagerToken)
+    NotPoolManagerToken(NotPoolManagerToken),
 }
 
 /// Simplifies the result type for the contract's methods.
@@ -69,15 +62,7 @@ type Result<T, E = HookError> = core::result::Result<T, E>;
 /// Declare that `Counter` is a contract with the following external methods.
 #[external]
 impl LimitOrder {
-    pub fn set_pool_manager(&mut self, value: Address) -> Result<()> {
-        self.pool_manager.set(value);
-        Ok(())
-    }
-
-    pub fn pool_manager(&self) -> Address {
-        self.pool_manager.get()
-    }
-
+    
     pub fn tick_lower_lasts(&self, pool_id: FixedBytes<32>) -> i32 {
         self.tick_lower_lasts.get(pool_id).as_i32()
     }
@@ -159,8 +144,8 @@ impl LimitOrder {
         tick: i32,
         tick_spacing: i32,
     ) -> Result<()> {
-        let crossed_ticks: (i32, i32, i32) = self.get_crossed_ticks(pool_id, tick_spacing)?;
-        if (crossed_ticks.1 > crossed_ticks.2) {
+        let crossed_ticks: (i32, i32, i32) = self.get_crossed_ticks(pool_id, tick, tick_spacing)?;
+        if crossed_ticks.1 > crossed_ticks.2 {
             return Ok(());
         }
 
@@ -198,10 +183,9 @@ impl LimitOrder {
     fn get_crossed_ticks(
         &self,
         pool_id: FixedBytes<32>,
+        tick: i32,
         tick_spacing: i32,
     ) -> Result<(i32, i32, i32)> {
-        //let tick_lower =
-        let tick = self.get_tick(pool_id)?;
         let tick_lower = self.get_tick_lower(tick, tick_spacing);
         let tick_lower_last = self.get_tick_lower_last(pool_id);
         let lower;
@@ -214,12 +198,6 @@ impl LimitOrder {
             upper = tick_lower - tick_spacing;
         }
         return Ok((tick_lower, lower, upper));
-    }
-
-    fn get_tick(&self, pool_id: FixedBytes<32>) -> Result<i32, HookError> {
-        //let tick_lower =
-        let pool_slot = IPoolManager::new(self.pool_manager.get()).get_slot_0(self, pool_id).ok().unwrap();
-        return Ok(pool_slot.1);
     }
 
     fn get_tick_lower(&self, tick: i32, tick_spacing: i32) -> i32 {
