@@ -9,6 +9,10 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 
+/// @title Airdrop Hook
+/// @author Youtpout
+/// @notice An hook to manage airdrop to user who use this pool
+/// @dev Explain to a developer any extra details
 contract AirdropHook is BaseHook {
     using PoolIdLibrary for PoolKey;
 
@@ -17,13 +21,14 @@ contract AirdropHook is BaseHook {
     // a single hook contract should be able to service multiple pools
     // ---------------------------------------------------------------
 
-    mapping(PoolId => mapping(address => uint256)) public beforeSwapCount;
-    mapping(PoolId => mapping(address => uint256)) public afterSwapCount;
+    mapping(PoolId => mapping(address => uint256)) public totalSwapAmount0;
+    mapping(PoolId => mapping(address => uint256)) public totalSwapAmount1;
 
-    mapping(PoolId => mapping(address => uint256))
-        public beforeAddLiquidityCount;
-    mapping(PoolId => mapping(address => uint256))
-        public beforeRemoveLiquidityCount;
+    mapping(PoolId => mapping(address => uint256)) public numberSwap0;
+    mapping(PoolId => mapping(address => uint256)) public numberSwap1;
+
+    mapping(PoolId => address[]) public users;
+    mapping(PoolId => mapping(address => uint256)) public userExist;
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
@@ -38,14 +43,18 @@ contract AirdropHook is BaseHook {
                 beforeInitialize: false,
                 afterInitialize: false,
                 beforeAddLiquidity: false,
-                afterAddLiquidity: true,
+                afterAddLiquidity: false,
                 beforeRemoveLiquidity: false,
-                afterRemoveLiquidity: true,
+                afterRemoveLiquidity: false,
                 beforeSwap: false,
                 afterSwap: true,
                 beforeDonate: false,
                 afterDonate: false
             });
+    }
+
+    function totalUsers(PoolId poolId) external returns (uint256) {
+        return users[poolId].length;
     }
 
     function afterSwap(
@@ -55,27 +64,7 @@ contract AirdropHook is BaseHook {
         BalanceDelta,
         bytes calldata
     ) external override returns (bytes4) {
-        afterSwapCount[key.toId()]++;
+        //afterSwapCount[key.toId()]++;
         return AirdropHook.afterSwap.selector;
-    }
-
-    function afterAddLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        BalanceDelta,
-        bytes calldata
-    ) external virtual returns (bytes4) {
-        return AirdropHook.afterAddLiquidity.selector;
-    }
-
-    function afterRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        BalanceDelta,
-        bytes calldata
-    ) external virtual returns (bytes4) {
-        return AirdropHook.afterRemoveLiquidity.selector;
     }
 }
