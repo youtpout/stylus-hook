@@ -128,12 +128,19 @@ contract AirdropHook is BaseHook {
     }
 
     function claimAirdrop(PoolId poolId) external {
-        if (airdropToken[poolId] == address(0)) {
+        IERC20 token = IERC20(airdropToken[poolId]);
+        if (address(token) == address(0)) {
             revert AirdropNotEnd();
         }
 
         if (claimed[poolId][msg.sender]) {
             revert AlreadyClaimed();
         }
+
+        uint256 amountToAirdrop = token.totalAirdrop();
+        SwapInfo memory swapUser = totalSwapUser[poolId][msg.sender];
+        SwapInfo memory swapTotal = totalSwap[poolId];
+        // 90 % base on volume and 10% on number of swap
+        //uint256 amountVolume = amountToAirdrop * swa
     }
 }
