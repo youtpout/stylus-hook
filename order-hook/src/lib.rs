@@ -9,7 +9,7 @@ static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 /// Import items from the SDK. The prelude contains common traits and macros.
 use alloc::vec;
 use alloy_primitives::{Address, FixedBytes, Signed, I32, U128, U256};
-use alloy_sol_types::{sol, SolInterface};
+use alloy_sol_types::{sol, SolError};
 use std::convert::TryInto;
 use stylus_sdk::{msg, prelude::*};
 
@@ -47,7 +47,13 @@ sol! {
     error NotPoolManagerToken();
 }
 
-#[derive(SolidityError)]
+sol_interface! {
+    interface IPoolManager {
+        function getSlot0(bytes32 id) external view returns (uint160 sqrtPriceX96, int24 tick, uint16 protocolFee, uint24 swapFee);
+    }
+}
+
+// #[derive(SolidityError)]
 pub enum HookError {
     ZeroLiquidity(ZeroLiquidity),
     InRange(InRange),
@@ -55,14 +61,27 @@ pub enum HookError {
     Filled(Filled),
     NotFilled(NotFilled),
     NotPoolManagerToken(NotPoolManagerToken),
+    ExternalCall(stylus_sdk::call::Error),
 }
 
-sol_interface! {
-    interface IPoolManager {
-        function getSlot0(PoolId id)
-        external
-        view
-        returns (uint160 sqrtPriceX96, int24 tick, uint16 protocolFee, uint24 swapFee);
+/// We will soon provide a `#[derive(SolidityError)]` to clean this up.
+impl From<stylus_sdk::call::Error> for HookError {
+    fn from(err: stylus_sdk::call::Error) -> Self {
+        Self::ExternalCall(err)
+    }
+}
+
+impl From<HookError> for Vec<u8> {
+    fn from(val: HookError) -> Self {
+        match val {
+            HookError::ZeroLiquidity(err) => err.encode(),
+            HookError::InRange(err) => err.encode(),
+            HookError::CrossedRange(err) => err.encode(),
+            HookError::Filled(err) => err.encode(),
+            HookError::NotFilled(err) => err.encode(),
+            HookError::NotPoolManagerToken(err) => err.encode(),
+            HookError::ExternalCall(err) => err.into(),
+        }
     }
 }
 
@@ -146,10 +165,10 @@ impl LimitOrder {
     //     //let tick_lower =
     // }
 
-    fn get_tick(&self, pool_id: FixedBytes<32>, tick_spacing: i32) {
+    fn get_tick(&self, pool_id: FixedBytes<32>) -> Result<i32, HookError> {
         //let tick_lower =
-        let i = IPoolManager::new();
-        let result = IPoolManager::from(self.pool_manager).get_slot0(self, pool_id);
+        let pool_slot = IPoolManager::new(self.pool_manager.get()).get_slot_0(self, pool_id)?;
+        return Ok(pool_slot.1);
     }
 
     fn get_tick_lower(&self, tick: i32, tick_spacing: i32) -> i32 {
