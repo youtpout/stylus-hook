@@ -8,14 +8,8 @@ import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
+import {IERC20Airdrop} from "./interfaces/IERC20Airdrop.sol";
 
-interface IERC20 {
-    function totalAirdrop() external view returns (uint256);
-
-    function restAirdrop() external returns (uint256);
-
-    function claim(address receiver, uint256 amount) external;
-}
 
 /// @title Airdrop Hook
 /// @author Youtpout
@@ -128,7 +122,7 @@ contract AirdropHook is BaseHook {
     }
 
     function claimAirdrop(PoolId poolId) external {
-        IERC20 token = IERC20(airdropToken[poolId]);
+        IERC20Airdrop token = IERC20Airdrop(airdropToken[poolId]);
         if (address(token) == address(0)) {
             revert AirdropNotEnd();
         }
@@ -147,20 +141,20 @@ contract AirdropHook is BaseHook {
         PoolId poolId,
         address receiver
     ) public view returns (uint256) {
-        IERC20 token = IERC20(airdropToken[poolId]);
+        IERC20Airdrop token = IERC20Airdrop(airdropToken[poolId]);
         return _amountToClaim(poolId, token, receiver);
     }
 
     function _amountToClaim(
         PoolId poolId,
-        IERC20 token,
+        IERC20Airdrop token,
         address receiver
     ) private view returns (uint256) {
         uint256 amountToAirdrop = token.totalAirdrop();
         SwapInfo memory swapUser = totalSwapUser[poolId][receiver];
         SwapInfo memory swapTotal = totalSwap[poolId];
         // 80 % base on volume and 10% on number of swap
-        // 40 % for token 0
+        // so 40 % for each token
         uint256 amountVolume0 = _calculateTokenAirdrop(
             amountToAirdrop,
             swapUser.amount0,
