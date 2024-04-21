@@ -46,6 +46,8 @@ chmod 777 first-launch.bash
 ```
 
 ## Deploy uniswap and create2 proxy
+Wait some minute the node is completely launched to launch deployment
+
 you have to install foundry on uniswap, cargo stylus on airdrop-stylus-hook, and npm install on test folder
 ```bash
 ./deploy.bash
@@ -71,9 +73,9 @@ forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:400
 forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xf3e1C2DefcDfE770972D4bCF45B03498626c5594 Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUNI" "MUNI" 0x14791697260E4c9A71f18484C9f997B308e59325) --force
 forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xADeb1300E4860089d93233ddED31B33206ba8432 Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUSDC" "MUSDC" 0x14791697260E4c9A71f18484C9f997B308e59325) --force
 forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x010dB0326D1A8ddEC5C7daAffd8f84F9A367394D AirdropHook --constructor-args $(cast abi-encode "constructor(address)" 0x4aa4365da82ACD46e378A6f3c92a863f3e763d34) --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x010F26be5b68Cd83c0534cEe84C173818244B12f AirdropHookProxy --constructor-args $(cast abi-encode "constructor(address)" 0x4aa4365da82ACD46e378A6f3c92a863f3e763d34) --force
+forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874 AirdropHookProxy --constructor-args $(cast abi-encode "constructor(address)" 0x4aa4365da82ACD46e378A6f3c92a863f3e763d34) --force
 forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x878873B6E9ebe8Fd22816A69B51e6D96cE75961E AirdropToken --constructor-args $(cast abi-encode "constructor(string,string,address,address,uint256)" "Flydrop" "FLY" 0x14791697260E4c9A71f18484C9f997B308e59325 0x010dB0326D1A8ddEC5C7daAffd8f84F9A367394D 50000000000000000000000000)  --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xb2f902825D87efEE4E3eF6873b071F7FA86ca9aB AirdropToken --constructor-args $(cast abi-encode "constructor(string,string,address,address,uint256)" "FlydropProxy" "FLYP" 0x14791697260E4c9A71f18484C9f997B308e59325 0x010F26be5b68Cd83c0534cEe84C173818244B12f 50000000000000000000000000)  --force
+forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xb2f902825D87efEE4E3eF6873b071F7FA86ca9aB AirdropToken --constructor-args $(cast abi-encode "constructor(string,string,address,address,uint256)" "FlydropProxy" "FLYP" 0x14791697260E4c9A71f18484C9f997B308e59325 0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874 50000000000000000000000000)  --force
 # define hook address in stylus contract
 cd ../airdrop-stylus-proxy
 cargo run --example counter
@@ -105,7 +107,7 @@ Current address on arbitrum stylus :
 0xf3e1C2DefcDfE770972D4bCF45B03498626c5594 MUNI 
 0xADeb1300E4860089d93233ddED31B33206ba8432 MUSDC 
 0x010dB0326D1A8ddEC5C7daAffd8f84F9A367394D AirdropHook 
-0x010F26be5b68Cd83c0534cEe84C173818244B12f AirdropHookProxy 
+0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874 AirdropHookProxy 
 0x878873B6E9ebe8Fd22816A69B51e6D96cE75961E Flydrop
 0xb2f902825D87efEE4E3eF6873b071F7FA86ca9aB FlydropProxy 
 ```

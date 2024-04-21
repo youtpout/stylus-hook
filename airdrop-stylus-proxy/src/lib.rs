@@ -188,6 +188,23 @@ impl AirdropHook {
         return Ok(());
     }
 
+    pub fn claim(&mut self, pool_id: FixedBytes<32>) -> Result<()> {
+        let receiver: Address = msg::sender();
+
+        let token_address: Address = self.airdrop_token.get(pool_id);
+        let token = IERC20Airdrop::new(token_address);
+        if token.is_zero() {
+            return Err(HookError::AirdropNotEnd(AirdropNotEnd {}));
+        }
+
+        // set claimed first to prevent from reentrancy try
+        self.claimed.setter(pool_id).setter(receiver).set(true);
+
+        let amount = self._amount_to_claim(pool_id, token, receiver);
+        IERC20Airdrop::new(token_address).claim(&mut *self, receiver, amount?);
+        return Ok(());
+    }
+
     pub fn amount_to_claim(&self, pool_id: FixedBytes<32>, receiver: Address) -> Result<U256> {
         let token = IERC20Airdrop::new(self.airdrop_token.get(pool_id));
         return Ok(self._amount_to_claim(pool_id, token, receiver)?);

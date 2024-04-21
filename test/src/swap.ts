@@ -20,7 +20,7 @@ let zeroForOne = true;
 
 console.log("amount", amount);
 const hooks = "0x010dB0326D1A8ddEC5C7daAffd8f84F9A367394D";
-const hooksProxy = "0x010F26be5b68Cd83c0534cEe84C173818244B12f";
+const hooksProxy = "0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874";
 const token0: Token = Token__factory.connect(MUNI_ADDRESS, signer);
 const token1: Token = Token__factory.connect(MUSDC_ADDRESS, signer);
 const approveAmount = BigInt(10000000) * (BigInt(10) ** BigInt(18));

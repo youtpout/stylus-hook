@@ -19,6 +19,8 @@ interface IAirdropHook {
 
     function claimAirdrop(bytes32 pool_id, address receiver) external;
 
+    function claim(bytes32 pool_id) external;
+
     function amountToClaim(
         bytes32 pool_id,
         address receiver

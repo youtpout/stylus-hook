@@ -28,6 +28,7 @@ export interface IAirdropHookInterface extends Interface {
       | "amountToClaim(bytes32,address)"
       | "amountToClaim(bytes32,address,address)"
       | "calculateTokenAirdrop"
+      | "claim"
       | "claimAirdrop"
       | "closeAirdrop"
       | "getTotalSwap"
@@ -50,6 +51,7 @@ export interface IAirdropHookInterface extends Interface {
     functionFragment: "calculateTokenAirdrop",
     values: [BigNumberish, BigNumberish, BigNumberish, BigNumberish]
   ): string;
+  encodeFunctionData(functionFragment: "claim", values: [BytesLike]): string;
   encodeFunctionData(
     functionFragment: "claimAirdrop",
     values: [BytesLike, AddressLike]
@@ -83,6 +85,7 @@ export interface IAirdropHookInterface extends Interface {
     functionFragment: "calculateTokenAirdrop",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "claim", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "claimAirdrop",
     data: BytesLike
@@ -175,6 +178,8 @@ export interface IAirdropHook extends BaseContract {
     "view"
   >;
 
+  claim: TypedContractMethod<[pool_id: BytesLike], [void], "nonpayable">;
+
   claimAirdrop: TypedContractMethod<
     [pool_id: BytesLike, receiver: AddressLike],
     [void],
@@ -237,6 +242,9 @@ export interface IAirdropHook extends BaseContract {
     [bigint],
     "view"
   >;
+  getFunction(
+    nameOrSignature: "claim"
+  ): TypedContractMethod<[pool_id: BytesLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "claimAirdrop"
   ): TypedContractMethod<

@@ -123,7 +123,7 @@
       "hash": "0x6f5cbb5e033eafb080b9a36be4ff0d2d74608333cd7fa08cd266ee936c9ab860",
       "transactionType": "CREATE2",
       "contractName": "AirdropHookProxy",
-      "contractAddress": "0x010f26be5b68cd83c0534cee84c173818244b12f",
+      "contractAddress": "0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874",
       "function": null,
       "arguments": [
         "0x4aa4365da82ACD46e378A6f3c92a863f3e763d34"
@@ -226,7 +226,7 @@
       "contractAddress": "0x4aa4365da82acd46e378a6f3c92a863f3e763d34",
       "function": "initialize((address,address,uint24,int24,address),uint160,bytes)",
       "arguments": [
-        "(0xADeb1300E4860089d93233ddED31B33206ba8432, 0xf3e1C2DefcDfE770972D4bCF45B03498626c5594, 3000, 60, 0x010F26be5b68Cd83c0534cEe84C173818244B12f)",
+        "(0xADeb1300E4860089d93233ddED31B33206ba8432, 0xf3e1C2DefcDfE770972D4bCF45B03498626c5594, 3000, 60, 0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874)",
         "79228162514264337593543950336",
         "0x0000000000000000000000000000000000000000000000000000000066254197"
       ],
@@ -677,7 +677,7 @@
           "address": "0x4aa4365da82acd46e378a6f3c92a863f3e763d34",
           "topics": [
             "0x3fd553db44f207b1f41348cfc4d251860814af9eadc470e8e7895e4d120511f4",
-            "0x02a8167316a4e129c897cf0ccad97ce9c9ffc970f40d451202d772b7aff9b313",
+            "0xeb801fb1378a7f687ca4f548d6c76844a84f2d015ae2a08f3867fd1cd112dc6f",
             "0x000000000000000000000000adeb1300e4860089d93233dded31b33206ba8432",
             "0x000000000000000000000000f3e1c2defcdfe770972d4bcf45b03498626c5594"
           ],

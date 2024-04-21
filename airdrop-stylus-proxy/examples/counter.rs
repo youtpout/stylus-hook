@@ -29,7 +29,7 @@ const RPC_URL: &str = "http://localhost:8547/";
 /// Deployed pragram address.
 const STYLUS_PROGRAM_ADDRESS: &str = "0x8cDE56336E289c028C8f7CF5c20283fF02272182";
 
-const HOOK_ADDRESS: &str = "0x010F26be5b68Cd83c0534cEe84C173818244B12f";
+const HOOK_ADDRESS: &str = "0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874";
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {

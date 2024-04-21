@@ -123,6 +123,19 @@ const _abi = [
   },
   {
     type: "function",
+    name: "claim",
+    inputs: [
+      {
+        name: "pool_id",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "claimAirdrop",
     inputs: [
       {
