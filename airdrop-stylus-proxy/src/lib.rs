@@ -45,6 +45,17 @@ sol! {
     error AlreadyClaimed();
 }
 
+sol_interface! {
+    interface IERC20Airdrop {
+        function totalAirdrop() external view returns (uint256);
+
+        function restAirdrop() external returns (uint256);
+
+        function claim(address receiver, uint256 amount) external;
+    }
+
+}
+
 #[derive(SolidityError)]
 pub enum HookError {
     NotHook(NotHook),
@@ -154,6 +165,47 @@ impl AirdropHook {
     fn close_airdrop(&mut self, pool_id: FixedBytes<32>, token: Address) -> Result<()> {
         self.airdrop_token.setter(pool_id).set(token);
         return Ok(());
+    }
+
+    fn _amount_to_claim(
+        &self,
+        pool_id: FixedBytes<32>,
+        token: IERC20Airdrop,
+        receiver: Address,
+    ) -> Result<U256> {
+        let airdrop_amount = token.total_airdrop(self).ok().unwrap();
+        let swap_pool = self.total_swap_user.get(pool_id);
+        let swap_user = swap_pool.get(receiver);
+        let swap_total = self.total_swap.get(pool_id);
+
+        // 80 % base on volume and 10% on number of swap
+        // so 40 % for each token
+        let amount_vol0 = self._calculate_token_airdrop(
+            airdrop_amount,
+            swap_user.amount0.get(),
+            swap_total.amount0.get(),
+            U256::from(40),
+        );
+        let amount_vol1 = self._calculate_token_airdrop(
+            airdrop_amount,
+            swap_user.amount1.get(),
+            swap_total.amount1.get(),
+            U256::from(40),
+        );
+        let amount_count0 = self._calculate_token_airdrop(
+            airdrop_amount,
+            swap_user.counter0.get(),
+            swap_total.counter0.get(),
+            U256::from(10),
+        );
+        let amount_count1 = self._calculate_token_airdrop(
+            airdrop_amount,
+            swap_user.counter1.get(),
+            swap_total.counter1.get(),
+            U256::from(10),
+        );
+
+        return Ok(amount_vol0 + amount_vol1 + amount_count0 + amount_count1);
     }
 
     fn _calculate_token_airdrop(
