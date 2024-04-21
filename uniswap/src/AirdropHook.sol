@@ -10,7 +10,7 @@ import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 
 interface IERC20 {
-    function totalAirdrop() external returns (uint256);
+    function totalAirdrop() external view returns (uint256);
 
     function restAirdrop() external returns (uint256);
 
@@ -73,7 +73,7 @@ contract AirdropHook is BaseHook {
             });
     }
 
-    function totalUsers(PoolId poolId) external returns (uint256) {
+    function totalUsers(PoolId poolId) external view returns (uint256) {
         return users[poolId].length;
     }
 
@@ -81,7 +81,7 @@ contract AirdropHook is BaseHook {
         address sender,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata swapParams,
-        BalanceDelta balanceDelta,
+        BalanceDelta,
         bytes calldata
     ) external override returns (bytes4) {
         PoolId poolId = key.toId();
@@ -137,10 +137,66 @@ contract AirdropHook is BaseHook {
             revert AlreadyClaimed();
         }
 
+        // set claimed first to prevent from reentrancy try
+        claimed[poolId][msg.sender] = true;
+
+        token.claim(msg.sender, _amountToClaim(poolId, token, msg.sender));
+    }
+
+    function amountToClaim(
+        PoolId poolId,
+        address receiver
+    ) public view returns (uint256) {
+        IERC20 token = IERC20(airdropToken[poolId]);
+        return _amountToClaim(poolId, token, receiver);
+    }
+
+    function _amountToClaim(
+        PoolId poolId,
+        IERC20 token,
+        address receiver
+    ) private view returns (uint256) {
         uint256 amountToAirdrop = token.totalAirdrop();
-        SwapInfo memory swapUser = totalSwapUser[poolId][msg.sender];
+        SwapInfo memory swapUser = totalSwapUser[poolId][receiver];
         SwapInfo memory swapTotal = totalSwap[poolId];
-        // 90 % base on volume and 10% on number of swap
-        //uint256 amountVolume = amountToAirdrop * swa
+        // 80 % base on volume and 10% on number of swap
+        // 40 % for token 0
+        uint256 amountVolume0 = _calculateTokenAirdrop(
+            amountToAirdrop,
+            swapUser.amount0,
+            swapTotal.amount0,
+            40
+        );
+        uint256 amountVolume1 = _calculateTokenAirdrop(
+            amountToAirdrop,
+            swapUser.amount1,
+            swapTotal.amount1,
+            40
+        );
+        uint256 amountCounter0 = _calculateTokenAirdrop(
+            amountToAirdrop,
+            swapUser.counter0,
+            swapTotal.counter0,
+            10
+        );
+        uint256 amountCounter1 = _calculateTokenAirdrop(
+            amountToAirdrop,
+            swapUser.counter1,
+            swapTotal.counter1,
+            10
+        );
+        return (amountVolume0 +
+            amountVolume1 +
+            amountCounter0 +
+            amountCounter1);
+    }
+
+    function _calculateTokenAirdrop(
+        uint256 amountToAirdrop,
+        uint256 userVolume,
+        uint256 totalVolume,
+        uint256 percent
+    ) private pure returns (uint256) {
+        return (amountToAirdrop * userVolume * percent) / (totalVolume * 100);
     }
 }
