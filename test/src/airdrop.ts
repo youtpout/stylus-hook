@@ -9,9 +9,9 @@ const privateKey = "0x0123456789012345678901234567890123456789012345678901234567
 const provider = new ethers.JsonRpcProvider(url);
 const signer = new Wallet(privateKey, provider);
 
-const hooks = "0x010B3f77C446FAafDfdEb26fE32A2436fA703919";
+const hooks = "0x010dB0326D1A8ddEC5C7daAffd8f84F9A367394D";
 const hooksProxy = "0x010F26be5b68Cd83c0534cEe84C173818244B12f";
-const poolId = "0xdae3384441866b1527f547e718ee3436354b666ed2f7575340d4cd8d0945b98f";
+const poolId = "0x589bab4662b56c6c9633b45c2fd9050e0051e7e77f46de83e295a6910ca00512";
 const poolIdProxy = "0x02a8167316a4e129c897cf0ccad97ce9c9ffc970f40d451202d772b7aff9b313";
 
 const aidropHook: AirdropHook = AirdropHook__factory.connect(hooks, signer);
