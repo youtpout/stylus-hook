@@ -126,6 +126,8 @@ impl AirdropHook {
         let mut swap_pool = self.total_swap_user.setter(pool_id);
         let mut swap_user = swap_pool.setter(sender);
         let mut swap_total = self.total_swap.setter(pool_id);
+
+        // increment swap amount and total swap
         if zero_for_one {
             let amount_total1: U256 = swap_total.amount1.get();
             let counter_total1: U256 = swap_total.counter1.get();
@@ -146,8 +148,23 @@ impl AirdropHook {
             swap_total.counter0.set(counter_total0 + U256::from(1));
         }
 
-        //  let value = self.after_swap_count.get(key) + U256::from(1);
-        //  self.after_swap_count.replace(key, value);
         return Ok(());
+    }
+
+    fn close_airdrop(&mut self, pool_id: FixedBytes<32>, token: Address) -> Result<()> {
+        self.airdrop_token.setter(pool_id).set(token);
+        return Ok(());
+    }
+
+    fn _calculate_token_airdrop(
+        &self,
+        amount_to_airdrop: U256,
+        user_volume: U256,
+        total_volume: U256,
+        percent: U256,
+    ) -> U256 {
+        let num = amount_to_airdrop * user_volume * percent;
+        let den = total_volume * U256::from(100);
+        num / den
     }
 }
