@@ -28,14 +28,14 @@ contract AirdropHook is BaseHook {
         uint256 amount0;
         uint256 amount1;
         // number swapped is profitable for network miner
-        uint128 counter0;
-        uint128 counter1;
+        uint256 counter0;
+        uint256 counter1;
     }
 
     mapping(PoolId => mapping(address => SwapInfo)) public totalSwapUser;
     mapping(PoolId => SwapInfo) public totalSwap;
 
-    mapping(PoolId => address[]) public users;
+    mapping(PoolId => uint256) public usersCount;
     mapping(PoolId => mapping(address => bool)) public userExist;
     mapping(PoolId => address) public airdropToken;
     mapping(PoolId => mapping(address => bool)) public claimed;
@@ -67,7 +67,7 @@ contract AirdropHook is BaseHook {
     }
 
     function totalUsers(PoolId poolId) external view returns (uint256) {
-        return users[poolId].length;
+        return usersCount[poolId];
     }
 
     function afterSwap(
@@ -89,7 +89,7 @@ contract AirdropHook is BaseHook {
         if (!userExist[poolId][sender]) {
             // if user not exist add it
             userExist[poolId][sender] = true;
-            users[poolId].push(sender);
+            usersCount[poolId]++;
         }
 
         uint256 amount;
