@@ -173,7 +173,9 @@ impl AirdropHook {
         if msg::sender() != hook {
             return Err(HookError::NotHook(NotHook {}));
         }
-        let token = IERC20Airdrop::new(self.airdrop_token.get(pool_id));
+
+        let token_address: Address = self.airdrop_token.get(pool_id);
+        let token = IERC20Airdrop::new(token_address);
         if token.is_zero() {
             return Err(HookError::AirdropNotEnd(AirdropNotEnd {}));
         }
@@ -181,10 +183,8 @@ impl AirdropHook {
         // set claimed first to prevent from reentrancy try
         self.claimed.setter(pool_id).setter(receiver).set(true);
 
-        let address = self.airdrop_token.get(pool_id);
-        let token: IERC20Airdrop = IERC20Airdrop::new(self.airdrop_token.get(pool_id));
         let amount = self._amount_to_claim(pool_id, token, receiver);
-        let _ = IERC20Airdrop::new(address).claim(self, receiver, amount?);
+        IERC20Airdrop::new(token_address).claim(&mut *self, receiver, amount?);
         return Ok(());
     }
 
@@ -199,7 +199,7 @@ impl AirdropHook {
         token: IERC20Airdrop,
         receiver: Address,
     ) -> Result<U256> {
-        let airdrop_amount = token.total_airdrop(self).ok().unwrap();
+        let airdrop_amount = token.total_airdrop(&*self).ok().unwrap();
         let swap_pool = self.total_swap_user.get(pool_id);
         let swap_user = swap_pool.get(receiver);
         let swap_total = self.total_swap.get(pool_id);
