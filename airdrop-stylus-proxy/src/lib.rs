@@ -16,35 +16,53 @@ use stylus_sdk::{msg, prelude::*};
 // `Counter` will be the entrypoint.
 sol_storage! {
     #[entrypoint]
-    pub struct Counter {
+    pub struct AirdropHook {
         mapping(bytes32 => uint256) before_swap_count;
         mapping(bytes32 => uint256) after_swap_count;
         mapping(bytes32 => uint256) before_add_liquidity_count;
         mapping(bytes32 => uint256) before_remove_liquidity_count;
+        mapping(bytes32 => mapping(address => SwapInfo)) total_swap_user;
+        mapping(bytes32 => SwapInfo) total_swap;
+        mapping(bytes32 => address[]) users;
+        mapping(bytes32 => mapping(address => bool)) user_exist;
+        mapping(bytes32 => address) airdrop_token;
+        mapping(bytes32 => mapping(address => bool)) claimed;
         address hook;
     }
 
+    // Airdrop is caculated between total amount swaped by user and number of swap did
+    pub struct SwapInfo{
+        // amount swapped is profitable for liquidity provider
+        uint256 amount0;
+        uint256 amount1;
+        // number swapped is profitable for network miner
+        uint128 counter0;
+        uint128 counter1;
+    }
 
 }
 
 sol! {
     error NotHook();
     error HookAlreadyDefined();
+    error AirdropNotEnd();
+    error AlreadyClaimed();
 }
 
 #[derive(SolidityError)]
 pub enum HookError {
     NotHook(NotHook),
-    HookAlreadyDefined(HookAlreadyDefined)
+    HookAlreadyDefined(HookAlreadyDefined),
+    AirdropNotEnd(AirdropNotEnd),
+    AlreadyClaimed(AlreadyClaimed),
 }
-
 
 /// Simplifies the result type for the contract's methods.
 type Result<T, E = HookError> = core::result::Result<T, E>;
 
 /// Declare that `Counter` is a contract with the following external methods.
 #[external]
-impl Counter {
+impl AirdropHook {
     /// Gets the number from storage.
     pub fn before_swap_count(&self, pool_id: FixedBytes<32>) -> U256 {
         self.before_swap_count.get(pool_id)
