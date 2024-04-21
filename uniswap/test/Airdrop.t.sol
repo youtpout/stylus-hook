@@ -15,6 +15,7 @@ import {Deployers} from "v4-core/test/utils/Deployers.sol";
 import {AirdropHook} from "../src/AirdropHook.sol";
 import {AirdropToken} from "../src/AirdropToken.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract AirdropTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -30,10 +31,16 @@ contract AirdropTest is Test, Deployers {
     address charlie = makeAddr("Charlie");
     address daniel = makeAddr("Daniel");
 
+    address token0;
+    address token1;
+
     function setUp() public {
         // creates the pool manager, utility routers, and test tokens
         Deployers.deployFreshManagerAndRouters();
-        Deployers.deployMintAndApprove2Currencies();
+        (Currency currency0, Currency currency1) = Deployers
+            .deployMintAndApprove2Currencies();
+        token0 = Currency.unwrap(currency0);
+        token1 = Currency.unwrap(currency1);
 
         // Deploy the hook to an address with the correct flags
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG);
@@ -119,8 +126,66 @@ contract AirdropTest is Test, Deployers {
         assertEq(counter0, 0);
         assertEq(counter1, 1);
 
-        bytes memory res = abi.encode(hook.getHookPermissions());
-        console.logBytes(res);
+        // Perform a second swap //
+        zeroForOne = false;
+        amountSpecified = -1e18; // negative number indicates exact input swap!
+        swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
+        // ------------------- //
+
+        assertEq(int256(swapDelta.amount1()), amountSpecified);
+
+        uint256 total0 = uint256(-amountSpecified);
+        (amount0, amount1, counter0, counter1) = hook.totalSwap(poolId);
+        console.log(amount1);
+        assertEq(amount0, total0);
+        assertEq(amount1, total1);
+        assertEq(counter0, 1);
+        assertEq(counter1, 1);
+
+        console.log("hook", address(hook));
+    }
+
+    function testAirdropHookUser() public {
+        deal(token0, bob, 10e18);
+        deal(token0, alice, 10e18);
+        deal(token1, bob, 10e18);
+        deal(token1, alice, 10e18);
+
+        vm.startPrank(bob);
+        ERC20(token0).approve(address(swapRouter), 10e18);
+        ERC20(token1).approve(address(swapRouter), 10e18);
+        // positions were created in setup()
+        (
+            uint256 amount0,
+            uint256 amount1,
+            uint256 counter0,
+            uint256 counter1
+        ) = hook.totalSwap(poolId);
+        assertEq(amount0, 0);
+        assertEq(amount1, 0);
+        assertEq(counter0, 0);
+        assertEq(counter1, 0);
+
+        // Perform a test swap //
+        bool zeroForOne = true;
+        int256 amountSpecified = -1e18; // negative number indicates exact input swap!
+        BalanceDelta swapDelta = swap(
+            key,
+            zeroForOne,
+            amountSpecified,
+            ZERO_BYTES
+        );
+        // ------------------- //
+
+        assertEq(int256(swapDelta.amount0()), amountSpecified);
+
+        (amount0, amount1, counter0, counter1) = hook.totalSwap(poolId);
+        uint256 total1 = uint256(-amountSpecified);
+        console.log(amount1);
+        assertEq(amount0, 0);
+        assertEq(amount1, total1);
+        assertEq(counter0, 0);
+        assertEq(counter1, 1);
 
         // Perform a second swap //
         zeroForOne = false;
@@ -137,5 +202,7 @@ contract AirdropTest is Test, Deployers {
         assertEq(amount1, total1);
         assertEq(counter0, 1);
         assertEq(counter1, 1);
+
+        vm.stopPrank();
     }
 }
