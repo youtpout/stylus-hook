@@ -194,6 +194,8 @@ contract AirdropHook is BaseHook {
         uint256 totalVolume,
         uint256 percent
     ) private pure returns (uint256) {
-        return (amountToAirdrop * userVolume * percent) / (totalVolume * 100);
+        // 1 to prevent divide by zero
+        return
+            (amountToAirdrop * userVolume * percent) / (1 + totalVolume * 100);
     }
 }

@@ -83,9 +83,12 @@ forge script script/03_Swap.s.sol:SwapScript --rpc-url localhost --broadcast -vv
 Private Key for test 0x0123456789012345678901234567890123456789012345678901234567890123 
 
 ```bash
-cd /hook-proxy
+cd /airdrop-stylus-proxy
 cargo stylus deploy --private-key 0x0123456789012345678901234567890123456789012345678901234567890123 -e http://localhost:8547/
 ```
+
+Current address on arbitrum stylus :
+[0xFB9a956c4875826a76d47C360234FC1633C078A8](https://stylus-testnet-explorer.arbitrum.io/address/0xFB9a956c4875826a76d47C360234FC1633C078A8/contracts#address-tabs)
 
 
 ## WSL Issue with nitro

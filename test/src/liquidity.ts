@@ -13,8 +13,8 @@ const signer = new Wallet(privateKey, provider);
 const MUNI_ADDRESS = "0xf3e1C2DefcDfE770972D4bCF45B03498626c5594";
 const MUSDC_ADDRESS = "0xADeb1300E4860089d93233ddED31B33206ba8432";
 
-const hooks = "0x2B0C1f3200Fc1ff47E19E91845eF0f5749E4f9E2";
-const hooksProxy = "0x2b0EF66d2Cc46C759aE5BDf2aA715b416788a385";
+const hooks = "0x010B3f77C446FAafDfdEb26fE32A2436fA703919";
+const hooksProxy = "0x010F26be5b68Cd83c0534cEe84C173818244B12f";
 
 const lpRouter: PoolModifyLiquidityTest = PoolModifyLiquidityTest__factory.connect("0x2dC942dcba13E4BE27721980FE01f2221610A93b", signer);
 const token0: Token = Token__factory.connect(MUNI_ADDRESS, signer);

@@ -20,3 +20,6 @@ forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:400
 cd ../airdrop-stylus-proxy
 cargo run --example counter
 # set liquidity and make first swap
+cd ../test
+npm run liquidity
+npm run swap

@@ -242,7 +242,8 @@ impl AirdropHook {
         percent: U256,
     ) -> U256 {
         let num = amount_to_airdrop * user_volume * percent;
-        let den = total_volume * U256::from(100);
+        // 1 to prevent divide by zero
+        let den = U256::from(1) + total_volume * U256::from(100);
         num / den
     }
 }

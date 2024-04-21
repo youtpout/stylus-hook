@@ -19,8 +19,8 @@ const amount = BigInt(100) * (BigInt(10) ** BigInt(18));
 let zeroForOne = true;
 
 console.log("amount", amount);
-const hooks = "0x2B0C1f3200Fc1ff47E19E91845eF0f5749E4f9E2";
-const hooksProxy = "0x2b0EF66d2Cc46C759aE5BDf2aA715b416788a385";
+const hooks = "0x010B3f77C446FAafDfdEb26fE32A2436fA703919";
+const hooksProxy = "0x010F26be5b68Cd83c0534cEe84C173818244B12f";
 const token0: Token = Token__factory.connect(MUNI_ADDRESS, signer);
 const token1: Token = Token__factory.connect(MUSDC_ADDRESS, signer);
 const approveAmount = BigInt(10000000) * (BigInt(10) ** BigInt(18));
@@ -43,7 +43,7 @@ async function swap(amount, zeroForOne, hooks) {
     const swapParams: IPoolManager.SwapParamsStruct = { zeroForOne, amountSpecified: amount, sqrtPriceLimitX96: zeroForOne ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT };
     const testSettings: PoolSwapTest.TestSettingsStruct = { withdrawTokens: true, settleUsingTransfer: true, currencyAlreadySent: false };
 
-    const tx = await swapRouter.swap(poolKey, swapParams, testSettings, ethers.ZeroHash);
+    const tx = await swapRouter.swap(poolKey, swapParams, testSettings, ethers.ZeroHash, { gasLimit: 1000000 });
     const res = await tx.wait();
     console.log("result", res);
 }
