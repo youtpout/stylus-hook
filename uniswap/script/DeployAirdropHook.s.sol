@@ -134,7 +134,8 @@ contract DeployHookScript is Script {
             "FlydropProxy",
             "FLYP",
             deployer,
-            address(counterProxy),
+            // airdrop from stylus directly
+            address(0x8cDE56336E289c028C8f7CF5c20283fF02272182),
             amountAirdrop
         );
 
