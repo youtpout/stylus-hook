@@ -38,16 +38,8 @@ async fn main() -> eyre::Result<()> {
     let program_address = STYLUS_PROGRAM_ADDRESS;
     abigen!(
         Counter,
-        r#"[
-            function beforeSwapCount(bytes32 pool_id) external view returns (uint256)
-            function afterSwapCount(bytes32 pool_id) external view returns (uint256)        
-            function beforeAddLiquidityCount(bytes32 pool_id) external view returns (uint256)        
-            function beforeRemoveLiquidityCount(bytes32 pool_id) external view returns (uint256)        
-            function setHook(address value) external        
-            function addBeforeSwap(bytes32 key) external        
-            function addAfterSwap(bytes32 key) external        
-            function addBeforeAddLiquidity(bytes32 key) external        
-            function addBeforeRemoveLiquidity(bytes32 key) external        
+        r#"[           
+            function setHook(address value) external     
             error NotHook()       
             error HookAlreadyDefined()
         ]"#
