@@ -19,7 +19,8 @@ forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:400
 # define hook address in stylus contract
 cd ../airdrop-stylus-proxy
 cargo run --example counter
-# set liquidity and make first swap
+# set liquidity and make first swap and airdrop
 cd ../test
 npm run liquidity
 npm run swap
+npm run airdrop
