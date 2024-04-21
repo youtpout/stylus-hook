@@ -130,8 +130,8 @@ impl AirdropHook {
         if !exist {
             self.user_exist.setter(pool_id).insert(sender, true);
             let mut count = self.users_count.setter(pool_id);
-            let oldCount = count.get();
-            count.set(oldCount + U256::from(1));
+            let old_count = count.get();
+            count.set(old_count + U256::from(1));
         }
 
         let mut swap_pool = self.total_swap_user.setter(pool_id);
@@ -165,6 +165,32 @@ impl AirdropHook {
     fn close_airdrop(&mut self, pool_id: FixedBytes<32>, token: Address) -> Result<()> {
         self.airdrop_token.setter(pool_id).set(token);
         return Ok(());
+    }
+
+    pub fn claim_airdrop(&mut self, pool_id: FixedBytes<32>, receiver: Address) -> Result<()> {
+        let hook: Address = self.hook.get();
+
+        if msg::sender() != hook {
+            return Err(HookError::NotHook(NotHook {}));
+        }
+        let token = IERC20Airdrop::new(self.airdrop_token.get(pool_id));
+        if token.is_zero() {
+            return Err(HookError::AirdropNotEnd(AirdropNotEnd {}));
+        }
+
+        // set claimed first to prevent from reentrancy try
+        self.claimed.setter(pool_id).setter(receiver).set(true);
+
+        let address = self.airdrop_token.get(pool_id);
+        let token: IERC20Airdrop = IERC20Airdrop::new(self.airdrop_token.get(pool_id));
+        let amount = self._amount_to_claim(pool_id, token, receiver);
+        IERC20Airdrop::new(address).claim(self, receiver, amount?);
+        return Ok(());
+    }
+
+    pub fn amount_to_claim(&self, pool_id: FixedBytes<32>, receiver: Address) -> Result<U256> {
+        let token = IERC20Airdrop::new(self.airdrop_token.get(pool_id));
+        return Ok(self._amount_to_claim(pool_id, token, receiver)?);
     }
 
     fn _amount_to_claim(
