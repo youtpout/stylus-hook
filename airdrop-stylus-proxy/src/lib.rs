@@ -8,7 +8,7 @@ static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
 /// Import items from the SDK. The prelude contains common traits and macros.
 use alloc::vec;
-use alloy_primitives::{Address, FixedBytes, U128, U256};
+use alloy_primitives::{Address, FixedBytes, U256};
 use alloy_sol_types::sol;
 use stylus_sdk::{msg, prelude::*};
 
