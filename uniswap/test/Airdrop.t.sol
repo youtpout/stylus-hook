@@ -156,8 +156,8 @@ contract AirdropTest is Test, Deployers {
         assertEq(counter0, 0);
         assertEq(counter1, 0);
 
-        _testSwapUser(bob);
-        _testSwapUser(alice);
+        _testSwapUser(bob, true);
+        _testSwapUser(alice, true);
 
         // we made 2 swap of each amount
         uint256 total = 2 * 10 ** 18;
@@ -170,7 +170,7 @@ contract AirdropTest is Test, Deployers {
         assertEq(counter1, 2);
     }
 
-    function _testSwapUser(address user) private {
+    function _testSwapUser(address user, bool check) private {
         deal(token0, user, 10e18);
         deal(token1, user, 10e18);
 
@@ -185,10 +185,12 @@ contract AirdropTest is Test, Deployers {
             uint256 counter0,
             uint256 counter1
         ) = hook.totalSwapUser(poolId, user);
-        assertEq(amount0, 0);
-        assertEq(amount1, 0);
-        assertEq(counter0, 0);
-        assertEq(counter1, 0);
+        if (check) {
+            assertEq(amount0, 0);
+            assertEq(amount1, 0);
+            assertEq(counter0, 0);
+            assertEq(counter1, 0);
+        }
 
         // Perform a test swap //
         bool zeroForOne = true;
@@ -202,16 +204,17 @@ contract AirdropTest is Test, Deployers {
         // ------------------- //
 
         assertEq(int256(swapDelta.amount0()), amountSpecified);
-
         (amount0, amount1, counter0, counter1) = hook.totalSwapUser(
             poolId,
             user
         );
         uint256 total1 = uint256(-amountSpecified);
-        assertEq(amount0, 0);
-        assertEq(amount1, total1);
-        assertEq(counter0, 0);
-        assertEq(counter1, 1);
+        if (check) {
+            assertEq(amount0, 0);
+            assertEq(amount1, total1);
+            assertEq(counter0, 0);
+            assertEq(counter1, 1);
+        }
 
         // Perform a second swap //
         zeroForOne = false;
@@ -226,11 +229,66 @@ contract AirdropTest is Test, Deployers {
             poolId,
             user
         );
-        assertEq(amount0, total0);
-        assertEq(amount1, total1);
-        assertEq(counter0, 1);
-        assertEq(counter1, 1);
+        if (check) {
+            assertEq(amount0, total0);
+            assertEq(amount1, total1);
+            assertEq(counter0, 1);
+            assertEq(counter1, 1);
+        }
 
         vm.stopPrank();
+    }
+
+    function testClaim() public {
+        _testSwapUser(bob, false);
+        _testSwapUser(alice, false);
+        _testSwapUser(daniel, false);
+        _testSwapUser(charlie, false);
+
+        hook.closeAirdrop(poolId, address(token));
+
+        uint256 amount = hook.amountToClaim(poolId, bob);
+        // 4 users who did the same swap, so the same share
+        uint256 totalAirdrop = token.totalAirdrop() / 4;
+        assertEq(amount, totalAirdrop);
+    }
+
+    function testClaimHalf() public {
+        _testSwapUser(bob, false);
+        _testSwapUser(bob, false);
+        _testSwapUser(alice, false);
+        _testSwapUser(charlie, false);
+
+        hook.closeAirdrop(poolId, address(token));
+
+        uint256 amount = hook.amountToClaim(poolId, bob);
+        console.log("amount to claim %s", amount);
+        // bob make half of swap
+        uint256 totalAirdrop = token.totalAirdrop() / 2;
+        console.log("total airdrop %s", totalAirdrop);
+        assertEq(amount, totalAirdrop);
+
+        // alice and charlie the quarter
+        assertEq(hook.amountToClaim(poolId, alice), token.totalAirdrop() / 4);
+        assertEq(hook.amountToClaim(poolId, charlie), token.totalAirdrop() / 4);
+
+        assertEq(token.balanceOf(bob), 0);
+        assertEq(token.balanceOf(alice), 0);
+        assertEq(token.balanceOf(charlie), 0);
+
+        vm.startPrank(bob);
+        hook.claimAirdrop(poolId);
+        vm.stopPrank();
+        vm.startPrank(alice);
+        hook.claimAirdrop(poolId);
+        vm.stopPrank();
+
+        vm.startPrank(charlie);
+        hook.claimAirdrop(poolId);
+        vm.stopPrank();
+
+        assertEq(token.balanceOf(bob), totalAirdrop);
+        assertEq(token.balanceOf(alice), token.totalAirdrop() / 4);
+        assertEq(token.balanceOf(charlie), token.totalAirdrop() / 4);
     }
 }

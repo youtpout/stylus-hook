@@ -22,11 +22,11 @@ contract AirdropToken is Token, IERC20Airdrop {
         address _hook,
         uint256 _amountAirDrop
     ) Token(name, symbol, initialOwner) {
-        _mint(address(this), _amountAirDrop);
         totalAirdrop = _amountAirDrop;
+        restAirdrop = _amountAirDrop;
         hook = _hook;
     }
-    
+
     function claim(address receiver, uint256 amount) external {
         if (msg.sender != hook) {
             // only hook can call this method
@@ -38,6 +38,6 @@ contract AirdropToken is Token, IERC20Airdrop {
         }
 
         restAirdrop -= amount;
-        transfer(receiver, amount);
+        _mint(receiver, amount);
     }
 }

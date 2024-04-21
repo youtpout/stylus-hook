@@ -135,7 +135,9 @@ contract AirdropHook is BaseHook {
         // set claimed first to prevent from reentrancy try
         claimed[poolId][msg.sender] = true;
 
-        token.claim(msg.sender, _amountToClaim(poolId, token, msg.sender));
+        uint256 amount = _amountToClaim(poolId, token, msg.sender);
+
+        token.claim(msg.sender, amount);
     }
 
     function amountToClaim(
