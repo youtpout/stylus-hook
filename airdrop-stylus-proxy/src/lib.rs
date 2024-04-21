@@ -184,7 +184,7 @@ impl AirdropHook {
         let address = self.airdrop_token.get(pool_id);
         let token: IERC20Airdrop = IERC20Airdrop::new(self.airdrop_token.get(pool_id));
         let amount = self._amount_to_claim(pool_id, token, receiver);
-        IERC20Airdrop::new(address).claim(self, receiver, amount?);
+        let _ = IERC20Airdrop::new(address).claim(self, receiver, amount?);
         return Ok(());
     }
 
