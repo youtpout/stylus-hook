@@ -97,11 +97,53 @@ impl AirdropHook {
         Ok(())
     }
 
-    pub fn add_after_swap(&mut self, key: FixedBytes<32>) -> Result<()> {
+    pub fn add_after_swap(
+        &mut self,
+        pool_id: FixedBytes<32>,
+        sender: Address,
+        zero_for_one: bool,
+        amount_specified: U256,
+    ) -> Result<()> {
         let hook: Address = self.hook.get();
 
         if msg::sender() != hook {
             return Err(HookError::NotHook(NotHook {}));
+        }
+
+        // if the token for airdrop if define, aidrop calculation is finished
+        if !self.airdrop_token.get(pool_id).is_zero() {
+            return Ok(());
+        }
+
+        let exist: bool = self.user_exist.get(pool_id).get(sender);
+        if !exist {
+            self.user_exist.setter(pool_id).insert(sender, true);
+            let mut count = self.users_count.setter(pool_id);
+            let oldCount = count.get();
+            count.set(oldCount + U256::from(1));
+        }
+
+        let mut swap_pool = self.total_swap_user.setter(pool_id);
+        let mut swap_user = swap_pool.setter(sender);
+        let mut swap_total = self.total_swap.setter(pool_id);
+        if zero_for_one {
+            let amount_total1: U256 = swap_total.amount1.get();
+            let counter_total1: U256 = swap_total.counter1.get();
+            let amount_user1: U256 = swap_user.amount1.get();
+            let counter_user1: U256 = swap_user.counter1.get();
+            swap_user.amount1.set(amount_specified + amount_user1);
+            swap_total.amount1.set(amount_specified + amount_total1);
+            swap_user.counter1.set(counter_user1 + U256::from(1));
+            swap_total.counter1.set(counter_total1 + U256::from(1));
+        } else {
+            let amount_total0: U256 = swap_total.amount0.get();
+            let counter_total0: U256 = swap_total.counter0.get();
+            let amount_user0: U256 = swap_user.amount0.get();
+            let counter_user0: U256 = swap_user.counter0.get();
+            swap_user.amount0.set(amount_specified + amount_user0);
+            swap_total.amount0.set(amount_specified + amount_total0);
+            swap_user.counter0.set(counter_user0 + U256::from(1));
+            swap_total.counter0.set(counter_total0 + U256::from(1));
         }
 
         //  let value = self.after_swap_count.get(key) + U256::from(1);
