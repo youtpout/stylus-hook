@@ -120,7 +120,6 @@ contract AirdropTest is Test, Deployers {
 
         (amount0, amount1, counter0, counter1) = hook.totalSwap(poolId);
         uint256 total1 = uint256(-amountSpecified);
-        console.log(amount1);
         assertEq(amount0, 0);
         assertEq(amount1, total1);
         assertEq(counter0, 0);
@@ -136,7 +135,6 @@ contract AirdropTest is Test, Deployers {
 
         uint256 total0 = uint256(-amountSpecified);
         (amount0, amount1, counter0, counter1) = hook.totalSwap(poolId);
-        console.log(amount1);
         assertEq(amount0, total0);
         assertEq(amount1, total1);
         assertEq(counter0, 1);
@@ -146,12 +144,38 @@ contract AirdropTest is Test, Deployers {
     }
 
     function testAirdropHookUser() public {
-        deal(token0, bob, 10e18);
-        deal(token0, alice, 10e18);
-        deal(token1, bob, 10e18);
-        deal(token1, alice, 10e18);
+        // get swap total in same time
+        (
+            uint256 amount0,
+            uint256 amount1,
+            uint256 counter0,
+            uint256 counter1
+        ) = hook.totalSwap(poolId);
+        assertEq(amount0, 0);
+        assertEq(amount1, 0);
+        assertEq(counter0, 0);
+        assertEq(counter1, 0);
 
-        vm.startPrank(bob);
+        _testSwapUser(bob);
+        _testSwapUser(alice);
+
+        // we made 2 swap of each amount
+        uint256 total = 2 * 10 ** 18;
+
+        (amount0, amount1, counter0, counter1) = hook.totalSwap(poolId);
+        console.log(amount1);
+        assertEq(amount0, total);
+        assertEq(amount1, total);
+        assertEq(counter0, 2);
+        assertEq(counter1, 2);
+    }
+
+    function _testSwapUser(address user) private {
+        deal(token0, user, 10e18);
+        deal(token1, user, 10e18);
+
+        // specify tx origin, we use it to manage sender in hook
+        vm.startPrank(user, user);
         ERC20(token0).approve(address(swapRouter), 10e18);
         ERC20(token1).approve(address(swapRouter), 10e18);
         // positions were created in setup()
@@ -160,7 +184,7 @@ contract AirdropTest is Test, Deployers {
             uint256 amount1,
             uint256 counter0,
             uint256 counter1
-        ) = hook.totalSwap(poolId);
+        ) = hook.totalSwapUser(poolId, user);
         assertEq(amount0, 0);
         assertEq(amount1, 0);
         assertEq(counter0, 0);
@@ -179,9 +203,11 @@ contract AirdropTest is Test, Deployers {
 
         assertEq(int256(swapDelta.amount0()), amountSpecified);
 
-        (amount0, amount1, counter0, counter1) = hook.totalSwap(poolId);
+        (amount0, amount1, counter0, counter1) = hook.totalSwapUser(
+            poolId,
+            user
+        );
         uint256 total1 = uint256(-amountSpecified);
-        console.log(amount1);
         assertEq(amount0, 0);
         assertEq(amount1, total1);
         assertEq(counter0, 0);
@@ -196,8 +222,10 @@ contract AirdropTest is Test, Deployers {
         assertEq(int256(swapDelta.amount1()), amountSpecified);
 
         uint256 total0 = uint256(-amountSpecified);
-        (amount0, amount1, counter0, counter1) = hook.totalSwap(poolId);
-        console.log(amount1);
+        (amount0, amount1, counter0, counter1) = hook.totalSwapUser(
+            poolId,
+            user
+        );
         assertEq(amount0, total0);
         assertEq(amount1, total1);
         assertEq(counter0, 1);

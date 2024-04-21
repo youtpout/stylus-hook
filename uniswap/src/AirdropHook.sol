@@ -10,7 +10,6 @@ import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 import {IERC20Airdrop} from "./interfaces/IERC20Airdrop.sol";
 
-
 /// @title Airdrop Hook
 /// @author Youtpout
 /// @notice An hook to manage airdrop to user who use this pool
@@ -72,12 +71,14 @@ contract AirdropHook is BaseHook {
     }
 
     function afterSwap(
-        address sender,
+        address,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata swapParams,
         BalanceDelta,
         bytes calldata
     ) external override returns (bytes4) {
+        // tx origin to manage initial caller, not the best thing to do but for hacakathon shortcut
+        address sender = tx.origin;
         PoolId poolId = key.toId();
 
         // if the token for airdrop if define, aidrop calculation is finished
