@@ -1,9 +1,110 @@
 <html>
-    <head>
-        <title>Stylus Hook</title>
-    </head>
-    <body>
+
+<head>
+    <title>Stylus Hook</title>
+    <link rel="stylesheet" href="style.css?v=3">
+</head>
+
+<body>
+    <header>
         <h1>Stylus Hook</h1>
-        <p>Welcome to stylus hook, the aim of this project is to create hooks for uniswap v4 directly with Stylus on Arbitrum.</p>
-    </body>
+        <p>Welcome to stylus hook, the aim of this project is to create hooks for uniswap v4 directly with Stylus on
+            Arbitrum.</p>
+    </header>
+    <main>
+        <h2>Why use stylus to create hooks ?</h2>
+        <p>
+            The introduction of hooks has opened up an infinite range of possibilities for defi, but as hooks
+            become more complex and handle more and more data, their gas cost becomes exponential, to the point
+            where it will be very costly, if not impossible, to use certain pools because of the hook attached.
+            <br />
+            Thanks to stylus, we can push back the limits of what's possible with hooks, making hooks much more
+            complex and managing much more data without necessarily being expensive in terms of gas.
+        </p>
+
+        <h2>Actual State</h2>
+        <p>This project was created as part of a hackathon. Unfortunately, given the limited time available
+            for ahackathon, the project hasn't completely achieved its main objective, which was to create hooks with
+            stylus.
+            <br />
+            It was also necessary to use a different chain from arbitrum sepolia to deploy smartcontracts in
+            stylus, which was not compatible with the latest version of Solidity required for uniswap v4 to
+            function properly, so a fork of uniswap v4 that differed from the official version had to be created.
+        </p>
+        <p>
+            Now that stylus is directly usable on the arbitrum sepolia testnet, which supports the latest
+            version of solidity, it will be directly integrated with the official version of uniswap v4.
+        </p>
+
+        <h2>Uniswap v4 status</h2>
+        <p>
+            As Uniswap v4 is not yet finalized, the project will have to be continually updated until the final version
+            of uniswap v4 is delivered.
+            That's why the audit can't be done before the end of the year, to make sure that the basehooks created will
+            be compatible with the latest version of uniswap v4.
+        </p>
+
+        <h2>Uniswap v4 in numbers</h2>
+        <p>
+            Uniswap has achieved 2 trillion in volume since its creation.
+            <br />
+            Uniswap supports more than 11 networks.
+            <br />
+            Arbitrum surpasses $150 billion in total transaction volume on Uniswap.
+        </p>
+
+        <h2>The goal</h2>
+        <p>The aim is for end users to be able to create hooks on Uniswap v4 using stylus, and as the contract will be
+            audited, this will give certain users greater peace of mind from a security point of view.
+            <br />
+            As stylus will be much more competitive from a performance and cost point of view, some large projects may
+            be carried out only on Arbitrum, increasing the attraction and use of this blockchain.
+        </p>
+
+
+        <h2>
+            Stylus Hook Roadmap
+        </h2>
+        <h4>Milestone 1 : delivery scheduled for September 30</h4>
+        <ul>
+            <li>
+                Create basehook contract in stylus inspired from original contract in solidity on uniswap v4
+                periphery
+            </li>
+            <li>
+                Add support of type uint24, int24 ... on stylus, mandatory to create the basehook contracts
+            </li>
+            <li>
+                Add a functionnality to easily deploy an hook with create2 in stylus to have predicted hook
+                address,
+                uniswap v4 use the first byte of the adress to determine hook functionnalities
+            </li>
+            <li>
+                Create a simple example of hook with this basehook
+            </li>
+        </ul>
+        <h4>Milestone 2 : delivery scheduled for November 30</h4>
+        <ul>
+            <li>
+                Adjust the basehook contract for the latest uniswap v4 update
+            </li>
+            <li>
+                Create more complex examples such as uniswapv4 periphery repos
+            </li>
+            <li>
+                Create a github template repos
+            </li>
+            <li>
+                Create documentation
+            </li>
+        </ul>
+        <h4>Milestone 3 : delivery scheduled for December 31</h4>
+        <ul>
+            <li>
+                Audit the basehook contract
+            </li>
+        </ul>
+    </main>
+</body>
+
 </html>
