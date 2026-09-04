@@ -1,0 +1,24 @@
+[package]
+name = "stylus-uniswap-v4"
+description = "Uniswap v4 hook types, permission flags and IHooks base implementation for Arbitrum Stylus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+alloy-primitives.workspace = true
+alloy-sol-types.workspace = true
+stylus-sdk.workspace = true
+
+[dev-dependencies]
+stylus-sdk = { workspace = true, features = ["stylus-test"] }
+
+[features]
+export-abi = ["stylus-sdk/export-abi"]
+contract-client-gen = []
+
+[lib]
+crate-type = ["lib"]
