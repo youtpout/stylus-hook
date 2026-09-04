@@ -81,6 +81,24 @@ The test that matters most for the Rust hook base is
 computed from the Rust ABI equal the ones in the compiled `IHooks.sol`. A hook written in Rust is
 only a hook if the `PoolManager`'s calls land on the right methods.
 
+## What it costs
+
+`./bench.bash` measures the airdrop hook on a throwaway Arbitrum Nitro dev node — the cheapest chain
+that runs both EVM bytecode and WASM — by swapping through four pools and reading `gasUsed` off the
+receipts.
+
+| hook | gas per swap | costs |
+| --- | ---: | ---: |
+| none | 124,590 | — |
+| one Solidity contract | 160,276 | +35,686 |
+| two Solidity contracts | 166,835 | +42,245 |
+| Solidity shell + Stylus | 201,121 | +76,531 |
+
+Stylus costs 2.14× what Solidity does here, or 1.66× once the contract is cached. That is the
+workload's fault, not the port's: `afterSwap` is six `SLOAD`s and six `SSTORE`s with almost no
+arithmetic, and Stylus makes compute cheap, not storage. [BENCHMARK.md](BENCHMARK.md) has the
+breakdown and what kind of hook would actually pay off.
+
 ## Deploy a hook with no Solidity (Arbitrum Sepolia)
 
 `cargo stylus deploy` routes through the on-chain `StylusDeployer`, which uses CREATE2 when handed a
@@ -128,6 +146,7 @@ cd uniswap && STYLUS_AIRDROP=0x... forge script script/01_DeployStylusAirdropHoo
 | Permission flags v4 reads from an address | [`stylus/base-hook/src/permissions.rs`](stylus/base-hook/src/permissions.rs) |
 | A hook with no Solidity at all | [`stylus/native-counter/src/lib.rs`](stylus/native-counter/src/lib.rs) |
 | CREATE2 salt mining for a hook address | [`stylus/hook-miner/src/lib.rs`](stylus/hook-miner/src/lib.rs) |
+| Gas benchmark, Solidity vs Stylus | [`bench.bash`](bench.bash), [`uniswap/script/bench/`](uniswap/script/bench) |
 | Hook forwarding v4 callbacks to Stylus | [`uniswap/src/AirdropHookProxy.sol`](uniswap/src/AirdropHookProxy.sol) |
 | The same hook in pure Solidity | [`uniswap/src/AirdropHook.sol`](uniswap/src/AirdropHook.sol) |
 | Hook state and logic in Rust | [`stylus/airdrop/src/lib.rs`](stylus/airdrop/src/lib.rs) |
