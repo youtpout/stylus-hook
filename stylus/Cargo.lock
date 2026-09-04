@@ -70,6 +70,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloy-dyn-abi"
+version = "1.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "201b9e973fe90b2effd9ab356d4f2a46ab56046ba9d46f163367553e72c045b0"
+dependencies = [
+ "alloy-json-abi",
+ "alloy-primitives",
+ "alloy-sol-type-parser",
+ "alloy-sol-types",
+ "itoa",
+ "serde",
+ "serde_json",
+ "winnow",
+]
+
+[[package]]
 name = "alloy-eip2124"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3670,6 +3686,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "stylus-hook-miner"
+version = "0.2.0"
+dependencies = [
+ "alloy-dyn-abi",
+ "alloy-primitives",
+ "clap",
+ "hex",
+ "stylus-uniswap-v4",
+]
+
+[[package]]
+name = "stylus-native-counter"
+version = "0.2.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "stylus-sdk",
+ "stylus-uniswap-v4",
+]
+
+[[package]]
 name = "stylus-proc"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3726,6 +3763,15 @@ dependencies = [
  "stylus-core",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "stylus-uniswap-v4"
+version = "0.2.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "stylus-sdk",
 ]
 
 [[package]]
