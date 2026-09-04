@@ -1,0 +1,13 @@
+# Rust / Stylus
+target/
+
+# Foundry
+uniswap/out/
+uniswap/cache/
+uniswap/broadcast/*/*/dry-run/
+
+# Node
+node_modules/
+
+# Secrets
+.env
