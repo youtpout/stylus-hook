@@ -1,120 +1,53 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.26;
 
-import "forge-std/Test.sol";
-import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
-import {Hooks} from "v4-core/src/libraries/Hooks.sol";
-import {TickMath} from "v4-core/src/libraries/TickMath.sol";
-import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
-import {PoolKey} from "v4-core/src/types/PoolKey.sol";
-import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
-import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
-import {CurrencyLibrary, Currency} from "v4-core/src/types/Currency.sol";
-import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
-import {Deployers} from "v4-core/test/utils/Deployers.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
+import {EasyPosm} from "./utils/libraries/EasyPosm.sol";
+
 import {Counter} from "../src/Counter.sol";
-import {HookMiner} from "./utils/HookMiner.sol";
+import {HookTest} from "./utils/HookTest.sol";
 
-contract CounterTest is Test, Deployers {
-    using PoolIdLibrary for PoolKey;
-    using CurrencyLibrary for Currency;
-
-    Counter counter;
-    PoolId poolId;
+contract CounterTest is HookTest {
+    Counter internal hook;
 
     function setUp() public {
-        // creates the pool manager, utility routers, and test tokens
-        Deployers.deployFreshManagerAndRouters();
-        Deployers.deployMintAndApprove2Currencies();
+        deployStack();
 
-        // Deploy the hook to an address with the correct flags
         uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG |
-                Hooks.AFTER_SWAP_FLAG |
-                Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
-                Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
         );
-        (address hookAddress, bytes32 salt) = HookMiner.find(
-            address(this),
-            flags,
-            type(Counter).creationCode,
-            abi.encode(address(manager))
-        );
-        counter = new Counter{salt: salt}(IPoolManager(address(manager)));
-        require(
-            address(counter) == hookAddress,
-            "CounterTest: hook address mismatch"
-        );
+        hook = Counter(deployHookTo(flags, "Counter.sol:Counter", abi.encode(poolManager)));
 
-        // Create the pool
-        key = PoolKey(currency0, currency1, 3000, 60, IHooks(address(counter)));
-        poolId = key.toId();
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
-
-        // Provide liquidity to the pool
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether),
-            ZERO_BYTES
-        );
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams(-120, 120, 10 ether),
-            ZERO_BYTES
-        );
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams(
-                TickMath.minUsableTick(60),
-                TickMath.maxUsableTick(60),
-                10 ether
-            ),
-            ZERO_BYTES
-        );
+        createPoolAndAddLiquidity(IHooks(address(hook)), 100e18);
     }
 
-    function testCounterHooks() public {
-        // positions were created in setup()
-        assertEq(counter.beforeAddLiquidityCount(poolId), 3);
-        assertEq(counter.beforeRemoveLiquidityCount(poolId), 0);
+    function test_counter_swap() public {
+        assertEq(hook.beforeAddLiquidityCount(poolId), 1);
+        assertEq(hook.beforeRemoveLiquidityCount(poolId), 0);
+        assertEq(hook.beforeSwapCount(poolId), 0);
+        assertEq(hook.afterSwapCount(poolId), 0);
 
-        assertEq(counter.beforeSwapCount(poolId), 0);
-        assertEq(counter.afterSwapCount(poolId), 0);
+        uint256 amountIn = 1e18;
+        BalanceDelta swapDelta = swap(amountIn, true, Constants.ZERO_BYTES);
+        assertEq(int256(swapDelta.amount0()), -int256(amountIn));
 
-        // Perform a test swap //
-        bool zeroForOne = true;
-        int256 amountSpecified = -1e18; // negative number indicates exact input swap!
-        BalanceDelta swapDelta = swap(
-            key,
-            zeroForOne,
-            amountSpecified,
-            ZERO_BYTES
-        );
-        // ------------------- //
-
-        assertEq(int256(swapDelta.amount0()), amountSpecified);
-
-        assertEq(counter.beforeSwapCount(poolId), 1);
-        assertEq(counter.afterSwapCount(poolId), 1);
-
-        bytes memory res = abi.encode(counter.getHookPermissions());
-        console.logBytes(res);
+        assertEq(hook.beforeSwapCount(poolId), 1);
+        assertEq(hook.afterSwapCount(poolId), 1);
     }
 
-    function testLiquidityHooks() public {
-        // positions were created in setup()
-        assertEq(counter.beforeAddLiquidityCount(poolId), 3);
-        assertEq(counter.beforeRemoveLiquidityCount(poolId), 0);
+    function test_counter_liquidity() public {
+        assertEq(hook.beforeAddLiquidityCount(poolId), 1);
+        assertEq(hook.beforeRemoveLiquidityCount(poolId), 0);
 
-        // remove liquidity
-        int256 liquidityDelta = -1e18;
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams(-60, 60, liquidityDelta),
-            ZERO_BYTES
+        EasyPosm.decreaseLiquidity(
+            positionManager, tokenId, 1e18, 0, 0, address(this), block.timestamp, Constants.ZERO_BYTES
         );
 
-        assertEq(counter.beforeAddLiquidityCount(poolId), 3);
-        assertEq(counter.beforeRemoveLiquidityCount(poolId), 1);
+        assertEq(hook.beforeAddLiquidityCount(poolId), 1);
+        assertEq(hook.beforeRemoveLiquidityCount(poolId), 1);
     }
 }

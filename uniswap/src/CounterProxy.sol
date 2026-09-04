@@ -1,107 +1,102 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.26;
 
-import {BaseHook} from "v4-periphery/BaseHook.sol";
+import {BaseHook} from "@openzeppelin/uniswap-hooks/src/base/BaseHook.sol";
 
-import {Hooks} from "v4-core/src/libraries/Hooks.sol";
-import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
-import {PoolKey} from "v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
-import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+
 import {ICounter} from "./ICounter.sol";
 
+/// @title CounterProxy
+/// @notice Same behaviour as `Counter`, but every piece of state and logic lives in a Stylus
+///         (Rust/WASM) contract on Arbitrum. This contract only exists so the deployed address
+///         carries the v4 hook permission flags; it forwards each callback to Stylus.
 contract CounterProxy is BaseHook {
-    using PoolIdLibrary for PoolKey;
+    /// @notice The Stylus contract holding the counters.
+    ICounter public immutable stylusCounter;
 
-    ICounter public HOOK_PROXY =
-        ICounter(0x8cDE56336E289c028C8f7CF5c20283fF02272182);
-
-    function beforeSwapCount(bytes32 pool_id) external view returns (uint256) {
-        return HOOK_PROXY.beforeSwapCount(pool_id);
+    constructor(IPoolManager _poolManager, ICounter _stylusCounter) BaseHook(_poolManager) {
+        stylusCounter = _stylusCounter;
     }
 
-    function afterSwapCount(bytes32 pool_id) external view returns (uint256) {
-        return HOOK_PROXY.afterSwapCount(pool_id);
+    function beforeSwapCount(PoolId poolId) external view returns (uint256) {
+        return stylusCounter.beforeSwapCount(PoolId.unwrap(poolId));
     }
 
-    function beforeAddLiquidityCount(
-        bytes32 pool_id
-    ) external view returns (uint256) {
-        return HOOK_PROXY.beforeAddLiquidityCount(pool_id);
+    function afterSwapCount(PoolId poolId) external view returns (uint256) {
+        return stylusCounter.afterSwapCount(PoolId.unwrap(poolId));
     }
 
-    function beforeRemoveLiquidityCount(
-        bytes32 pool_id
-    ) external view returns (uint256) {
-        return HOOK_PROXY.beforeRemoveLiquidityCount(pool_id);
+    function beforeAddLiquidityCount(PoolId poolId) external view returns (uint256) {
+        return stylusCounter.beforeAddLiquidityCount(PoolId.unwrap(poolId));
     }
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
+    function beforeRemoveLiquidityCount(PoolId poolId) external view returns (uint256) {
+        return stylusCounter.beforeRemoveLiquidityCount(PoolId.unwrap(poolId));
     }
 
-    function getHookPermissions()
-        public
-        pure
-        override
-        returns (Hooks.Permissions memory)
-    {
-        return
-            Hooks.Permissions({
-                beforeInitialize: false,
-                afterInitialize: false,
-                beforeAddLiquidity: true,
-                afterAddLiquidity: false,
-                beforeRemoveLiquidity: true,
-                afterRemoveLiquidity: false,
-                beforeSwap: true,
-                afterSwap: true,
-                beforeDonate: false,
-                afterDonate: false
-            });
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
+            beforeInitialize: false,
+            afterInitialize: false,
+            beforeAddLiquidity: true,
+            afterAddLiquidity: false,
+            beforeRemoveLiquidity: true,
+            afterRemoveLiquidity: false,
+            beforeSwap: true,
+            afterSwap: true,
+            beforeDonate: false,
+            afterDonate: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
+        });
     }
 
     // -----------------------------------------------
     // NOTE: see IHooks.sol for function documentation
     // -----------------------------------------------
 
-    function beforeSwap(
-        address,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata,
-        bytes calldata
-    ) external override returns (bytes4) {
-        HOOK_PROXY.addBeforeSwap(PoolId.unwrap(key.toId()));
-        return BaseHook.beforeSwap.selector;
+    function _beforeSwap(address, PoolKey calldata key, SwapParams calldata, bytes calldata)
+        internal
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+        stylusCounter.addBeforeSwap(PoolId.unwrap(key.toId()));
+        return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
-    function afterSwap(
-        address,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata,
-        BalanceDelta,
-        bytes calldata
-    ) external override returns (bytes4) {
-        HOOK_PROXY.addAfterSwap(PoolId.unwrap(key.toId()));
-        return BaseHook.afterSwap.selector;
+    function _afterSwap(address, PoolKey calldata key, SwapParams calldata, BalanceDelta, bytes calldata)
+        internal
+        override
+        returns (bytes4, int128)
+    {
+        stylusCounter.addAfterSwap(PoolId.unwrap(key.toId()));
+        return (BaseHook.afterSwap.selector, 0);
     }
 
-    function beforeAddLiquidity(
-        address,
-        PoolKey calldata key,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external override returns (bytes4) {
-        HOOK_PROXY.addBeforeAddLiquidity(PoolId.unwrap(key.toId()));
+    function _beforeAddLiquidity(address, PoolKey calldata key, ModifyLiquidityParams calldata, bytes calldata)
+        internal
+        override
+        returns (bytes4)
+    {
+        stylusCounter.addBeforeAddLiquidity(PoolId.unwrap(key.toId()));
         return BaseHook.beforeAddLiquidity.selector;
     }
 
-    function beforeRemoveLiquidity(
-        address,
-        PoolKey calldata key,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external override returns (bytes4) {
-        HOOK_PROXY.addBeforeRemoveLiquidity(PoolId.unwrap(key.toId()));
+    function _beforeRemoveLiquidity(address, PoolKey calldata key, ModifyLiquidityParams calldata, bytes calldata)
+        internal
+        override
+        returns (bytes4)
+    {
+        stylusCounter.addBeforeRemoveLiquidity(PoolId.unwrap(key.toId()));
         return BaseHook.beforeRemoveLiquidity.selector;
     }
 }

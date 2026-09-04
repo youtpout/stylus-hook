@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.26;
 
 import {Token} from "./Token.sol";
 import {IERC20Airdrop} from "./interfaces/IERC20Airdrop.sol";
