@@ -1,110 +1,128 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
-    <title>Stylus Hook</title>
-    <link rel="stylesheet" href="style.css?v=3">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stylus Hook — Uniswap v4 hooks in Rust</title>
+    <meta name="description"
+        content="Uniswap v4 hooks whose state and logic run in Rust/WASM on Arbitrum Stylus.">
+    <link rel="stylesheet" href="style.css?v=4">
 </head>
 
 <body>
     <header>
+        <span class="kicker">Uniswap v4 · Arbitrum Stylus</span>
         <h1>Stylus Hook</h1>
-        <p>Welcome to stylus hook, the aim of this project is to create hooks for uniswap v4 directly with Stylus on
-            Arbitrum.</p>
+        <p class="tagline">Uniswap v4 hooks whose state and logic run in Rust, compiled to WASM and
+            executed by Arbitrum Stylus.</p>
+        <div class="badges">
+            <span class="badge">v4-core <strong>v4.0.0</strong></span>
+            <span class="badge">Stylus SDK <strong>0.10.9</strong></span>
+            <span class="badge">Solidity <strong>0.8.30</strong></span>
+            <span class="badge">Rust <strong>1.91</strong></span>
+        </div>
     </header>
+
     <main>
-        <h2>Why use stylus to create hooks ?</h2>
-        <p>
-            The introduction of hooks has opened up an infinite range of possibilities for defi, but as hooks
-            become more complex and handle more and more data, their gas cost becomes exponential, to the point
-            where it will be very costly, if not impossible, to use certain pools because of the hook attached.
-            <br />
-            Thanks to stylus, we can push back the limits of what's possible with hooks, making hooks much more
-            complex and managing much more data without necessarily being expensive in terms of gas.
+        <h2>Why Rust for a hook</h2>
+        <p>Hooks opened up an enormous design space for AMMs, but the more state a hook touches the
+            more its gas cost dominates every swap in the pool — to the point where some designs are
+            simply not viable in the EVM. Stylus executes WASM instead of EVM bytecode, so compute
+            and memory are an order of magnitude cheaper, which moves the boundary of what a hook can
+            reasonably do on every swap.</p>
+
+        <h2>The shape of the problem</h2>
+        <p>A v4 hook must live at an address whose low 14 bits encode its permission flags, and the
+            <code>PoolManager</code> reaches it through the <code>IHooks</code> Solidity ABI. Stylus
+            contracts are ABI-equivalent to Solidity, but they are deployed by <code>cargo
+                stylus</code>, which cannot mine a CREATE2 address. So today each hook ships as a
+            pair.</p>
+
+        <div class="pair">
+            <div class="card">
+                <h3>The shell — Solidity</h3>
+                <p><code>AirdropHookProxy.sol</code> owns the CREATE2-mined address that carries the
+                    permission flags, and forwards every callback. It holds no state.</p>
+            </div>
+            <div class="card">
+                <h3>The hook — Rust</h3>
+                <p><code>stylus/airdrop</code> holds all of the storage and all of the logic, and
+                    only accepts writes from the shell it is bound to.</p>
+            </div>
+        </div>
+
+        <p>Each hook also has a pure-Solidity twin — <code>AirdropHook.sol</code>,
+            <code>Counter.sol</code> — kept so the two implementations can be compared
+            behaviour-for-behaviour and gas-for-gas.</p>
+
+        <h2>What ships today</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hook</th>
+                        <th>Does</th>
+                        <th>WASM</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>AirdropHookProxy</code></td>
+                        <td>Books swap volume and swap count per user, then distributes an ERC-20
+                            airdrop weighted 80 % on volume and 20 % on activity.</td>
+                        <td>14.7 KB</td>
+                    </tr>
+                    <tr>
+                        <td><code>CounterProxy</code></td>
+                        <td>Counts <code>beforeSwap</code>, <code>afterSwap</code> and the two
+                            liquidity callbacks, per pool.</td>
+                        <td>7.5 KB</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h3>Proving the two implementations agree</h3>
+        <p>Foundry cannot execute WASM, so the Rust contract has a Solidity replica,
+            <code>MockStylusAirdrop.sol</code>, that the hook is tested against. The Rust suite runs
+            the same scenarios against <code>stylus_sdk::testing::TestVM</code>. Both assert the same
+            airdrop amounts down to the wei, which is what makes the replica trustworthy as a spec.
         </p>
 
-        <h2>Actual State</h2>
-        <p>This project was created as part of a hackathon. Unfortunately, given the limited time available
-            for ahackathon, the project hasn't completely achieved its main objective, which was to create hooks with
-            stylus.
-            <br />
-            It was also necessary to use a different chain from arbitrum sepolia to deploy smartcontracts in
-            stylus, which was not compatible with the latest version of Solidity required for uniswap v4 to
-            function properly, so a fork of uniswap v4 that differed from the official version had to be created.
-        </p>
-        <p>
-            Now that stylus is directly usable on the arbitrum sepolia testnet, which supports the latest
-            version of solidity, it will be directly integrated with the official version of uniswap v4.
-        </p>
-
-        <h2>Uniswap v4 status</h2>
-        <p>
-            As Uniswap v4 is not yet finalized, the project will have to be continually updated until the final version
-            of uniswap v4 is delivered.
-            That's why the audit can't be done before the end of the year, to make sure that the basehooks created will
-            be compatible with the latest version of uniswap v4.
-        </p>
-
-        <h2>Uniswap v4 in numbers</h2>
-        <p>
-            Uniswap has achieved 2 trillion in volume since its creation.
-            <br />
-            Uniswap supports more than 11 networks.
-            <br />
-            Arbitrum surpasses $150 billion in total transaction volume on Uniswap.
-        </p>
-
-        <h2>The goal</h2>
-        <p>The aim is for end users to be able to create hooks on Uniswap v4 using stylus, and as the contract will be
-            audited, this will give certain users greater peace of mind from a security point of view.
-            <br />
-            As stylus will be much more competitive from a performance and cost point of view, some large projects may
-            be carried out only on Arbitrum, increasing the attraction and use of this blockchain.
-        </p>
-
-
-        <h2>
-            Stylus Hook Roadmap
-        </h2>
-        <h4>Milestone 1 : delivery scheduled for September 30</h4>
-        <ul>
-            <li>
-                Create basehook contract in stylus inspired from original contract in solidity on uniswap v4
-                periphery
+        <h2>Where this is going</h2>
+        <p>The Solidity shell exists only to own a flagged address. The goal is a
+            <code>BaseHook</code> written entirely in Stylus, so a hook can be 100 % Rust with no
+            Solidity anywhere in its dependency graph.</p>
+        <ul class="checks">
+            <li class="done">Run against upstream <code>v4-core</code> — Arbitrum has supported
+                transient storage since ArbOS 32, so the <code>no-cancun</code> fork this project
+                once needed is gone.</li>
+            <li class="done">Hook state and logic fully in Rust, behind a stateless Solidity shell.
             </li>
-            <li>
-                Add support of type uint24, int24 ... on stylus, mandatory to create the basehook contracts
-            </li>
-            <li>
-                Add a functionnality to easily deploy an hook with create2 in stylus to have predicted hook
-                address,
-                uniswap v4 use the first byte of the adress to determine hook functionnalities
-            </li>
-            <li>
-                Create a simple example of hook with this basehook
-            </li>
+            <li>Port <code>BaseHook</code> — permission validation, the ten callbacks, selector
+                returns — to Stylus.</li>
+            <li>CREATE2 deployment from <code>cargo stylus</code>, so a Stylus contract can land on a
+                flag-carrying address by itself.</li>
+            <li>A hook template repository and documentation for building v4 hooks in Rust
+                end-to-end.</li>
         </ul>
-        <h4>Milestone 2 : delivery scheduled for November 30</h4>
-        <ul>
-            <li>
-                Adjust the basehook contract for the latest uniswap v4 update
-            </li>
-            <li>
-                Create more complex examples such as uniswapv4 periphery repos
-            </li>
-            <li>
-                Create a github template repos
-            </li>
-            <li>
-                Create documentation
-            </li>
-        </ul>
-        <h4>Milestone 3 : delivery scheduled for December 31</h4>
-        <ul>
-            <li>
-                Audit the basehook contract
-            </li>
-        </ul>
+
+        <h2>Try it</h2>
+        <pre><code>git clone --recurse-submodules https://github.com/youtpout/stylus-hook
+cd stylus-hook
+
+cd uniswap &amp;&amp; forge test     # hooks, swapped through a real local v4 stack
+cd ../stylus &amp;&amp; cargo test    # the Rust contracts</code></pre>
+        <p class="lead">Uniswap v4 and Stylus are both live on Arbitrum Sepolia, so deploying needs
+            no local node — see the repository README for the two-command deployment flow.</p>
     </main>
+
+    <footer>
+        <p>Source and full documentation: <a
+                href="https://github.com/youtpout/stylus-hook">github.com/youtpout/stylus-hook</a>
+        </p>
+    </footer>
 </body>
 
 </html>

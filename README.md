@@ -1,118 +1,135 @@
 # stylus-hook
 
-Clone with all submodules
+**Uniswap v4 hooks whose state and logic run in Rust/WASM on [Arbitrum Stylus](https://docs.arbitrum.io/stylus/gentle-introduction).**
 
-```bash
-git clone --recurse-submodules https://github.com/youtpout/stylus-hook
+A v4 hook has to live at an address whose low 14 bits encode its permission flags, and the
+`PoolManager` calls it through the `IHooks` Solidity ABI. That address constraint — not the ABI — is
+what used to force a Solidity contract into every Stylus hook.
+
+**A hook here can now be written entirely in Rust.** [`stylus/base-hook`](stylus/base-hook) is
+`BaseHook.sol`'s counterpart in Stylus, [`stylus/native-counter`](stylus/native-counter) is a hook
+built on it with no Solidity anywhere, and [`stylus/hook-miner`](stylus/hook-miner) mines the
+CREATE2 salt that lands it on a flag-carrying address.
+
+The repository also keeps the earlier **split design**, where a stateless Solidity shell owns the
+address and forwards callbacks to Stylus:
+
+| Piece | Language | Role |
+| --- | --- | --- |
+| `AirdropHookProxy` / `CounterProxy` | Solidity | CREATE2-mined address carrying the permission flags; forwards every callback |
+| `stylus/airdrop` / `stylus/counter` | Rust → WASM | all of the hook's storage and logic |
+
+and the pure-Solidity equivalents `AirdropHook.sol` and `Counter.sol`, so the three approaches can
+be compared behaviour-for-behaviour and gas-for-gas.
+
+## Layout
+
+```
+uniswap/          Foundry project: the hooks, their pure-Solidity baselines, tests and deploy scripts
+  src/            Counter.sol, CounterProxy.sol, AirdropHook.sol, AirdropHookProxy.sol, tokens
+  test/           forge tests, including the Solidity replica of the Stylus contract
+  script/         CREATE2 hook mining + deployment
+stylus/           Cargo workspace of the Rust side
+  base-hook/      the IHooks callbacks, v4 types and permission flags, in Stylus
+  native-counter/ a hook with no Solidity at all, built on base-hook (15.7 KB WASM)
+  hook-miner/     mines the CREATE2 salt for a hook address
+  airdrop/        airdrop accounting behind AirdropHookProxy.sol (14.7 KB WASM)
+  counter/        callback counters behind CounterProxy.sol (7.5 KB WASM)
 ```
 
-If you forget submodules
-```bash
-git pull --recurse-submodules
-```
+## Versions
 
-or
+| Dependency | Version |
+| --- | --- |
+| Uniswap v4-core | `v4.0.0` (via `@openzeppelin/uniswap-hooks`) |
+| Hook base contract | `@openzeppelin/uniswap-hooks` `BaseHook` |
+| Local v4 stack for tests | [`hookmate`](https://github.com/akshatmittal/hookmate) |
+| Stylus SDK / `cargo-stylus` | `0.10.9` |
+| Solidity | `0.8.30`, `evm_version = "cancun"` |
+| Rust | `1.91.0`, `wasm32-unknown-unknown` |
+
+Arbitrum has supported transient storage since ArbOS 32, so this runs against **upstream v4-core** —
+the 2024 version of this repo had to vendor a `no-cancun` fork.
+
+## Requirements
 
 ```bash
+curl -L https://foundry.paradigm.xyz | bash && foundryup
+cargo install --locked cargo-stylus
+rustup target add wasm32-unknown-unknown
 git submodule update --init --recursive
 ```
 
-## dependencies
-You need docker, stylus and foundry
-[Docker](https://docs.docker.com/engine/install/) 
-[Stylus](https://docs.arbitrum.io/stylus/stylus-quickstart)
-[Foundry](https://book.getfoundry.sh/getting-started/installation)
-
-## Launch node
-
-First launch, remove all previous data
-```bash
-./first-launch.bash
-```
-Classic launch will restore all previous transactions
-```bash
-./launch.bash
-```
-
-Add some ethereum to the an address
-```bash
-./nitro-testnode/test-node.bash script send-l2 --to address_0xyouraddress --ethamount 5
-```
-
-if you have file error access use the good old one chmod
-```bash
-chmod 777 nitro-testnode/test-node.bash
-chmod 777 first-launch.bash 
-```
-
-## Deploy uniswap and create2 proxy
-Wait some minute the node is completely launched to launch deployment
-
-you have to install foundry on uniswap, cargo stylus on airdrop-stylus-hook, and npm install on test folder
-```bash
-./deploy.bash
-```
-
-or deploy manually
-
-every script call are on deploy.bash file
+## Test
 
 ```bash
-# deploys all necessary contracts
-./nitro-testnode/test-node.bash script send-l2 --to address_0x14791697260E4c9A71f18484C9f997B308e59325 --ethamount 5
-./nitro-testnode/test-node.bash script send-l2 --to address_0x3fab184622dc19b6109349b94811493bf2a45362 --ethamount 5
-./create-proxy/scripts/deploy.sh
-cd airdrop-stylus-proxy
-cargo stylus deploy --private-key 0x0123456789012345678901234567890123456789012345678901234567890123 -e http://localhost:8547/
-cd ../uniswap
-forge script script/DeployAirdropHook.s.sol:DeployHookScript --rpc-url localhost --broadcast -vvvvv 
-# verify deployed contracts
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x4aa4365da82ACD46e378A6f3c92a863f3e763d34 PoolManager --constructor-args $(cast abi-encode "constructor(uint256)" 500000) --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x2dC942dcba13E4BE27721980FE01f2221610A93b PoolModifyLiquidityTest --constructor-args $(cast abi-encode "constructor(address)" 0x4aa4365da82ACD46e378A6f3c92a863f3e763d34) --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xFB9a956c4875826a76d47C360234FC1633C078A8 PoolSwapTest --constructor-args $(cast abi-encode "constructor(address)" 0x4aa4365da82ACD46e378A6f3c92a863f3e763d34) --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xf3e1C2DefcDfE770972D4bCF45B03498626c5594 Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUNI" "MUNI" 0x14791697260E4c9A71f18484C9f997B308e59325) --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xADeb1300E4860089d93233ddED31B33206ba8432 Token --constructor-args $(cast abi-encode "constructor(string,string,address)" "MUSDC" "MUSDC" 0x14791697260E4c9A71f18484C9f997B308e59325) --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x010dB0326D1A8ddEC5C7daAffd8f84F9A367394D AirdropHook --constructor-args $(cast abi-encode "constructor(address)" 0x4aa4365da82ACD46e378A6f3c92a863f3e763d34) --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874 AirdropHookProxy --constructor-args $(cast abi-encode "constructor(address)" 0x4aa4365da82ACD46e378A6f3c92a863f3e763d34) --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0x878873B6E9ebe8Fd22816A69B51e6D96cE75961E AirdropToken --constructor-args $(cast abi-encode "constructor(string,string,address,address,uint256)" "Flydrop" "FLY" 0x14791697260E4c9A71f18484C9f997B308e59325 0x010dB0326D1A8ddEC5C7daAffd8f84F9A367394D 50000000000000000000000000)  --force
-forge verify-contract  --verifier blockscout --verifier-url http://127.0.0.1:4000/api?  0xb2f902825D87efEE4E3eF6873b071F7FA86ca9aB AirdropToken --constructor-args $(cast abi-encode "constructor(string,string,address,address,uint256)" "FlydropProxy" "FLYP" 0x14791697260E4c9A71f18484C9f997B308e59325 0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874 50000000000000000000000000)  --force
-# define hook address in stylus contract
-cd ../airdrop-stylus-proxy
-cargo run --example counter
-# set liquidity and make first swap and airdrop
-cd ../test
-npm run liquidity
-npm run swap
-npm run airdrop
+cd uniswap && forge test
 ```
-
-## Deploy stylus contract on local
-// 0x14791697260E4c9A71f18484C9f997B308e59325
-Private Key for test 0x0123456789012345678901234567890123456789012345678901234567890123 
 
 ```bash
-cd /airdrop-stylus-proxy
-cargo stylus deploy --private-key 0x0123456789012345678901234567890123456789012345678901234567890123 -e http://localhost:8547/
+cd stylus && cargo test
 ```
 
-Current address on arbitrum stylus :
-[0xFB9a956c4875826a76d47C360234FC1633C078A8](https://stylus-testnet-explorer.arbitrum.io/address/0xFB9a956c4875826a76d47C360234FC1633C078A8/contracts#address-tabs)
+The Foundry suite spins up a full local v4 stack (PoolManager, PositionManager, Permit2, router) and
+runs real swaps through the hooks. Forge cannot execute WASM, so `AirdropHookProxy` is tested
+against [`MockStylusAirdrop.sol`](uniswap/test/mocks/MockStylusAirdrop.sol), a Solidity replica of
+the Rust contract. The Rust suite checks the same scenarios with `TestVM`, and both assert the same
+airdrop amounts down to the wei.
 
-## Contract address on local
+The test that matters most for the Rust hook base is
+[`selectors_match_uniswap_ihooks`](stylus/base-hook/src/hooks.rs): all ten callback selectors
+computed from the Rust ABI equal the ones in the compiled `IHooks.sol`. A hook written in Rust is
+only a hook if the `PoolManager`'s calls land on the right methods.
+
+## Deploy a hook with no Solidity (Arbitrum Sepolia)
+
+`cargo stylus deploy` routes through the on-chain `StylusDeployer`, which uses CREATE2 when handed a
+non-zero salt. Mine a salt for the permissions the hook declares, then deploy with it:
+
 ```bash
-0x8cDE56336E289c028C8f7CF5c20283fF02272182 StylusAirdrop
-0x4aa4365da82ACD46e378A6f3c92a863f3e763d34 PoolManager 
-0x2dC942dcba13E4BE27721980FE01f2221610A93b PoolModifyLiquidityTest 
-0xFB9a956c4875826a76d47C360234FC1633C078A8 PoolSwapTest 
-0xf3e1C2DefcDfE770972D4bCF45B03498626c5594 MUNI 
-0xADeb1300E4860089d93233ddED31B33206ba8432 MUSDC 
-0x010dB0326D1A8ddEC5C7daAffd8f84F9A367394D AirdropHook 
-0x0105aC59AdaBE5CD26ce684e309C1aa5D9D93874 AirdropHookProxy 
-0x878873B6E9ebe8Fd22816A69B51e6D96cE75961E Flydrop
-0xb2f902825D87efEE4E3eF6873b071F7FA86ca9aB FlydropProxy 
+cd stylus
+cargo stylus get-initcode --contract stylus-native-counter | tail -1 > initcode.hex
+cargo run -p stylus-hook-miner -- \
+  --initcode-file initcode.hex \
+  --permissions before-swap,after-swap,before-add-liquidity,before-remove-liquidity \
+  --constructor-signature 'constructor(address pool_manager)' \
+  --constructor-args 0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317
 ```
 
+It prints the mined address, the salt and the `cargo stylus deploy --deployer-salt ...` command to
+run. The address is fixed by the init code, so rebuilding the contract changes the salt.
 
-## WSL Issue with nitro
+## Deploy the split design (Arbitrum Sepolia)
 
-[Install docker](https://dev.to/kenji_goh/got-permission-denied-while-trying-to-connect-to-the-docker-daemon-socket-3dne)
+Uniswap v4 and Stylus are both live on Arbitrum Sepolia, so no local node is needed.
+
+```bash
+cd stylus
+cargo stylus deploy --contract stylus-airdrop-hook \
+  --endpoint https://sepolia-rollup.arbitrum.io/rpc --private-key $PRIVATE_KEY
+```
+
+Then mine the hook address, deploy the shell and bind it to the Stylus contract:
+
+```bash
+cd uniswap && STYLUS_AIRDROP=0x... forge script script/01_DeployStylusAirdropHook.s.sol \
+  --rpc-url arbitrum_sepolia --broadcast
+```
+
+`./deploy.bash` runs both steps. The counter hook follows the same two commands with
+`stylus-counter-hook` / `02_DeployStylusCounterHook.s.sol`, and
+`00_DeployAirdropHook.s.sol` deploys the pure-Solidity baseline for comparison.
+
+## Where to look
+
+| What | File |
+| --- | --- |
+| `IHooks` callbacks implemented in Rust | [`stylus/base-hook/src/hooks.rs`](stylus/base-hook/src/hooks.rs) |
+| Permission flags v4 reads from an address | [`stylus/base-hook/src/permissions.rs`](stylus/base-hook/src/permissions.rs) |
+| A hook with no Solidity at all | [`stylus/native-counter/src/lib.rs`](stylus/native-counter/src/lib.rs) |
+| CREATE2 salt mining for a hook address | [`stylus/hook-miner/src/lib.rs`](stylus/hook-miner/src/lib.rs) |
+| Hook forwarding v4 callbacks to Stylus | [`uniswap/src/AirdropHookProxy.sol`](uniswap/src/AirdropHookProxy.sol) |
+| The same hook in pure Solidity | [`uniswap/src/AirdropHook.sol`](uniswap/src/AirdropHook.sol) |
+| Hook state and logic in Rust | [`stylus/airdrop/src/lib.rs`](stylus/airdrop/src/lib.rs) |
+| ABI boundary between the two | [`uniswap/src/interfaces/IAirdropHook.sol`](uniswap/src/interfaces/IAirdropHook.sol) |
+| CREATE2 mining + binding | [`uniswap/script/01_DeployStylusAirdropHook.s.sol`](uniswap/script/01_DeployStylusAirdropHook.s.sol) |
