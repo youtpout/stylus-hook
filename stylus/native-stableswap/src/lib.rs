@@ -21,6 +21,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use alloy_primitives::{Address, FixedBytes, U256};
+use alloy_sol_types::{sol, SolError};
 use stylus_sdk::{abi::Bytes, prelude::*, storage::StorageU256};
 use stylus_uniswap_v4::{
     hooks::{selector, HookConfig, HookGuards, IHooks},
@@ -34,6 +35,12 @@ const DEFAULT_ANN: u64 = 100;
 // The pool manager address, baked in at build time from `$POOL_MANAGER`. Reading a `const` costs
 // nothing; the storage slot it replaces cost a cold SLOAD on every single callback.
 include!(concat!(env!("OUT_DIR"), "/pool_manager.rs"));
+
+sol! {
+    /// The address baked in at build time is not the one this deployment was given.
+    #[derive(Debug)]
+    error PoolManagerMismatch(address baked, address given);
+}
 
 #[storage]
 #[entrypoint]
@@ -57,8 +64,21 @@ impl HookConfig for StableSwapHook {
 #[public]
 #[implements(IHooks)]
 impl StableSwapHook {
+    /// Takes the pool manager only to check it against the constant compiled in.
+    ///
+    /// The address is a `const` so that reading it costs nothing on every callback, which means a
+    /// wrong `$POOL_MANAGER` at build time would otherwise produce a hook that silently rejects
+    /// every call the pool manager makes. Passing it again here turns that into a failed
+    /// deployment. The argument is not stored; callbacks still read the constant.
     #[constructor]
-    pub fn constructor(&mut self) -> Result<(), Vec<u8>> {
+    pub fn constructor(&mut self, pool_manager: Address) -> Result<(), Vec<u8>> {
+        if pool_manager != POOL_MANAGER {
+            return Err(PoolManagerMismatch {
+                baked: POOL_MANAGER,
+                given: pool_manager,
+            }
+            .abi_encode());
+        }
         self.ann.set(U256::from(DEFAULT_ANN));
         self.reserve0
             .set(U256::from(1000u64) * U256::from(10u64).pow(U256::from(18)));
@@ -206,12 +226,23 @@ mod tests {
     fn deployed(vm: &TestVM) -> StableSwapHook {
         vm.set_contract_address(HOOK);
         let mut c = StableSwapHook::from(vm);
-        c.constructor().unwrap();
+        c.constructor(POOL_MANAGER).unwrap();
         c
     }
 
     fn e18(n: u64) -> U256 {
         U256::from(n) * U256::from(10u64).pow(U256::from(18))
+    }
+
+    #[test]
+    fn a_wrong_baked_address_fails_at_deployment_rather_than_silently() {
+        let vm = TestVM::default();
+        vm.set_contract_address(HOOK);
+        let mut c = StableSwapHook::from(&vm);
+        assert!(
+            c.constructor(Address::new([0x77; 20])).is_err(),
+            "building against the wrong pool manager must not deploy"
+        );
     }
 
     #[test]

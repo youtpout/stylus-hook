@@ -235,9 +235,9 @@ measuring.
 | --- | ---: | ---: |
 | no hook | 115,061 | — |
 | StableSwap in Solidity | 149,112 | +34,051 |
-| **StableSwap in Rust** | **174,417** | **+59,356** |
+| **StableSwap in Rust** | **174,656** | **+59,595** |
 
-**Rust loses by 25,305 gas.** So the next question is where that goes, and the answer is not where
+**Rust loses by 25,544 gas.** So the next question is where that goes, and the answer is not where
 it first appears to be. Calling the pure functions directly, with no hook and no storage in the way:
 
 | | Solidity | Rust | ratio |
@@ -252,7 +252,7 @@ magnitude. The arithmetic is not the problem.
 
 The problem is that there is so little of it. **One `getY` — twelve Newton iterations — is 8,629
 gas.** Three times cheaper saves under 6,000, against a fixed cost of 19,724 to load the WASM
-program. That is nearly the whole 25,305, and it says the curve is
+program. That is nearly the whole 25,544, and it says the curve is
 nowhere near the ~62,000 gas of arithmetic the crossover needs. Twelve Newton iterations sounds like
 a lot and is not: the bar is closer to 220 plain multiply-divides, or seven `getY` calls, per swap.
 
@@ -273,8 +273,16 @@ POOL_MANAGER=0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32 cargo stylus deploy ...
 Measured, the hook goes from 176,519 gas per swap to **174,417** — 2,102 saved, which is the cold
 `SLOAD` to the byte.
 
-The trade is that the address is fixed at build time rather than deploy time. For a hook that costs
-nothing: the address has to be mined against the init code anyway, so the contract is already
+A constant has a failure mode a storage slot does not: build against the wrong `$POOL_MANAGER` and
+you get a hook that compiles, deploys, mines a valid address and then silently rejects every call
+the pool manager makes. So the constructor still takes the address, purely to compare it with what
+was compiled in and revert if they differ. The argument is never stored; callbacks still read the
+constant. That check costs **239 gas** per swap — not the constructor, which runs once, but the
+slightly larger program, which `ArbWasm` prices by size. Cheap for turning a silent
+misconfiguration into a failed deployment.
+
+The remaining trade is that the address is fixed at build time rather than deploy time, which costs
+nothing here: the address has to be mined against the init code anyway, so the contract is already
 rebuilt per deployment. `native-counter` and `native-compute` still read theirs from storage, so
 their figures elsewhere in this document carry the 2,100 — twice per swap in the counter's case,
 which is called on both `beforeSwap` and `afterSwap`.
