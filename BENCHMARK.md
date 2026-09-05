@@ -296,6 +296,33 @@ path runs at all, so they are not in this table. `ALFMultiplexer` is the one wor
 runs a `SwapSimulator` pass per routing candidate, and a simulation is roughly an AntiSandwich
 replay, so three or more candidates would clear the bar.
 
+### Looking further: the hook registry
+
+Uniswap keeps a public registry of deployed v4 hooks at
+[`Uniswap/hooklist`](https://github.com/Uniswap/hooklist) — 1,472 entries at the time of writing,
+each with its address, chain and all fourteen permission bits. That last part makes it searchable
+for the profile that matters here: `beforeSwapReturnsDelta` means the hook prices the swap itself
+rather than letting the pool do it, which is the flag a hook can only set if it is doing real math.
+
+Filtering to Arbitrum, the chain Stylus runs on, leaves 33 hooks, 17 of which price their own swaps.
+The ones whose descriptions and code size suggest heavy arithmetic:
+
+| hook | address | deployed bytecode | what the registry says it does |
+| --- | --- | ---: | --- |
+| **BunniHook** | `0x0000fe59…1888` | 23.5 KB | computes all swap math internally from a configurable Liquidity Density Function, with TWAP-based and surge fees |
+| **TokiHook** | `0x916bc355…1888` | 23.9 KB | custom-curve hook implementing a Pendle-style fixed-rate AMM |
+| Spot | `0xb4f4949e…10cc` | 11.2 KB | full-range AMM with a truncated geometric-mean oracle driving dynamic fees |
+| Clanker Dynamic Fee | `0xfd213be7…68cc` | — | fees adjusted from swap volatility via a tick accumulator |
+
+Bytecode sizes are measured from Arbitrum One; the descriptions are the registry's own. Both
+BunniHook and TokiHook are within a few hundred bytes of the 24 KB contract limit, which is itself a
+signal — a hook that fits comfortably is not doing much.
+
+BunniHook is the strongest candidate found anywhere so far: it replaces the constant-product curve
+outright, and it is deployed on ten chains including Arbitrum, so it can be profiled against a fork
+of Arbitrum One with `profile-hooks.bash`'s tracer rather than reconstructed. That is the measurement
+worth doing next.
+
 ## What this means for the project## Pricing a real hook: AntiSandwichHook
 
 `./bench-antisandwich.bash` measures OpenZeppelin's
@@ -391,6 +418,33 @@ hooks Uniswap publishes — `NativeBookHook` at 155k–221k, `ALFMultiplexer` at
 path runs at all, so they are not in this table. `ALFMultiplexer` is the one worth setting up: it
 runs a `SwapSimulator` pass per routing candidate, and a simulation is roughly an AntiSandwich
 replay, so three or more candidates would clear the bar.
+
+### Looking further: the hook registry
+
+Uniswap keeps a public registry of deployed v4 hooks at
+[`Uniswap/hooklist`](https://github.com/Uniswap/hooklist) — 1,472 entries at the time of writing,
+each with its address, chain and all fourteen permission bits. That last part makes it searchable
+for the profile that matters here: `beforeSwapReturnsDelta` means the hook prices the swap itself
+rather than letting the pool do it, which is the flag a hook can only set if it is doing real math.
+
+Filtering to Arbitrum, the chain Stylus runs on, leaves 33 hooks, 17 of which price their own swaps.
+The ones whose descriptions and code size suggest heavy arithmetic:
+
+| hook | address | deployed bytecode | what the registry says it does |
+| --- | --- | ---: | --- |
+| **BunniHook** | `0x0000fe59…1888` | 23.5 KB | computes all swap math internally from a configurable Liquidity Density Function, with TWAP-based and surge fees |
+| **TokiHook** | `0x916bc355…1888` | 23.9 KB | custom-curve hook implementing a Pendle-style fixed-rate AMM |
+| Spot | `0xb4f4949e…10cc` | 11.2 KB | full-range AMM with a truncated geometric-mean oracle driving dynamic fees |
+| Clanker Dynamic Fee | `0xfd213be7…68cc` | — | fees adjusted from swap volatility via a tick accumulator |
+
+Bytecode sizes are measured from Arbitrum One; the descriptions are the registry's own. Both
+BunniHook and TokiHook are within a few hundred bytes of the 24 KB contract limit, which is itself a
+signal — a hook that fits comfortably is not doing much.
+
+BunniHook is the strongest candidate found anywhere so far: it replaces the constant-product curve
+outright, and it is deployed on ten chains including Arbitrum, so it can be profiled against a fork
+of Arbitrum One with `profile-hooks.bash`'s tracer rather than reconstructed. That is the measurement
+worth doing next.
 
 ## What this means for the project
 
