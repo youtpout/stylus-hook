@@ -1,8 +1,10 @@
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-/// @notice The parts of Arbitrum's ArbWasm precompile that `StylusDeployer` needs.
-/// @dev Trimmed from https://github.com/OffchainLabs/nitro-contracts `src/precompiles/ArbWasm.sol`.
+/// @notice The three methods of Arbitrum's ArbWasm precompile that `StylusDeployer` calls.
+/// @dev Declared here from the precompile's published ABI rather than copied: nitro-contracts is
+///      BUSL-1.1, and this repository is MIT. An earlier revision of this file carried the BUSL
+///      tag by mistake, which would have put a production-use restriction on an MIT repository.
 interface ArbWasm {
     /// @notice Compile and activate a Stylus contract, paying the data fee out of the call's value.
     function activateProgram(address program)

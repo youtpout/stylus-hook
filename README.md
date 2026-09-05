@@ -173,6 +173,24 @@ cd uniswap && STYLUS_AIRDROP=0x... forge script script/01_DeployStylusAirdropHoo
 `stylus-counter-hook` / `02_DeployStylusCounterHook.s.sol`, and
 `00_DeployAirdropHook.s.sol` deploys the pure-Solidity baseline for comparison.
 
+## Licensing
+
+This repository is MIT — see [LICENSE](LICENSE). Two files carry their own terms and say so in their
+headers:
+
+| file | licence | why it is here |
+| --- | --- | --- |
+| [`uniswap/src/vendor/ABDKMathQuad.sol`](uniswap/src/vendor/ABDKMathQuad.sol) | BSD-4-Clause, © ABDK Consulting | IEEE 754 binary128 in software. Vendored to be measured, not used — it is what makes Uniswap's TWAMM cost what it does |
+| [`uniswap/script/bench/vendor/StylusDeployer.sol`](uniswap/script/bench/vendor/StylusDeployer.sol) | MIT, Offchain Labs | `cargo stylus` routes CREATE2 deployments through it, and it exists only on real Arbitrum chains |
+
+Both are permissive and impose nothing on the rest of the tree.
+
+Nothing under a copyleft or source-available licence is reproduced here. In particular Uniswap's own
+`TwammMath` is marked `UNLICENSED` inside a GPL-2.0 repository, so
+[`TwammHook.sol`](uniswap/src/TwammHook.sol) implements the published closed form (Paradigm, 2021)
+from the formula instead, and EulerSwap — BUSL-1.1 — is referenced in
+[BENCHMARK.md](BENCHMARK.md) for information with none of its code copied.
+
 ## Where to look
 
 | What | File |
