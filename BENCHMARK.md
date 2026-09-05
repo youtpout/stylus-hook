@@ -501,6 +501,28 @@ Measuring that share needs a live Bunni pool, and pool discovery on Arbitrum tur
 hard part: the hub is an `internal immutable` with no getter, so it cannot simply be read off the
 hook.
 
+## Against the official guidance
+
+Arbitrum publishes [gas optimization best practices](https://docs.arbitrum.io/stylus/best-practices/gas-optimization)
+for Stylus. It says up front that its multipliers are directional and that you should benchmark your
+own contract, which is what this document is. Four of its claims are checkable against the
+measurements here, and they do not all hold.
+
+| the docs say | measured here |
+| --- | --- |
+| compute-heavy loops: **~50–100×** | **10.6×** at best, on 64-bit xorshift. 256-bit work runs 1.65× to 4.5×. |
+| storage operations: **none (1×)** | 1.8 % cheaper. Agrees, for every practical purpose. |
+| set `opt-level = "z"` for smaller binaries | makes them **bigger**: 18,555 → 18,928 bytes, because the SDK's own pinned `wasm-opt -Oz` already runs afterwards. `"s"` wins. |
+| `ecrecover`: 3,000 gas → **~300 gas, ~10×** | no mechanism for this is visible. `stylus_sdk::crypto` exposes exactly one primitive, `native_keccak256`; there is no signature hostio. A Stylus contract can only call the `0x01` precompile at its EVM price, or implement secp256k1 in Rust, and neither lands near 300. |
+
+The 50–100× figure is the one that matters most, because it is the number a team would use to decide
+whether to port. Nothing measured here — five kinds of arithmetic, across four orders of magnitude of
+loop length, on a current dev node — comes within a factor of five of it. If it is reachable, it is
+on a workload shape this document did not find, and the docs do not say which.
+
+Two pieces of the guidance the work here follows independently: cache storage reads rather than
+re-reading in a loop, and measure on a live endpoint because `TestVM` has no gas meter.
+
 ## What this means for the project## Pricing a real hook: AntiSandwichHook
 
 `./bench-antisandwich.bash` measures OpenZeppelin's
@@ -660,6 +682,28 @@ after the Stylus entry fee; at 70 % arithmetic, about 15 %. Worth having, not th
 Measuring that share needs a live Bunni pool, and pool discovery on Arbitrum turned out to be the
 hard part: the hub is an `internal immutable` with no getter, so it cannot simply be read off the
 hook.
+
+## Against the official guidance
+
+Arbitrum publishes [gas optimization best practices](https://docs.arbitrum.io/stylus/best-practices/gas-optimization)
+for Stylus. It says up front that its multipliers are directional and that you should benchmark your
+own contract, which is what this document is. Four of its claims are checkable against the
+measurements here, and they do not all hold.
+
+| the docs say | measured here |
+| --- | --- |
+| compute-heavy loops: **~50–100×** | **10.6×** at best, on 64-bit xorshift. 256-bit work runs 1.65× to 4.5×. |
+| storage operations: **none (1×)** | 1.8 % cheaper. Agrees, for every practical purpose. |
+| set `opt-level = "z"` for smaller binaries | makes them **bigger**: 18,555 → 18,928 bytes, because the SDK's own pinned `wasm-opt -Oz` already runs afterwards. `"s"` wins. |
+| `ecrecover`: 3,000 gas → **~300 gas, ~10×** | no mechanism for this is visible. `stylus_sdk::crypto` exposes exactly one primitive, `native_keccak256`; there is no signature hostio. A Stylus contract can only call the `0x01` precompile at its EVM price, or implement secp256k1 in Rust, and neither lands near 300. |
+
+The 50–100× figure is the one that matters most, because it is the number a team would use to decide
+whether to port. Nothing measured here — five kinds of arithmetic, across four orders of magnitude of
+loop length, on a current dev node — comes within a factor of five of it. If it is reachable, it is
+on a workload shape this document did not find, and the docs do not say which.
+
+Two pieces of the guidance the work here follows independently: cache storage reads rather than
+re-reading in a loop, and measure on a live endpoint because `TestVM` has no gas meter.
 
 ## What this means for the project
 
