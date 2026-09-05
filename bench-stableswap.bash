@@ -10,21 +10,14 @@
 set -euo pipefail
 
 NITRO_IMAGE=${NITRO_IMAGE:-offchainlabs/nitro-node:v3.11.3-beb2108-dev}
-CONTAINER=${CONTAINER:-stylus-compute-bench}
+CONTAINER=${CONTAINER:-stylus-stableswap-bench}
 RPC=${RPC:-http://127.0.0.1:8547}
 KEY=0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659
 ARB_OWNER=0x0000000000000000000000000000000000000070
 ARB_WASM=0x0000000000000000000000000000000000000071
 LIQUIDITY=1000000000000000000000
 SWAP_AMOUNT=1000000000000000000
-ROUNDS_SWEEP=${ROUNDS_SWEEP:-"0 50 200 500 1000 2000 5000"}
-# storage is expensive enough that a much shorter sweep says everything
-STORAGE_SWEEP=${STORAGE_SWEEP:-"0 5 10 25 50 100"}
-# one rpow is a chain of mulDivs, so a short sweep is plenty
-RPOW_SWEEP=${RPOW_SWEEP:-"0 5 10 25 50 100"}
-SQRT_SWEEP=${SQRT_SWEEP:-"0 10 25 50 100 200"}
-# one StableSwap swap is twelve Newton iterations, so a handful says everything
-STABLE_SWEEP=${STABLE_SWEEP:-"0 1 2 5 10 20"}
+ROUNDS=${ROUNDS:-3}
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
@@ -50,7 +43,7 @@ CREATE2_DEPLOYER=$(cast send --rpc-url "$RPC" --private-key $KEY --create \
 
 log "deploying v4 and the Solidity compute hook"
 (cd "$ROOT/uniswap" && CREATE2_DEPLOYER="$CREATE2_DEPLOYER" \
-  forge script script/bench/DeployComputeBench.s.sol:DeployComputeBenchScript \
+  forge script script/bench/DeployStableSwapBench.s.sol:DeployStableSwapBenchScript \
     --rpc-url "$RPC" --private-key $KEY --create2-deployer "$CREATE2_DEPLOYER" \
     --gas-estimate-multiplier 200 --broadcast --slow) >"$WORK/deploy.log" 2>&1 \
   || { tail -40 "$WORK/deploy.log"; exit 1; }
@@ -61,19 +54,19 @@ POOL_MANAGER=$(addr_of "poolManager")
 CURRENCY0=$(addr_of "currency0")
 CURRENCY1=$(addr_of "currency1")
 FIXTURE=$(addr_of "fixture")
-SOLIDITY_HOOK=$(addr_of "ComputeHook (sol)")
+SOLIDITY_HOOK=$(addr_of "StableSwap (sol)")
 grep -E "^  [a-zA-Z].*0x" "$WORK/deploy.log" | sed 's/^  //'
 
 log "mining and deploying the Rust twin"
-(cd "$ROOT/stylus" && cargo stylus get-initcode --contract stylus-native-compute) 2>/dev/null \
+(cd "$ROOT/stylus" && cargo stylus get-initcode --contract stylus-native-stableswap) 2>/dev/null \
   | tail -1 >"$WORK/initcode.hex"
-CONSTRUCTOR=$( (cd "$ROOT/stylus" && cargo stylus constructor --contract stylus-native-compute) 2>/dev/null | tail -1)
+CONSTRUCTOR=$( (cd "$ROOT/stylus" && cargo stylus constructor --contract stylus-native-stableswap) 2>/dev/null | tail -1)
 (cd "$ROOT/stylus" && cargo run -q -p stylus-hook-miner -- \
   --initcode-file "$WORK/initcode.hex" --permissions before-swap \
   --constructor-signature "$CONSTRUCTOR" --constructor-args "$POOL_MANAGER" \
   --deployer "$STYLUS_DEPLOYER") >"$WORK/mine.log" 2>&1 || { cat "$WORK/mine.log"; exit 1; }
 SALT=$(grep -m1 '^salt:' "$WORK/mine.log" | grep -oE '0x[0-9a-fA-F]{64}')
-(cd "$ROOT/stylus" && cargo stylus deploy --contract stylus-native-compute --no-verify \
+(cd "$ROOT/stylus" && cargo stylus deploy --contract stylus-native-stableswap --no-verify \
   -e "$RPC" --private-key $KEY --deployer-address "$STYLUS_DEPLOYER" --deployer-salt "$SALT" \
   --constructor-args "$POOL_MANAGER") >"$WORK/native.log" 2>&1 \
   || { tail -30 "$WORK/native.log"; exit 1; }
@@ -92,15 +85,13 @@ open_pool 0x0000000000000000000000000000000000000000
 open_pool "$SOLIDITY_HOOK"
 open_pool "$RUST_HOOK"
 
-# the two implementations must agree, or the sweep compares different work
-for n in 1 100; do
-  for fn in 'work(uint256)(uint64)' 'workMulDiv(uint256)(uint256)' 'workRpow(uint256)(uint256)' 'workSqrt(uint256)(uint256)'; do
-    a=$(cast call "$SOLIDITY_HOOK" "$fn" "$n" --rpc-url "$RPC" | awk '{print $1}')
-    b=$(cast call "$RUST_HOOK" "$fn" "$n" --rpc-url "$RPC" | awk '{print $1}')
-    [ "$a" = "$b" ] || { echo "the two hooks disagree on $fn at n=$n: $a vs $b"; exit 1; }
-  done
+# the two curves must agree, or the benchmark compares two different AMMs
+for n in 1000000000000000000 5000000000000000000; do
+  a=$(cast call "$SOLIDITY_HOOK" 'getY(uint256,uint256,uint256,uint256)(uint256)' "$n" 1000000000000000000000 600000000000000000000 100 --rpc-url "$RPC" | awk '{print $1}')
+  b=$(cast call "$RUST_HOOK" 'getY(uint256,uint256,uint256,uint256)(uint256)' "$n" 1000000000000000000000 600000000000000000000 100 --rpc-url "$RPC" | awk '{print $1}')
+  [ "$a" = "$b" ] || { echo "the two curves disagree at amountIn=$n: $a vs $b"; exit 1; }
 done
-echo "both hooks compute the same xorshift64, mulDiv, rpow and sqrt"
+echo "both hooks price the swap identically"
 
 swap_gas() {
   cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$1" "$SWAP_AMOUNT" true \
@@ -111,49 +102,12 @@ log "sweeping the amount of work"
 # warm every slot first
 for i in 0 1 2; do swap_gas "$i" >/dev/null; done
 
-for mode in 0 1 2 3 4; do
-  sweep=$ROUNDS_SWEEP
-  case $mode in
-    0) echo; echo "mode 0: xorshift64 on a u64 — a native WASM word, no native EVM equivalent" ;;
-    1) echo
-       echo "mode 1: mulDiv on 256-bit words. This is what Uniswap's own swap math is made of." ;;
-    2) echo
-       echo "mode 2: writing storage slots — the thing Stylus is not supposed to make cheaper,"
-       echo "        since loads and stores are host operations priced in EVM gas either way."
-       sweep=$STORAGE_SWEEP ;;
-    3) echo
-       echo "mode 3: rpow — fixed-point exponentiation by squaring, one call per round."
-       echo "        This is what Bunni's Liquidity Density Functions run on every swap."
-       sweep=$RPOW_SWEEP ;;
-    4) echo
-       echo "mode 4: integer sqrt of full-range values, one per round."
-       echo "        EulerSwap inverts its curve with the quadratic formula, so every swap takes"
-       echo "        the square root of a 255-bit discriminant."
-       sweep=$SQRT_SWEEP ;;
-  esac
-  cast send "$SOLIDITY_HOOK" "setMode(uint8)" "$mode" --rpc-url "$RPC" --private-key $KEY >/dev/null
-  cast send "$RUST_HOOK" "setMode(uint8)" "$mode" --rpc-url "$RPC" --private-key $KEY >/dev/null
-
-  printf '%-8s %12s %12s %12s %12s\n' rounds solidity rust delta winner
-  for n in $sweep; do
-    cast send "$SOLIDITY_HOOK" "setRounds(uint256)" "$n" --rpc-url "$RPC" --private-key $KEY >/dev/null
-    cast send "$RUST_HOOK" "setRounds(uint256)" "$n" --rpc-url "$RPC" --private-key $KEY >/dev/null
-    swap_gas 1 >/dev/null; swap_gas 2 >/dev/null   # warm the new value
-    s=$(swap_gas 1); r=$(swap_gas 2)
-    d=$((r - s))
-    if [ "$d" -lt 0 ]; then w=rust; else w=solidity; fi
-    printf '%-8s %12s %12s %12s %12s\n' "$n" "$s" "$r" "$d" "$w"
-  done
+log "swapping through both ($ROUNDS rounds; the first is cold)"
+printf '%-8s %14s %14s %14s\n' round solidity rust delta
+for round in $(seq 1 "$ROUNDS"); do
+  s=$(swap_gas 1); r=$(swap_gas 2)
+  printf '%-8s %14s %14s %14s\n' "$round" "$s" "$r" "$((r - s))"
 done
-
-# mode 2 left slots written on both sides; they must hold the same values
-for k in 0 9 40; do
-  a=$(cast call "$SOLIDITY_HOOK" 'readStorage(uint256)(uint256)' "$k" --rpc-url "$RPC" | awk '{print $1}')
-  b=$(cast call "$RUST_HOOK" 'readStorage(uint256)(uint256)' "$k" --rpc-url "$RPC" | awk '{print $1}')
-  [ "$a" = "$b" ] || { echo "the two hooks stored different values at slot $k: $a vs $b"; exit 1; }
-done
-echo
-echo "both hooks stored the same values"
 
 BASE=$(swap_gas 0)
 echo

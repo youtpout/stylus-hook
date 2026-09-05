@@ -178,7 +178,7 @@ cd uniswap && STYLUS_AIRDROP=0x... forge script script/01_DeployStylusAirdropHoo
 | A hook with no Solidity at all | [`stylus/native-counter/src/lib.rs`](stylus/native-counter/src/lib.rs) |
 | End-to-end proof that it works | [`prove-native-hook.bash`](prove-native-hook.bash) |
 | CREATE2 salt mining for a hook address | [`stylus/hook-miner/src/lib.rs`](stylus/hook-miner/src/lib.rs) |
-| Gas benchmarks | [`bench.bash`](bench.bash), [`bench-counter.bash`](bench-counter.bash), [`bench-compute.bash`](bench-compute.bash) |
+| Gas benchmarks | [`bench.bash`](bench.bash), [`bench-counter.bash`](bench-counter.bash), [`bench-compute.bash`](bench-compute.bash), [`bench-stableswap.bash`](bench-stableswap.bash) |
 | Opcode profile of shipping hooks | [`profile-hooks.bash`](profile-hooks.bash), [`bench-antisandwich.bash`](bench-antisandwich.bash) |
 | Hook forwarding v4 callbacks to Stylus | [`uniswap/src/AirdropHookProxy.sol`](uniswap/src/AirdropHookProxy.sol) |
 | The same hook in pure Solidity | [`uniswap/src/AirdropHook.sol`](uniswap/src/AirdropHook.sol) |

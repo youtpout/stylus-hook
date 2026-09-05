@@ -26,7 +26,7 @@ contract ComputeHook is BaseHook {
     uint256 public rounds;
     uint64 public lastResult;
 
-    /// @notice 0 xorshift64, 1 `FullMath.mulDiv`, 2 storage writes, 3 `rpow`, 4 integer `sqrt`.
+    /// @notice 0 xorshift64, 1 `mulDiv`, 2 storage writes, 3 `rpow`, 4 integer `sqrt`.
     uint8 public mode;
 
     /// @dev Written by mode 2. A mapping rather than an array because that is what hooks use, so

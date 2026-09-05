@@ -222,24 +222,53 @@ comparisons or a de Bruijn table, while `leading_zeros` in Rust lowers to WASM's
 > copied from it. EulerSwap is licensed BUSL-1.1, which restricts production use; it is referenced
 > in this document for information only.
 
+### Building a hook to clear the bar, and failing
+
+Every shipping hook profiled here is dominated by storage, so the obvious move was to build one that
+is not. `StableSwapHook.sol` and `stylus/native-stableswap` price a swap on a StableSwap curve:
+solving the invariant `D` takes about four Newton iterations and the output reserve `y` about eight
+more, so twelve iterations of 256-bit arithmetic per swap, with no storage beyond two reserves.
+`./bench-stableswap.bash` runs both, and the benchmark checks they quote the same output before
+measuring.
+
+| | gas per swap | over baseline |
+| --- | ---: | ---: |
+| no hook | 115,061 | — |
+| StableSwap in Solidity | 149,112 | +34,051 |
+| **StableSwap in Rust** | **176,519** | **+61,458** |
+
+**Rust loses by 27,407 gas.** Not close.
+
+The reason is the sharpest result in this document. The StableSwap invariant is written with plain
+`*` and `/` on values that never overflow 256 bits — `(d * d) / (x0 * 2)`. In the EVM that is a
+`MUL` and a `DIV`: **five gas each**. In WASM there is no 256-bit word at all, so the multiply
+becomes sixteen 64-bit multiplies with carry propagation and the divide becomes a full long-division
+routine. Stylus is not paying a fixed overhead here, it is doing genuinely more work.
+
+The whole curve costs 34,051 gas in Solidity. Twelve Newton iterations of it. That is what the EVM's
+256-bit word buys, and it is why every candidate in this document came up short.
+
 ### The rule this all adds up to
 
-Three measurements of the same question, at three magnitudes:
+Five measurements of the same question, ordered by how badly the work fits a 256-bit word:
 
-| operation | range | Solidity | Rust | ratio |
+| operation | what it needs | Solidity | Rust | ratio |
 | --- | --- | ---: | ---: | ---: |
-| `rpow` (Bunni's LDF) | Q96 fixed-point | 3,058 | 1,850 | 1.65× |
-| `mulDiv` | full 256-bit | 694 | 247 | 2.8× |
-| `sqrt` | full 256-bit | 2,009 | 447 | 4.5× |
+| plain `*` and `/` (StableSwap) | one EVM opcode each | 5 gas | limb arithmetic | **EVM wins** |
+| `rpow` (Bunni's LDF) | `mulDiv`, Q96, fits in 256 bits | 3,058 | 1,850 | 1.65× |
+| `mulDiv` | 512-bit intermediate | 694 | 247 | 2.8× |
+| `sqrt` | 512-bit intermediate + bit length | 2,009 | 447 | 4.5× |
 | xorshift64 | 64-bit words | 115 | 10.9 | 10.6× |
 
-**How much Stylus buys tracks how badly the work fits a 256-bit word.** Fixed-point maths that stays
-inside 256 bits barely gains, because that is exactly the case the EVM is built for. Work that
-overflows into 512-bit intermediates gains a few times over. Work in words *smaller* than 256 bits —
-where the EVM pays for a word it cannot use — gains an order of magnitude.
+**Stylus wins exactly where the EVM cannot express the work in raw 256-bit opcodes**, and by how far
+it cannot. Arithmetic that fits in one `MUL` and one `DIV` is five gas apiece and unbeatable.
+Arithmetic needing 512 bits forces Solidity through Remco Bloemen's long division and Stylus wins a
+few times over. Arithmetic needing a bit length, which the EVM has no instruction for, widens that
+further. Arithmetic in words *smaller* than 256 bits — where the EVM pays for a word it cannot use —
+gains an order of magnitude.
 
-That is a sharper thing to say than "compute is cheaper in Stylus", and it is not what the word size
-alone would suggest.
+"Compute is cheaper in Stylus" is not the rule. **"Work the 256-bit word cannot do" is the rule**,
+and most AMM maths, including a StableSwap curve, is not that.
 
 ### Writing storage
 
