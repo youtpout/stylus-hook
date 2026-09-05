@@ -466,9 +466,36 @@ rather than an accessory to one; and its curve inversion is full-range `sqrt` an
 and 2.8× regimes. It is absent from the registry because it deploys one hook instance per pool
 rather than a shared singleton.
 
-Two caveats stand. EulerSwap is BUSL-1.1, so it is referenced here for information and its code is
-not reproduced. And its compute *share* per swap is still unmeasured — the curve maths sits
-alongside Euler vault calls and their storage, which do not move.
+EulerSwap is BUSL-1.1, so it is referenced here for information and its code is not reproduced.
+
+### Measuring it
+
+Two EulerSwap v2 pools are live on Arbitrum. The pool exposes `computeQuote`, `getLimits` and
+`getReserves` separately, and Arbitrum's `NodeInterface.gasEstimateComponents` splits an estimate
+into its L2 and L1 halves, so the swap path can be taken apart on the real chain without a trace:
+
+| | L2 gas |
+| --- | ---: |
+| `getStaticParams()` — a `pure` call, the floor | 25,865 |
+| `getReserves()` | 26,819 |
+| **`getLimits()` — queries the Euler vaults** | **153,526** |
+| `computeQuote()` — the curve plus those limits | 156,773 |
+| `quoteExactInput()` — the whole path | 162,603 |
+
+`computeQuote` is `getLimits` plus about 3,200 gas. **The curve — the quadratic-formula inversion
+with its 255-bit square root — costs roughly 3,200 gas. The vault queries cost 127,700.**
+
+A second measurement says the same thing independently: the cost barely moves with trade size.
+Quoting 1,000 units costs 156,773 and quoting a thousand times more costs 156,825, a difference of
+52 gas. An iterative curve solve that were doing real work would not be that flat.
+
+So the protocol that looked most compute-heavy in the whole registry — its AMM *is* the hook, and it
+inverts its curve with a square root — spends about **2 % of its gas on arithmetic** and the rest
+talking to lending vaults. At the 4.5× measured for `sqrt`, porting the curve would save around
+2,300 gas against a ~20,000 gas entry fee.
+
+That is the search concluded. Every candidate, from a counter to a live $800M protocol, lands in the
+same place.
 
 ### Looking further: the hook registry
 
@@ -657,9 +684,36 @@ rather than an accessory to one; and its curve inversion is full-range `sqrt` an
 and 2.8× regimes. It is absent from the registry because it deploys one hook instance per pool
 rather than a shared singleton.
 
-Two caveats stand. EulerSwap is BUSL-1.1, so it is referenced here for information and its code is
-not reproduced. And its compute *share* per swap is still unmeasured — the curve maths sits
-alongside Euler vault calls and their storage, which do not move.
+EulerSwap is BUSL-1.1, so it is referenced here for information and its code is not reproduced.
+
+### Measuring it
+
+Two EulerSwap v2 pools are live on Arbitrum. The pool exposes `computeQuote`, `getLimits` and
+`getReserves` separately, and Arbitrum's `NodeInterface.gasEstimateComponents` splits an estimate
+into its L2 and L1 halves, so the swap path can be taken apart on the real chain without a trace:
+
+| | L2 gas |
+| --- | ---: |
+| `getStaticParams()` — a `pure` call, the floor | 25,865 |
+| `getReserves()` | 26,819 |
+| **`getLimits()` — queries the Euler vaults** | **153,526** |
+| `computeQuote()` — the curve plus those limits | 156,773 |
+| `quoteExactInput()` — the whole path | 162,603 |
+
+`computeQuote` is `getLimits` plus about 3,200 gas. **The curve — the quadratic-formula inversion
+with its 255-bit square root — costs roughly 3,200 gas. The vault queries cost 127,700.**
+
+A second measurement says the same thing independently: the cost barely moves with trade size.
+Quoting 1,000 units costs 156,773 and quoting a thousand times more costs 156,825, a difference of
+52 gas. An iterative curve solve that were doing real work would not be that flat.
+
+So the protocol that looked most compute-heavy in the whole registry — its AMM *is* the hook, and it
+inverts its curve with a square root — spends about **2 % of its gas on arithmetic** and the rest
+talking to lending vaults. At the 4.5× measured for `sqrt`, porting the curve would save around
+2,300 gas against a ~20,000 gas entry fee.
+
+That is the search concluded. Every candidate, from a counter to a live $800M protocol, lands in the
+same place.
 
 ### Looking further: the hook registry
 
