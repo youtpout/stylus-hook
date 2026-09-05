@@ -11,6 +11,20 @@ what used to force a Solidity contract into every Stylus hook.
 built on it with no Solidity anywhere, and [`stylus/hook-miner`](stylus/hook-miner) mines the
 CREATE2 salt that lands it on a flag-carrying address.
 
+`./prove-native-hook.bash` is the receipt: it stands up a chain, mines the address, deploys the Rust
+hook to it and has a real `PoolManager` drive every callback the hook declares.
+
+```
+ok  landed on the mined address
+ok  the code at that address is an activated Stylus program
+ok  its constructor ran and validated the address
+ok  beforeAddLiquidity reached the Rust hook
+ok  beforeSwap reached the Rust hook
+ok  afterSwap reached the Rust hook
+ok  beforeRemoveLiquidity reached the Rust hook
+ok  beforeDonate reverts with HookNotImplemented
+```
+
 The repository also keeps the earlier **split design**, where a stateless Solidity shell owns the
 address and forwards callbacks to Stylus:
 
@@ -144,7 +158,9 @@ cd uniswap && STYLUS_AIRDROP=0x... forge script script/01_DeployStylusAirdropHoo
 | --- | --- |
 | `IHooks` callbacks implemented in Rust | [`stylus/base-hook/src/hooks.rs`](stylus/base-hook/src/hooks.rs) |
 | Permission flags v4 reads from an address | [`stylus/base-hook/src/permissions.rs`](stylus/base-hook/src/permissions.rs) |
+| Calling back into the `PoolManager` from Rust | [`stylus/base-hook/src/pool_manager.rs`](stylus/base-hook/src/pool_manager.rs) |
 | A hook with no Solidity at all | [`stylus/native-counter/src/lib.rs`](stylus/native-counter/src/lib.rs) |
+| End-to-end proof that it works | [`prove-native-hook.bash`](prove-native-hook.bash) |
 | CREATE2 salt mining for a hook address | [`stylus/hook-miner/src/lib.rs`](stylus/hook-miner/src/lib.rs) |
 | Gas benchmark, Solidity vs Stylus | [`bench.bash`](bench.bash), [`uniswap/script/bench/`](uniswap/script/bench) |
 | Hook forwarding v4 callbacks to Stylus | [`uniswap/src/AirdropHookProxy.sol`](uniswap/src/AirdropHookProxy.sol) |

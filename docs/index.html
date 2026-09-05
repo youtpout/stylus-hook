@@ -100,10 +100,14 @@
                 once needed is gone.</li>
             <li class="done">Hook state and logic fully in Rust, behind a stateless Solidity shell.
             </li>
-            <li>Port <code>BaseHook</code> — permission validation, the ten callbacks, selector
-                returns — to Stylus.</li>
-            <li>CREATE2 deployment from <code>cargo stylus</code>, so a Stylus contract can land on a
-                flag-carrying address by itself.</li>
+            <li class="done">Port <code>BaseHook</code> to Stylus — the ten callbacks, permission
+                and pool validation, the delta and fee encodings, and calling back into the
+                <code>PoolManager</code>.</li>
+            <li class="done">CREATE2 deployment, so a Stylus contract lands on a flag-carrying
+                address by itself — no Solidity factory involved.</li>
+            <li class="done">A hook with no Solidity anywhere, driven end to end by a real
+                <code>PoolManager</code>.</li>
+            <li>A hook whose work is compute rather than storage, where Stylus actually wins.</li>
             <li>A hook template repository and documentation for building v4 hooks in Rust
                 end-to-end.</li>
         </ul>
