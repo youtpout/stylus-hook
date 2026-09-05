@@ -26,7 +26,7 @@ contract ComputeHook is BaseHook {
     uint256 public rounds;
     uint64 public lastResult;
 
-    /// @notice 0 runs xorshift64, 1 runs `FullMath.mulDiv`, 2 writes storage slots.
+    /// @notice 0 xorshift64, 1 `FullMath.mulDiv`, 2 storage writes, 3 fixed-point `rpow`.
     uint8 public mode;
 
     /// @dev Written by mode 2. A mapping rather than an array because that is what hooks use, so
@@ -105,6 +105,30 @@ contract ComputeHook is BaseHook {
         return slots[key];
     }
 
+    /// @notice Fixed-point exponentiation by squaring, as `FixedPointMathLib.rpow` in solady.
+    /// @dev This is what Bunni's Liquidity Density Functions run on every swap:
+    ///      `LibGeometricDistribution` calls `alphaX96.rpow(length, Q96)` several times per LDF
+    ///      query. One `rpow` is a chain of full-precision `mulDiv`s, so it is the natural unit for
+    ///      pricing a hook that replaces the AMM curve with its own math.
+    function rpow(uint256 x, uint256 n, uint256 precision) public pure returns (uint256 z) {
+        z = n % 2 != 0 ? x : precision;
+        for (n /= 2; n != 0; n /= 2) {
+            x = FullMath.mulDiv(x, x, precision);
+            if (n % 2 != 0) z = FullMath.mulDiv(z, x, precision);
+        }
+    }
+
+    /// @notice `n` LDF-sized `rpow` calls. Must agree with the Rust twin.
+    function workRpow(uint256 n) public pure returns (uint256) {
+        uint256 q96 = 1 << 96;
+        uint256 alpha = (q96 / 100) * 99; // a plausible LDF alpha, just under 1
+        uint256 acc = q96;
+        for (uint256 i = 0; i < n; i++) {
+            acc = rpow(alpha + i, 100, q96);
+        }
+        return acc;
+    }
+
     function _beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
         internal
         override
@@ -115,8 +139,10 @@ contract ComputeHook is BaseHook {
             lastResult = work(rounds);
         } else if (m == 1) {
             lastResult = uint64(workMulDiv(rounds));
-        } else {
+        } else if (m == 2) {
             lastResult = uint64(workStorage(rounds));
+        } else {
+            lastResult = uint64(workRpow(rounds));
         }
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }

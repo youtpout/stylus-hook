@@ -31,7 +31,7 @@ pub struct ComputeHook {
     pool_manager: StorageAddress,
     rounds: StorageU256,
     last_result: StorageU64,
-    /// 0 runs xorshift64, 1 runs `mulDiv`, 2 writes storage slots.
+    /// 0 xorshift64, 1 `mulDiv`, 2 storage writes, 3 fixed-point `rpow`.
     mode: StorageU8,
     /// Written by mode 2. A map rather than a vector because that is what hooks use, so each access
     /// includes hashing the key as well as the store itself.
@@ -132,6 +132,41 @@ impl ComputeHook {
         self.slots.get(key)
     }
 
+    /// Fixed-point exponentiation by squaring, matching solady's `FixedPointMathLib.rpow`.
+    ///
+    /// This is what Bunni's Liquidity Density Functions run on every swap:
+    /// `LibGeometricDistribution` calls `alphaX96.rpow(length, Q96)` several times per LDF query.
+    /// One `rpow` is a chain of full-precision `mulDiv`s.
+    pub fn rpow(&self, x: U256, n: U256, precision: U256) -> U256 {
+        let two = U256::from(2);
+        let mut x = x;
+        let mut n = n;
+        let mut z = if !(n % two).is_zero() { x } else { precision };
+        n /= two;
+        while !n.is_zero() {
+            x = mul_div(x, x, precision);
+            if !(n % two).is_zero() {
+                z = mul_div(z, x, precision);
+            }
+            n /= two;
+        }
+        z
+    }
+
+    /// `n` LDF-sized `rpow` calls. Must agree with `ComputeHook.sol`.
+    pub fn work_rpow(&self, n: U256) -> U256 {
+        let q96 = U256::from(1u8) << 96;
+        let alpha = (q96 / U256::from(100)) * U256::from(99);
+        let hundred = U256::from(100);
+        let mut acc = q96;
+        let mut i = U256::ZERO;
+        while i < n {
+            acc = self.rpow(alpha + i, hundred, q96);
+            i += U256::from(1);
+        }
+        acc
+    }
+
     /// `mulDiv` on 256-bit words, `n` times. Must agree with `ComputeHook.sol`.
     ///
     /// This is the atom Uniswap's own swap math is built from — `computeSwapStep`, `SqrtPriceMath`
@@ -172,7 +207,8 @@ impl IHooks for ComputeHook {
         let result = match self.mode.get().to::<u8>() {
             0 => self.work(rounds),
             1 => self.work_mul_div(rounds).as_limbs()[0],
-            _ => self.work_storage(rounds).as_limbs()[0],
+            2 => self.work_storage(rounds).as_limbs()[0],
+            _ => self.work_rpow(rounds).as_limbs()[0],
         };
         self.last_result.set(U64::from(result));
         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
@@ -224,6 +260,28 @@ mod tests {
         assert_eq!(
             contract.work_mul_div(U256::from(100)),
             expect("9e3779b97f4a7c15c2b2ae3d27d4eb1148aadb3be51f0179088a57ce0f0bae90")
+        );
+    }
+
+    #[test]
+    fn rpow_matches_the_solidity_twin() {
+        let vm = TestVM::default();
+        vm.set_contract_address(HOOK);
+        let mut contract = ComputeHook::from(&vm);
+        contract.constructor(Address::new([0x4e; 20])).unwrap();
+
+        let d = |s: &str| U256::from_str_radix(s, 10).unwrap();
+        assert_eq!(
+            contract.work_rpow(U256::ZERO),
+            d("79228162514264337593543950336")
+        );
+        assert_eq!(
+            contract.work_rpow(U256::from(1)),
+            d("29000069819872093002514032964")
+        );
+        assert_eq!(
+            contract.work_rpow(U256::from(10)),
+            d("29000069819872093002514033297")
         );
     }
 

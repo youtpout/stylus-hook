@@ -171,6 +171,32 @@ several dozen opcodes. Rust gets there with a `U512` multiply and divide over li
 256-bit word is an advantage right up to the point where you need 257 bits, which is most of
 Uniswap's math.
 
+### `rpow`, the operation Bunni actually runs
+
+`LibGeometricDistribution` calls `alphaX96.rpow(length, Q96)` several times per Liquidity Density
+Function query, and BunniHook queries the LDF on every swap. One `rpow` is a chain of
+full-precision `mulDiv`s, so it is the right unit for pricing a hook that replaces the AMM curve.
+
+| `rpow(·, 100)` per swap | Solidity | Rust | delta |
+| ---: | ---: | ---: | ---: |
+| 0 | 124,560 | 164,255 | +39,695 |
+| 10 | 155,172 | 182,795 | +27,623 |
+| 25 | 201,106 | 210,621 | +9,515 |
+| 50 | 277,492 | **256,827** | −20,665 |
+| 100 | 430,328 | **349,303** | −81,025 |
+
+3,058 gas per `rpow` in Solidity, 1,850 in Rust: **1.65× cheaper**, crossing at **33 calls**.
+
+That is *less* than the 2.8× measured for `mulDiv`, which looks contradictory until you look at what
+`FullMath.mulDiv` actually does. It has two paths. When the 512-bit product needs all 512 bits it
+runs Remco Bloemen's long division — dozens of opcodes, and Stylus wins 2.8×. When the product fits
+in 256 bits it is a single `DIV`, which costs 5 gas and which Stylus cannot beat.
+
+Bunni's LDF math is in Q96, so its products fit and it takes the cheap path almost everywhere.
+**How much Stylus buys depends on the magnitudes a hook works with, not just on how much arithmetic
+it does.** Anything using the full 256-bit range benefits about twice as much as fixed-point Q96
+work.
+
 ### Writing storage
 
 There is no such thing as "Stylus storage" as distinct from "Solidity storage". A Stylus contract
@@ -318,10 +344,23 @@ Bytecode sizes are measured from Arbitrum One; the descriptions are the registry
 BunniHook and TokiHook are within a few hundred bytes of the 24 KB contract limit, which is itself a
 signal — a hook that fits comfortably is not doing much.
 
-BunniHook is the strongest candidate found anywhere so far: it replaces the constant-product curve
-outright, and it is deployed on ten chains including Arbitrum, so it can be profiled against a fork
-of Arbitrum One with `profile-hooks.bash`'s tracer rather than reconstructed. That is the measurement
-worth doing next.
+BunniHook is the strongest candidate found anywhere, and its own repository backs that up. Bunni
+publishes gas snapshots: a swap through it costs **437,000–505,000 gas**, against roughly 115,000
+for a swap with no hook. So the hook adds 320,000–390,000 gas per swap — five times what
+AntiSandwichHook adds, and far into the range where arithmetic could plausibly dominate.
+
+Its swap path runs `rpow` repeatedly, which is why that operation is benchmarked above. But the
+answer that comes back is sobering: `rpow` at Q96 precision is only **1.65× cheaper** in Rust,
+because Q96 products fit in 256 bits and take `FullMath.mulDiv`'s single-`DIV` fast path.
+
+What is still missing is Bunni's compute share. Its 320,000–390,000 gas per swap mixes LDF
+arithmetic with vault accounting, TWAP observation writes and rebalance bookkeeping, and only the
+first of those moves. At 1.65×, a hook whose cost were 40 % arithmetic would save about 6 % overall
+after the Stylus entry fee; at 70 % arithmetic, about 15 %. Worth having, not the headline.
+
+Measuring that share needs a live Bunni pool, and pool discovery on Arbitrum turned out to be the
+hard part: the hub is an `internal immutable` with no getter, so it cannot simply be read off the
+hook.
 
 ## What this means for the project## Pricing a real hook: AntiSandwichHook
 
@@ -441,10 +480,23 @@ Bytecode sizes are measured from Arbitrum One; the descriptions are the registry
 BunniHook and TokiHook are within a few hundred bytes of the 24 KB contract limit, which is itself a
 signal — a hook that fits comfortably is not doing much.
 
-BunniHook is the strongest candidate found anywhere so far: it replaces the constant-product curve
-outright, and it is deployed on ten chains including Arbitrum, so it can be profiled against a fork
-of Arbitrum One with `profile-hooks.bash`'s tracer rather than reconstructed. That is the measurement
-worth doing next.
+BunniHook is the strongest candidate found anywhere, and its own repository backs that up. Bunni
+publishes gas snapshots: a swap through it costs **437,000–505,000 gas**, against roughly 115,000
+for a swap with no hook. So the hook adds 320,000–390,000 gas per swap — five times what
+AntiSandwichHook adds, and far into the range where arithmetic could plausibly dominate.
+
+Its swap path runs `rpow` repeatedly, which is why that operation is benchmarked above. But the
+answer that comes back is sobering: `rpow` at Q96 precision is only **1.65× cheaper** in Rust,
+because Q96 products fit in 256 bits and take `FullMath.mulDiv`'s single-`DIV` fast path.
+
+What is still missing is Bunni's compute share. Its 320,000–390,000 gas per swap mixes LDF
+arithmetic with vault accounting, TWAP observation writes and rebalance bookkeeping, and only the
+first of those moves. At 1.65×, a hook whose cost were 40 % arithmetic would save about 6 % overall
+after the Stylus entry fee; at 70 % arithmetic, about 15 %. Worth having, not the headline.
+
+Measuring that share needs a live Bunni pool, and pool discovery on Arbitrum turned out to be the
+hard part: the hub is an `internal immutable` with no getter, so it cannot simply be read off the
+hook.
 
 ## What this means for the project
 
