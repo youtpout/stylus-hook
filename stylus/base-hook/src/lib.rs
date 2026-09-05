@@ -34,10 +34,12 @@ extern crate alloc;
 
 pub mod hooks;
 pub mod permissions;
+pub mod pool_manager;
 pub mod types;
 
 pub use hooks::{selector, HookConfig, HookGuards, IHooks, NO_DELTA};
 pub use permissions::Permissions;
+pub use pool_manager::PoolManagerCalls;
 pub use types::{
     delta_amount0, delta_amount1, to_balance_delta, BalanceDelta, BeforeSwapDelta, Currency,
     ModifyLiquidityParams, PoolKey, SwapParams, ZERO_DELTA,
