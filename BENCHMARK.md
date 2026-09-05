@@ -104,13 +104,56 @@ margin is thin, and it will only widen for a hook whose own work is worth more t
 Against pure Solidity the native hook still costs 62,561 gas more per swap. Same conclusion as the
 airdrop: this hook writes one storage slot per callback and computes nothing.
 
+## Where Rust starts winning
+
+The two hooks above both lose to Solidity, which invites the wrong conclusion. Stylus is not slower;
+it is *differently priced*. It costs more to enter and far less to run. `./bench-compute.bash`
+measures both halves of that: `ComputeHook.sol` and `stylus/native-compute` run the identical
+xorshift64 loop in `beforeSwap`, and the only thing that changes between rows is how many rounds.
+
+| rounds | Solidity | Rust | delta |
+| ---: | ---: | ---: | ---: |
+| 0 | 129,910 | 162,554 | +32,644 |
+| 50 | 137,032 | 163,070 | +26,038 |
+| 200 | 158,482 | 164,703 | +6,221 |
+| 500 | 201,410 | 167,995 | **−33,415** |
+| 1,000 | 272,946 | 173,472 | **−99,474** |
+| 2,000 | 415,846 | 184,253 | **−231,593** |
+| 5,000 | 844,878 | 216,929 | **−627,949** |
+
+Two numbers fall out of that table:
+
+- **Marginal cost.** Solidity spends 143 gas per round of the loop, Rust spends 10.9. Computation is
+  **13× cheaper** in Stylus.
+- **Fixed cost.** At zero rounds the Rust hook still costs 32,644 gas more, most of it the 16,717
+  it pays to load its WASM program on every call. Caching the contract cuts that to 2,685.
+
+So the crossover is at **roughly 250 rounds** — about 18,000 gas of EVM arithmetic — and around 140
+rounds if the contract is cached. Below that the entry fee dominates; above it, nothing else
+matters.
+
+The counter and the airdrop hook sit at the far left of that table. They do essentially zero rounds:
+read a slot, add one, write it back. Storage costs the same in both worlds, so there is no marginal
+saving to pay off the entry fee, and Solidity wins by construction. That is not a defect in the
+Rust port — it is what the first row of this table says will happen.
+
+### A caveat on the loop
+
+The benchmark uses a `u64` accumulator, which is the honest comparison but worth naming: a `u64` is
+a native WASM word, while the EVM has no word smaller than 256 bits, so Solidity's `uint64` is a
+256-bit value masked back down after every shift. Each language is using what it is good at.
+
+The reverse asymmetry also exists. `U256` arithmetic is a single EVM opcode and emulated over limbs
+in WASM, so a hook whose work is mostly 256-bit multiplication and division will show a much smaller
+Stylus advantage than 13×, and possibly none.
+
 ## What this means for the project
 
 The airdrop hook was the wrong thing to port. It is a bookkeeping hook: read a counter, add to it,
 write it back. That is the exact shape of hook where Stylus has nothing to offer.
 
-Stylus pays off when a hook has to *think* on every swap — the cases that are too expensive to write
-in Solidity at all:
+Stylus pays off when a hook has to *think* on every swap — past the ~250-round crossover measured
+above, which in practice means the cases that are too expensive to write in Solidity at all:
 
 - on-chain math: TWAP and volatility oracles, curve solvers, Newton iterations
 - dynamic fees computed from a model rather than looked up

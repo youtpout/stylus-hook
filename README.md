@@ -108,10 +108,23 @@ receipts.
 | two Solidity contracts | 166,835 | +42,245 |
 | Solidity shell + Stylus | 201,121 | +76,531 |
 
-Stylus costs 2.14× what Solidity does here, or 1.66× once the contract is cached. That is the
-workload's fault, not the port's: `afterSwap` is six `SLOAD`s and six `SSTORE`s with almost no
-arithmetic, and Stylus makes compute cheap, not storage. [BENCHMARK.md](BENCHMARK.md) has the
-breakdown and what kind of hook would actually pay off.
+Stylus costs 2.14× what Solidity does here. That is the workload's fault, not the port's: `afterSwap`
+is six `SLOAD`s and six `SSTORE`s with almost no arithmetic, and Stylus makes compute cheap, not
+storage.
+
+`./bench-compute.bash` shows the other side of it, running the same arithmetic loop in both
+languages and sweeping how much of it there is:
+
+| rounds of work | Solidity | Rust |
+| ---: | ---: | ---: |
+| 0 | 129,910 | 162,554 |
+| 200 | 158,482 | 164,703 |
+| 500 | 201,410 | **167,995** |
+| 5,000 | 844,878 | **216,929** |
+
+Computation is **13× cheaper** in Stylus — 10.9 gas per round against 143 — but a Stylus call costs
+32,644 gas more to enter, most of it loading the WASM program. The two cross at roughly 250 rounds.
+[BENCHMARK.md](BENCHMARK.md) has the full breakdown.
 
 ## Deploy a hook with no Solidity (Arbitrum Sepolia)
 
@@ -162,7 +175,7 @@ cd uniswap && STYLUS_AIRDROP=0x... forge script script/01_DeployStylusAirdropHoo
 | A hook with no Solidity at all | [`stylus/native-counter/src/lib.rs`](stylus/native-counter/src/lib.rs) |
 | End-to-end proof that it works | [`prove-native-hook.bash`](prove-native-hook.bash) |
 | CREATE2 salt mining for a hook address | [`stylus/hook-miner/src/lib.rs`](stylus/hook-miner/src/lib.rs) |
-| Gas benchmark, Solidity vs Stylus | [`bench.bash`](bench.bash), [`uniswap/script/bench/`](uniswap/script/bench) |
+| Gas benchmarks | [`bench.bash`](bench.bash), [`bench-counter.bash`](bench-counter.bash), [`bench-compute.bash`](bench-compute.bash) |
 | Hook forwarding v4 callbacks to Stylus | [`uniswap/src/AirdropHookProxy.sol`](uniswap/src/AirdropHookProxy.sol) |
 | The same hook in pure Solidity | [`uniswap/src/AirdropHook.sol`](uniswap/src/AirdropHook.sol) |
 | Hook state and logic in Rust | [`stylus/airdrop/src/lib.rs`](stylus/airdrop/src/lib.rs) |

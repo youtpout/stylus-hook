@@ -1,0 +1,26 @@
+[package]
+name = "stylus-native-compute"
+description = "A Uniswap v4 hook in pure Rust that does nothing but arithmetic, to find where Stylus beats Solidity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+alloy-primitives.workspace = true
+alloy-sol-types.workspace = true
+stylus-sdk.workspace = true
+stylus-uniswap-v4 = { path = "../base-hook" }
+
+[dev-dependencies]
+stylus-sdk = { workspace = true, features = ["stylus-test"] }
+
+[features]
+export-abi = ["stylus-sdk/export-abi", "stylus-uniswap-v4/export-abi"]
+debug = ["stylus-sdk/debug"]
+contract-client-gen = []
+
+[lib]
+crate-type = ["lib", "cdylib"]
