@@ -18,6 +18,8 @@ ARB_WASM=0x0000000000000000000000000000000000000071
 LIQUIDITY=1000000000000000000000
 SWAP_AMOUNT=1000000000000000000
 ROUNDS_SWEEP=${ROUNDS_SWEEP:-"0 50 200 500 1000 2000 5000"}
+# storage is expensive enough that a much shorter sweep says everything
+STORAGE_SWEEP=${STORAGE_SWEEP:-"0 5 10 25 50 100"}
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
@@ -104,20 +106,22 @@ log "sweeping the amount of work"
 # warm every slot first
 for i in 0 1 2; do swap_gas "$i" >/dev/null; done
 
-for mode in 0 1; do
-  if [ "$mode" = 0 ]; then
-    echo
-    echo "mode 0: xorshift64 on a u64 — a native WASM word, no native EVM equivalent"
-  else
-    echo
-    echo "mode 1: mulDiv on 256-bit words — one EVM opcode each, limb arithmetic in WASM."
-    echo "        This is what Uniswap's own swap math is made of."
-  fi
+for mode in 0 1 2; do
+  sweep=$ROUNDS_SWEEP
+  case $mode in
+    0) echo; echo "mode 0: xorshift64 on a u64 — a native WASM word, no native EVM equivalent" ;;
+    1) echo
+       echo "mode 1: mulDiv on 256-bit words. This is what Uniswap's own swap math is made of." ;;
+    2) echo
+       echo "mode 2: writing storage slots — the thing Stylus is not supposed to make cheaper,"
+       echo "        since loads and stores are host operations priced in EVM gas either way."
+       sweep=$STORAGE_SWEEP ;;
+  esac
   cast send "$SOLIDITY_HOOK" "setMode(uint8)" "$mode" --rpc-url "$RPC" --private-key $KEY >/dev/null
   cast send "$RUST_HOOK" "setMode(uint8)" "$mode" --rpc-url "$RPC" --private-key $KEY >/dev/null
 
   printf '%-8s %12s %12s %12s %12s\n' rounds solidity rust delta winner
-  for n in $ROUNDS_SWEEP; do
+  for n in $sweep; do
     cast send "$SOLIDITY_HOOK" "setRounds(uint256)" "$n" --rpc-url "$RPC" --private-key $KEY >/dev/null
     cast send "$RUST_HOOK" "setRounds(uint256)" "$n" --rpc-url "$RPC" --private-key $KEY >/dev/null
     swap_gas 1 >/dev/null; swap_gas 2 >/dev/null   # warm the new value
@@ -127,6 +131,15 @@ for mode in 0 1; do
     printf '%-8s %12s %12s %12s %12s\n' "$n" "$s" "$r" "$d" "$w"
   done
 done
+
+# mode 2 left slots written on both sides; they must hold the same values
+for k in 0 9 40; do
+  a=$(cast call "$SOLIDITY_HOOK" 'readStorage(uint256)(uint256)' "$k" --rpc-url "$RPC" | awk '{print $1}')
+  b=$(cast call "$RUST_HOOK" 'readStorage(uint256)(uint256)' "$k" --rpc-url "$RPC" | awk '{print $1}')
+  [ "$a" = "$b" ] || { echo "the two hooks stored different values at slot $k: $a vs $b"; exit 1; }
+done
+echo
+echo "both hooks stored the same values"
 
 BASE=$(swap_gas 0)
 echo

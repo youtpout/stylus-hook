@@ -26,8 +26,12 @@ contract ComputeHook is BaseHook {
     uint256 public rounds;
     uint64 public lastResult;
 
-    /// @notice 0 runs xorshift64, 1 runs `FullMath.mulDiv`. See `work` and `workMulDiv`.
+    /// @notice 0 runs xorshift64, 1 runs `FullMath.mulDiv`, 2 writes storage slots.
     uint8 public mode;
+
+    /// @dev Written by mode 2. A mapping rather than an array because that is what hooks use, so
+    ///      each access includes hashing the key as well as the `SSTORE` itself.
+    mapping(uint256 slot => uint256 value) private slots;
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
@@ -84,12 +88,36 @@ contract ComputeHook is BaseHook {
         return a;
     }
 
+    /// @notice Writes `n` storage slots. Must agree with the Rust twin.
+    /// @dev Storage is the one thing Stylus is not supposed to make cheaper: `SLOAD` and `SSTORE`
+    ///      are host operations priced in EVM gas whichever VM runs the contract. This mode is here
+    ///      to check that rather than assume it.
+    function workStorage(uint256 n) public returns (uint256) {
+        uint256 last;
+        for (uint256 i = 0; i < n; i++) {
+            last = i + 1;
+            slots[i] = last;
+        }
+        return last;
+    }
+
+    function readStorage(uint256 key) external view returns (uint256) {
+        return slots[key];
+    }
+
     function _beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
         internal
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        lastResult = mode == 0 ? work(rounds) : uint64(workMulDiv(rounds));
+        uint8 m = mode;
+        if (m == 0) {
+            lastResult = work(rounds);
+        } else if (m == 1) {
+            lastResult = uint64(workMulDiv(rounds));
+        } else {
+            lastResult = uint64(workStorage(rounds));
+        }
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 }

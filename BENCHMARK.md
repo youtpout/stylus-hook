@@ -150,6 +150,29 @@ long-division routine: `mulmod`, a modular inverse built by Newton iteration, an
 opcodes. Rust gets there with a `U512` multiply and divide over limbs. The EVM's 256-bit word is an
 advantage right up to the point where you need 257 bits, which is most of Uniswap's math.
 
+### Writing storage
+
+There is no such thing as "Stylus storage" as distinct from "Solidity storage". A Stylus contract
+writes the same 32-byte slots in the same account trie, and ArbOS charges EVM prices for reaching
+them. This mode checks that rather than assuming it — each round writes one mapping slot.
+
+| slots written | Solidity | Rust | delta |
+| ---: | ---: | ---: | ---: |
+| 0 | 130,082 | 167,986 | +37,904 |
+| 5 | 142,777 | 179,719 | +36,942 |
+| 25 | 193,621 | 226,841 | +33,220 |
+| 100 | 383,986 | 403,411 | +19,425 |
+
+2,539 gas per slot in Solidity, 2,354 in Rust. Stylus is **7 % cheaper**, not 4× and not 13×, and
+that margin is not the store itself: a cold slot costs 2,100 to touch and 100 to write the value it
+already holds, identically in both. What Stylus shaves is the arithmetic wrapped around the access —
+hashing the mapping key, and the loop. Paying off the entry fee on storage alone would take about
+205 writes per call.
+
+So the earlier claim in this document — that storage costs the same in both worlds — is very nearly
+right, and right for every purpose a hook cares about. Moving state into a Stylus contract does not
+make it cheaper to store; it makes the code around it cheaper.
+
 ### The fixed cost
 
 At zero rounds the Rust hook still costs ~38,000 gas more, of which 21,759 is loading its WASM

@@ -17,7 +17,7 @@ use alloy_primitives::{aliases::U64, Address, FixedBytes, U256};
 use stylus_sdk::{
     abi::Bytes,
     prelude::*,
-    storage::{StorageAddress, StorageU256, StorageU64, StorageU8},
+    storage::{StorageAddress, StorageMap, StorageU256, StorageU64, StorageU8},
 };
 use stylus_uniswap_v4::{
     hooks::{selector, HookConfig, HookGuards, IHooks},
@@ -31,8 +31,11 @@ pub struct ComputeHook {
     pool_manager: StorageAddress,
     rounds: StorageU256,
     last_result: StorageU64,
-    /// 0 runs xorshift64, 1 runs `mulDiv`. See [`ComputeHook::work`] and [`ComputeHook::work_mul_div`].
+    /// 0 runs xorshift64, 1 runs `mulDiv`, 2 writes storage slots.
     mode: StorageU8,
+    /// Written by mode 2. A map rather than a vector because that is what hooks use, so each access
+    /// includes hashing the key as well as the store itself.
+    slots: StorageMap<U256, StorageU256>,
 }
 
 /// 256-bit `mulDiv` needs a 512-bit intermediate, which WASM has to build out of limbs.
@@ -109,6 +112,26 @@ impl ComputeHook {
         x
     }
 
+    /// Writes `n` storage slots. Must agree with `ComputeHook.sol`.
+    ///
+    /// Storage is the one thing Stylus is not supposed to make cheaper: loads and stores are host
+    /// operations priced in EVM gas whichever VM runs the contract. This mode is here to check that
+    /// rather than assume it.
+    pub fn work_storage(&mut self, n: U256) -> U256 {
+        let mut last = U256::ZERO;
+        let mut i = U256::ZERO;
+        while i < n {
+            last = i + U256::from(1);
+            self.slots.setter(i).set(last);
+            i += U256::from(1);
+        }
+        last
+    }
+
+    pub fn read_storage(&self, key: U256) -> U256 {
+        self.slots.get(key)
+    }
+
     /// `mulDiv` on 256-bit words, `n` times. Must agree with `ComputeHook.sol`.
     ///
     /// This is the atom Uniswap's own swap math is built from — `computeSwapStep`, `SqrtPriceMath`
@@ -145,11 +168,11 @@ impl IHooks for ComputeHook {
         self.require_pool_manager()?;
         self.require_valid_pool(&key)?;
         let rounds = self.rounds.get();
-        let result = if self.mode.get().is_zero() {
-            self.work(rounds)
-        } else {
-            // `uint64(...)` on the Solidity side: keep the low 64 bits, do not panic on overflow
-            self.work_mul_div(rounds).as_limbs()[0]
+        // `uint64(...)` on the Solidity side: keep the low 64 bits, do not panic on overflow
+        let result = match self.mode.get().to::<u8>() {
+            0 => self.work(rounds),
+            1 => self.work_mul_div(rounds).as_limbs()[0],
+            _ => self.work_storage(rounds).as_limbs()[0],
         };
         self.last_result.set(U64::from(result));
         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
