@@ -26,7 +26,7 @@ contract ComputeHook is BaseHook {
     uint256 public rounds;
     uint64 public lastResult;
 
-    /// @notice 0 xorshift64, 1 `FullMath.mulDiv`, 2 storage writes, 3 fixed-point `rpow`.
+    /// @notice 0 xorshift64, 1 `FullMath.mulDiv`, 2 storage writes, 3 `rpow`, 4 integer `sqrt`.
     uint8 public mode;
 
     /// @dev Written by mode 2. A mapping rather than an array because that is what hooks use, so
@@ -129,6 +129,42 @@ contract ComputeHook is BaseHook {
         return acc;
     }
 
+    /// @notice Integer square root, Babylonian with a bit-length seed — the same shape as solady's
+    ///         and as EulerSwap's `Sqrt.sol`.
+    /// @dev EulerSwap inverts its curve with the quadratic formula, so every swap takes the square
+    ///      root of a discriminant its own comments put in the 255-bit range. The seed needs the
+    ///      bit length, which the EVM has no opcode for — solady spends a de Bruijn table on it,
+    ///      while WASM has `i64.clz`. That asymmetry is the point of this mode.
+    function isqrt(uint256 x) public pure returns (uint256 z) {
+        if (x == 0) return 0;
+        uint256 r = 1;
+        uint256 v = x;
+        if (v >= 1 << 128) { v >>= 128; r <<= 64; }
+        if (v >= 1 << 64) { v >>= 64; r <<= 32; }
+        if (v >= 1 << 32) { v >>= 32; r <<= 16; }
+        if (v >= 1 << 16) { v >>= 16; r <<= 8; }
+        if (v >= 1 << 8) { v >>= 8; r <<= 4; }
+        if (v >= 1 << 4) { v >>= 4; r <<= 2; }
+        if (v >= 1 << 2) { r <<= 1; }
+        // seven Newton steps are enough for 256 bits
+        z = r;
+        for (uint256 i = 0; i < 7; i++) {
+            z = (z + x / z) >> 1;
+        }
+        uint256 zz = x / z;
+        return z <= zz ? z : zz;
+    }
+
+    /// @notice `n` square roots of full-range values. Must agree with the Rust twin.
+    function workSqrt(uint256 n) public pure returns (uint256) {
+        uint256 acc = 0;
+        uint256 seed = 0x9E3779B97F4A7C15C2B2AE3D27D4EB4F165667B19E3779F9165667B19E3779F9;
+        for (uint256 i = 0; i < n; i++) {
+            acc = isqrt(seed - i);
+        }
+        return acc;
+    }
+
     function _beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
         internal
         override
@@ -141,8 +177,10 @@ contract ComputeHook is BaseHook {
             lastResult = uint64(workMulDiv(rounds));
         } else if (m == 2) {
             lastResult = uint64(workStorage(rounds));
-        } else {
+        } else if (m == 3) {
             lastResult = uint64(workRpow(rounds));
+        } else {
+            lastResult = uint64(workSqrt(rounds));
         }
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }

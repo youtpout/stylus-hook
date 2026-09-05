@@ -25,6 +25,12 @@ contract ComputeHookTest is Test {
         assertEq(hook.workMulDiv(100), 0x9e3779b97f4a7c15c2b2ae3d27d4eb1148aadb3be51f0179088a57ce0f0bae90);
     }
 
+    function test_sqrt_matches_the_rust_twin() public view {
+        assertEq(hook.workSqrt(0), 0);
+        assertEq(hook.workSqrt(1), 267513451581452811726538898354923035252);
+        assertEq(hook.workSqrt(10), 267513451581452811726538898354923035252);
+    }
+
     function test_xorshift_matches_the_rust_twin() public view {
         assertEq(hook.work(0), 0x9e3779b97f4a7c15);
         assertEq(hook.work(1), 0xdc1b77ae0bf34dad);

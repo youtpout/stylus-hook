@@ -197,6 +197,50 @@ Bunni's LDF math is in Q96, so its products fit and it takes the cheap path almo
 it does.** Anything using the full 256-bit range benefits about twice as much as fixed-point Q96
 work.
 
+### Integer `sqrt`, the operation EulerSwap runs
+
+EulerSwap inverts its curve with the quadratic formula, so every swap takes the square root of a
+discriminant its own source comments put in the 255-bit range.
+
+| `sqrt` per swap | Solidity | Rust | delta |
+| ---: | ---: | ---: | ---: |
+| 0 | 123,694 | 164,819 | +41,125 |
+| 25 | 174,584 | 176,654 | +2,070 |
+| 50 | 224,709 | **187,724** | −36,985 |
+| 100 | 324,931 | **209,837** | −115,094 |
+| 200 | 525,459 | **254,147** | −271,312 |
+
+2,009 gas per `sqrt` in Solidity, 447 in Rust: **4.5× cheaper**, crossing at **26 calls** — the best
+ratio measured anywhere in this document.
+
+Two reasons, and both generalise. The values span the full 256-bit range, so the `mulDiv`s inside
+the iteration take the expensive path rather than the single-`DIV` one. And the Babylonian seed
+needs the operand's bit length: the EVM has no instruction for it, so Solidity spends a cascade of
+comparisons or a de Bruijn table, while `leading_zeros` in Rust lowers to WASM's `i64.clz`.
+
+> The algorithm here is written from the published description of what EulerSwap's curve does, not
+> copied from it. EulerSwap is licensed BUSL-1.1, which restricts production use; it is referenced
+> in this document for information only.
+
+### The rule this all adds up to
+
+Three measurements of the same question, at three magnitudes:
+
+| operation | range | Solidity | Rust | ratio |
+| --- | --- | ---: | ---: | ---: |
+| `rpow` (Bunni's LDF) | Q96 fixed-point | 3,058 | 1,850 | 1.65× |
+| `mulDiv` | full 256-bit | 694 | 247 | 2.8× |
+| `sqrt` | full 256-bit | 2,009 | 447 | 4.5× |
+| xorshift64 | 64-bit words | 115 | 10.9 | 10.6× |
+
+**How much Stylus buys tracks how badly the work fits a 256-bit word.** Fixed-point maths that stays
+inside 256 bits barely gains, because that is exactly the case the EVM is built for. Work that
+overflows into 512-bit intermediates gains a few times over. Work in words *smaller* than 256 bits —
+where the EVM pays for a word it cannot use — gains an order of magnitude.
+
+That is a sharper thing to say than "compute is cheaper in Stylus", and it is not what the word size
+alone would suggest.
+
 ### Writing storage
 
 There is no such thing as "Stylus storage" as distinct from "Solidity storage". A Stylus contract
@@ -321,6 +365,30 @@ hooks Uniswap publishes — `NativeBookHook` at 155k–221k, `ALFMultiplexer` at
 path runs at all, so they are not in this table. `ALFMultiplexer` is the one worth setting up: it
 runs a `SwapSimulator` pass per routing candidate, and a simulation is roughly an AntiSandwich
 replay, so three or more candidates would clear the bar.
+
+### Candidates, ranked by protocol rather than by library
+
+`Uniswap/hooklist` indexes what is deployed, but not what is used. Cross-checking the names against
+DefiLlama changes the picture:
+
+| protocol | TVL | its hook | maths per swap |
+| --- | ---: | --- | --- |
+| **Euler** | **$802M** | EulerSwap — the AMM *is* the hook | curve inverted by the quadratic formula: a 255-bit `sqrt`, full-range `mulDiv` chains |
+| Bunni V2 | $215k | BunniHook | Liquidity Density Function in Q96: repeated `rpow` |
+| flaunch | $1.8M | Flaunch PositionManager | fee routing, little arithmetic |
+| Clanker, Zora, launchpads | — | many | bonding curves, a handful of multiplications |
+
+Bunni looked like the answer and is not: its TVL collapsed to $215k after a ~$2.3M exploit of
+`BunniHub` in September 2025, and its Q96 arithmetic sits in the *worst* regime for Stylus at 1.65×.
+
+EulerSwap is the better target on every axis. It is a real, used protocol; its AMM is the hook
+rather than an accessory to one; and its curve inversion is full-range `sqrt` and `mulDiv`, the 4.5×
+and 2.8× regimes. It is absent from the registry because it deploys one hook instance per pool
+rather than a shared singleton.
+
+Two caveats stand. EulerSwap is BUSL-1.1, so it is referenced here for information and its code is
+not reproduced. And its compute *share* per swap is still unmeasured — the curve maths sits
+alongside Euler vault calls and their storage, which do not move.
 
 ### Looking further: the hook registry
 
@@ -457,6 +525,30 @@ hooks Uniswap publishes — `NativeBookHook` at 155k–221k, `ALFMultiplexer` at
 path runs at all, so they are not in this table. `ALFMultiplexer` is the one worth setting up: it
 runs a `SwapSimulator` pass per routing candidate, and a simulation is roughly an AntiSandwich
 replay, so three or more candidates would clear the bar.
+
+### Candidates, ranked by protocol rather than by library
+
+`Uniswap/hooklist` indexes what is deployed, but not what is used. Cross-checking the names against
+DefiLlama changes the picture:
+
+| protocol | TVL | its hook | maths per swap |
+| --- | ---: | --- | --- |
+| **Euler** | **$802M** | EulerSwap — the AMM *is* the hook | curve inverted by the quadratic formula: a 255-bit `sqrt`, full-range `mulDiv` chains |
+| Bunni V2 | $215k | BunniHook | Liquidity Density Function in Q96: repeated `rpow` |
+| flaunch | $1.8M | Flaunch PositionManager | fee routing, little arithmetic |
+| Clanker, Zora, launchpads | — | many | bonding curves, a handful of multiplications |
+
+Bunni looked like the answer and is not: its TVL collapsed to $215k after a ~$2.3M exploit of
+`BunniHub` in September 2025, and its Q96 arithmetic sits in the *worst* regime for Stylus at 1.65×.
+
+EulerSwap is the better target on every axis. It is a real, used protocol; its AMM is the hook
+rather than an accessory to one; and its curve inversion is full-range `sqrt` and `mulDiv`, the 4.5×
+and 2.8× regimes. It is absent from the registry because it deploys one hook instance per pool
+rather than a shared singleton.
+
+Two caveats stand. EulerSwap is BUSL-1.1, so it is referenced here for information and its code is
+not reproduced. And its compute *share* per swap is still unmeasured — the curve maths sits
+alongside Euler vault calls and their storage, which do not move.
 
 ### Looking further: the hook registry
 

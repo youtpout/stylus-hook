@@ -22,6 +22,7 @@ ROUNDS_SWEEP=${ROUNDS_SWEEP:-"0 50 200 500 1000 2000 5000"}
 STORAGE_SWEEP=${STORAGE_SWEEP:-"0 5 10 25 50 100"}
 # one rpow is a chain of mulDivs, so a short sweep is plenty
 RPOW_SWEEP=${RPOW_SWEEP:-"0 5 10 25 50 100"}
+SQRT_SWEEP=${SQRT_SWEEP:-"0 10 25 50 100 200"}
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
@@ -91,13 +92,13 @@ open_pool "$RUST_HOOK"
 
 # the two implementations must agree, or the sweep compares different work
 for n in 1 100; do
-  for fn in 'work(uint256)(uint64)' 'workMulDiv(uint256)(uint256)' 'workRpow(uint256)(uint256)'; do
+  for fn in 'work(uint256)(uint64)' 'workMulDiv(uint256)(uint256)' 'workRpow(uint256)(uint256)' 'workSqrt(uint256)(uint256)'; do
     a=$(cast call "$SOLIDITY_HOOK" "$fn" "$n" --rpc-url "$RPC" | awk '{print $1}')
     b=$(cast call "$RUST_HOOK" "$fn" "$n" --rpc-url "$RPC" | awk '{print $1}')
     [ "$a" = "$b" ] || { echo "the two hooks disagree on $fn at n=$n: $a vs $b"; exit 1; }
   done
 done
-echo "both hooks compute the same xorshift64, mulDiv and rpow"
+echo "both hooks compute the same xorshift64, mulDiv, rpow and sqrt"
 
 swap_gas() {
   cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$1" "$SWAP_AMOUNT" true \
@@ -108,7 +109,7 @@ log "sweeping the amount of work"
 # warm every slot first
 for i in 0 1 2; do swap_gas "$i" >/dev/null; done
 
-for mode in 0 1 2 3; do
+for mode in 0 1 2 3 4; do
   sweep=$ROUNDS_SWEEP
   case $mode in
     0) echo; echo "mode 0: xorshift64 on a u64 — a native WASM word, no native EVM equivalent" ;;
@@ -122,6 +123,11 @@ for mode in 0 1 2 3; do
        echo "mode 3: rpow — fixed-point exponentiation by squaring, one call per round."
        echo "        This is what Bunni's Liquidity Density Functions run on every swap."
        sweep=$RPOW_SWEEP ;;
+    4) echo
+       echo "mode 4: integer sqrt of full-range values, one per round."
+       echo "        EulerSwap inverts its curve with the quadratic formula, so every swap takes"
+       echo "        the square root of a 255-bit discriminant."
+       sweep=$SQRT_SWEEP ;;
   esac
   cast send "$SOLIDITY_HOOK" "setMode(uint8)" "$mode" --rpc-url "$RPC" --private-key $KEY >/dev/null
   cast send "$RUST_HOOK" "setMode(uint8)" "$mode" --rpc-url "$RPC" --private-key $KEY >/dev/null

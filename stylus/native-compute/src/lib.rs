@@ -31,7 +31,7 @@ pub struct ComputeHook {
     pool_manager: StorageAddress,
     rounds: StorageU256,
     last_result: StorageU64,
-    /// 0 xorshift64, 1 `mulDiv`, 2 storage writes, 3 fixed-point `rpow`.
+    /// 0 xorshift64, 1 `mulDiv`, 2 storage writes, 3 `rpow`, 4 integer `sqrt`.
     mode: StorageU8,
     /// Written by mode 2. A map rather than a vector because that is what hooks use, so each access
     /// includes hashing the key as well as the store itself.
@@ -167,6 +167,47 @@ impl ComputeHook {
         acc
     }
 
+    /// Integer square root of a full-range value.
+    ///
+    /// EulerSwap inverts its curve with the quadratic formula, so every swap takes the square root
+    /// of a discriminant its own comments put in the 255-bit range. Each language uses its natural
+    /// implementation: Solidity a Babylonian iteration seeded from the bit length, which the EVM has
+    /// no opcode for, and Rust `ruint`'s, which reaches `i64.clz` in WASM.
+    pub fn isqrt(&self, x: U256) -> U256 {
+        if x.is_zero() {
+            return U256::ZERO;
+        }
+        // Seed from the bit length. This is where the two languages diverge: `leading_zeros`
+        // lowers to `i64.clz`, an instruction WASM has and the EVM does not.
+        let bits = 256 - x.leading_zeros();
+        let mut z = U256::from(1u8) << bits.div_ceil(2);
+        for _ in 0..7 {
+            z = (z + x / z) >> 1;
+        }
+        let zz = x / z;
+        if z <= zz {
+            z
+        } else {
+            zz
+        }
+    }
+
+    /// `n` square roots of full-range values. Must agree with `ComputeHook.sol`.
+    pub fn work_sqrt(&self, n: U256) -> U256 {
+        let seed = U256::from_str_radix(
+            "9E3779B97F4A7C15C2B2AE3D27D4EB4F165667B19E3779F9165667B19E3779F9",
+            16,
+        )
+        .unwrap();
+        let mut acc = U256::ZERO;
+        let mut i = U256::ZERO;
+        while i < n {
+            acc = self.isqrt(seed - i);
+            i += U256::from(1);
+        }
+        acc
+    }
+
     /// `mulDiv` on 256-bit words, `n` times. Must agree with `ComputeHook.sol`.
     ///
     /// This is the atom Uniswap's own swap math is built from — `computeSwapStep`, `SqrtPriceMath`
@@ -208,7 +249,8 @@ impl IHooks for ComputeHook {
             0 => self.work(rounds),
             1 => self.work_mul_div(rounds).as_limbs()[0],
             2 => self.work_storage(rounds).as_limbs()[0],
-            _ => self.work_rpow(rounds).as_limbs()[0],
+            3 => self.work_rpow(rounds).as_limbs()[0],
+            _ => self.work_sqrt(rounds).as_limbs()[0],
         };
         self.last_result.set(U64::from(result));
         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
@@ -282,6 +324,25 @@ mod tests {
         assert_eq!(
             contract.work_rpow(U256::from(10)),
             d("29000069819872093002514033297")
+        );
+    }
+
+    #[test]
+    fn sqrt_matches_the_solidity_twin() {
+        let vm = TestVM::default();
+        vm.set_contract_address(HOOK);
+        let mut contract = ComputeHook::from(&vm);
+        contract.constructor(Address::new([0x4e; 20])).unwrap();
+
+        let d = |s: &str| U256::from_str_radix(s, 10).unwrap();
+        assert_eq!(contract.work_sqrt(U256::ZERO), U256::ZERO);
+        assert_eq!(
+            contract.work_sqrt(U256::from(1)),
+            d("267513451581452811726538898354923035252")
+        );
+        assert_eq!(
+            contract.work_sqrt(U256::from(10)),
+            d("267513451581452811726538898354923035252")
         );
     }
 
