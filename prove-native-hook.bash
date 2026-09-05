@@ -21,6 +21,9 @@ SWAP_AMOUNT=1000000000000000000
 ROOT=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
 export PATH="$HOME/.foundry/bin:$PATH"
+# shellcheck source=bench-lib.bash
+. "$ROOT/bench-lib.bash"
+ensure_binaryen "$WORK"
 
 log()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 ok()   { printf '\033[32m  ok\033[0m  %s\n' "$*"; }
@@ -105,7 +108,7 @@ log "opening a pool on it and adding liquidity"
 cast send "$FIXTURE" "open(address,address,address,uint128)" \
   "$CURRENCY0" "$CURRENCY1" "$HOOK" "$LIQUIDITY" \
   --rpc-url "$RPC" --private-key $KEY >/dev/null
-POOL_ID=$(cast call "$FIXTURE" 'poolId()(bytes32)' --rpc-url "$RPC")
+POOL_ID=$(cast call "$FIXTURE" 'poolId(uint256)(bytes32)' 0 --rpc-url "$RPC")
 echo "pool: $POOL_ID"
 
 count() { cast call "$HOOK" "$1(bytes32)(uint256)" "$POOL_ID" --rpc-url "$RPC" | awk '{print $1}'; }
@@ -115,20 +118,20 @@ count() { cast call "$HOOK" "$1(bytes32)(uint256)" "$POOL_ID" --rpc-url "$RPC" |
   || fail "beforeAddLiquidity count is $(count beforeAddLiquidityCount), expected 1"
 
 log "swapping through it"
-cast send "$FIXTURE" "swap(uint256,bool)" "$SWAP_AMOUNT" true \
+cast send "$FIXTURE" "swap(uint256,uint256,bool)" 0 "$SWAP_AMOUNT" true \
   --rpc-url "$RPC" --private-key $KEY >/dev/null
 [ "$(count beforeSwapCount)" = "1" ] && ok "beforeSwap reached the Rust hook" \
   || fail "beforeSwap count is $(count beforeSwapCount), expected 1"
 [ "$(count afterSwapCount)" = "1" ] && ok "afterSwap reached the Rust hook" \
   || fail "afterSwap count is $(count afterSwapCount), expected 1"
 
-cast send "$FIXTURE" "swap(uint256,bool)" "$SWAP_AMOUNT" false \
+cast send "$FIXTURE" "swap(uint256,uint256,bool)" 0 "$SWAP_AMOUNT" false \
   --rpc-url "$RPC" --private-key $KEY >/dev/null
 [ "$(count afterSwapCount)" = "2" ] && ok "a second swap counted again" \
   || fail "afterSwap count is $(count afterSwapCount), expected 2"
 
 log "removing liquidity"
-cast send "$FIXTURE" "removeLiquidity(uint128)" 1000000000000000000 \
+cast send "$FIXTURE" "removeLiquidity(uint256,uint128)" 0 1000000000000000000 \
   --rpc-url "$RPC" --private-key $KEY >/dev/null
 [ "$(count beforeRemoveLiquidityCount)" = "1" ] \
   && ok "beforeRemoveLiquidity reached the Rust hook" \

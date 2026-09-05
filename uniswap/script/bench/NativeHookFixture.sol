@@ -31,8 +31,8 @@ contract NativeHookFixture {
     IPositionManager public immutable positionManager;
     IUniswapV4Router04 public immutable router;
 
-    PoolKey public key;
-    uint256 public tokenId;
+    PoolKey[] public keys;
+    uint256[] public tokenIds;
 
     constructor(
         IPoolManager _poolManager,
@@ -54,14 +54,23 @@ contract NativeHookFixture {
         }
     }
 
-    function poolId() external view returns (bytes32) {
-        return PoolId.unwrap(key.toId());
+    function poolCount() external view returns (uint256) {
+        return keys.length;
+    }
+
+    function poolId(uint256 index) external view returns (bytes32) {
+        return PoolId.unwrap(keys[index].toId());
     }
 
     /// @notice Initialises a pool on `hooks` and seeds it with full-range liquidity.
     /// @dev Calls the hook's `beforeAddLiquidity` if it declares one.
-    function open(Currency currency0, Currency currency1, IHooks hooks, uint128 liquidity) external {
-        key = PoolKey(currency0, currency1, 3000, 60, hooks);
+    function open(Currency currency0, Currency currency1, IHooks hooks, uint128 liquidity)
+        external
+        returns (uint256 index)
+    {
+        PoolKey memory key = PoolKey(currency0, currency1, 3000, 60, hooks);
+        index = keys.length;
+        keys.push(key);
         poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
 
         int24 tickLower = TickMath.minUsableTick(key.tickSpacing);
@@ -83,17 +92,18 @@ contract NativeHookFixture {
         params[2] = abi.encode(key.currency0, address(this));
         params[3] = abi.encode(key.currency1, address(this));
 
-        tokenId = positionManager.nextTokenId();
+        tokenIds.push(positionManager.nextTokenId());
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp + 3600);
     }
 
-    /// @notice Swaps through the pool, calling the hook's `beforeSwap` and `afterSwap`.
-    function swap(uint256 amountIn, bool zeroForOne) external {
+    /// @notice Swaps through one pool, calling its hook's `beforeSwap` and `afterSwap`.
+    /// @dev One swap per transaction, so the gas each hook costs comes off the receipt.
+    function swap(uint256 index, uint256 amountIn, bool zeroForOne) external {
         router.swapExactTokensForTokens({
             amountIn: amountIn,
             amountOutMin: 0,
             zeroForOne: zeroForOne,
-            poolKey: key,
+            poolKey: keys[index],
             hookData: "",
             receiver: address(this),
             deadline: block.timestamp + 3600
@@ -101,12 +111,12 @@ contract NativeHookFixture {
     }
 
     /// @notice Removes some liquidity, calling the hook's `beforeRemoveLiquidity`.
-    function removeLiquidity(uint128 liquidity) external {
+    function removeLiquidity(uint256 index, uint128 liquidity) external {
         bytes memory actions =
             abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
-        params[0] = abi.encode(tokenId, liquidity, 0, 0, bytes(""));
-        params[1] = abi.encode(key.currency0, key.currency1, address(this));
+        params[0] = abi.encode(tokenIds[index], liquidity, 0, 0, bytes(""));
+        params[1] = abi.encode(keys[index].currency0, keys[index].currency1, address(this));
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp + 3600);
     }
 }
