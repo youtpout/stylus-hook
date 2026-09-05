@@ -180,7 +180,121 @@ program on every call — 5,417 once the contract is cached. That figure is high
 `native-counter` because this hook carries both workloads and `U512` arithmetic; the program is
 bigger, and `ArbWasm` charges by compiled size.
 
-## What this means for the project## What this means for the project
+## Pricing a real hook: AntiSandwichHook
+
+`./bench-antisandwich.bash` measures OpenZeppelin's
+[`AntiSandwichHook`](https://github.com/OpenZeppelin/uniswap-hooks/blob/master/src/general/AntiSandwichHook.sol),
+the most compute-looking hook in the library the official v4-template depends on. It checkpoints the
+pool at the top of each block and, for `zeroForOne == false` swaps, replays `Pool.swap` against that
+checkpoint so a trade cannot get a better price than the block started with. `zeroForOne == true`
+swaps skip the replay, so the gap between the two directions isolates the simulation.
+
+| | gas per swap | over baseline |
+| --- | ---: | ---: |
+| no hook, 0→1 | 125,414 | — |
+| no hook, 1→0 | 119,619 | — |
+| AntiSandwichHook, 0→1 (no replay) | 181,702 | +56,288 |
+| AntiSandwichHook, 1→0 (with replay) | 200,906 | +81,287 |
+| **the `Pool.swap` replay alone** | | **24,999** |
+
+So the arithmetic is **31 %** of what this hook costs. The other 56,288 is checkpointing pool state
+into the hook's own storage — `extsload` calls to the pool manager, then `SSTORE`s — and settling
+an ERC-6909 fee. None of that gets cheaper in Stylus.
+
+Projecting the port from the rates measured above: the replay at 4× would drop from 24,999 to about
+6,250, saving ~18,700, against a Stylus entry fee of ~20,000 uncached or ~5,400 cached. **Porting
+this hook is roughly break-even uncached and perhaps 20 % better cached.** Not the demonstration it
+looks like from the outside.
+
+The bar set by the `mulDiv` sweep is ~52 operations, about 51,000 gas of Solidity arithmetic per
+call. AntiSandwichHook has ~25,000. It is under the bar — and it is the *best* candidate in that
+library.
+
+Two caveats. The measured pool holds a single full-range position, so the replay crosses no ticks;
+a pool with concentrated liquidity would walk further and the replay would grow. And Uniswap's own
+snapshots put `swapSimulator_before_singleTick` at 28,803 against `multiTick` at 28,899, which
+suggests tick crossing adds much less than one might hope.
+
+### `block.number` does not mean what this hook thinks on Arbitrum
+
+The hook would not run at all until it was fixed. It keys its checkpoint on `block.number`, and on
+Arbitrum the `NUMBER` opcode returns an estimate of the **L1** block number, not the L2 one. On the
+dev node used here it reports `0` while the L2 chain is at block 3:
+
+```
+solidity block.number      0
+ArbSys.arbBlockNumber()    3
+eth_blockNumber            3
+```
+
+Since the checkpoint starts at block 0, `_lastCheckpoint.blockNumber != currentBlock` is never true,
+the checkpoint is never taken, and `Pool.swap` runs against an empty state — the first
+`zeroForOne == false` swap reverts with `InvalidPrice()`.
+
+On Arbitrum One the number does advance, so the hook runs; but the beginning-of-block price is then
+frozen for an entire L1 block, spanning many L2 blocks, which is a much wider window than intended.
+`_getBlockNumber` is `virtual` precisely so this can be fixed, and
+[`ArbAntiSandwichMock`](uniswap/script/bench/ArbAntiSandwichMock.sol) overrides it onto
+`ArbSys.arbBlockNumber()` — a one-line change, but one nothing in the hook tells you to make.
+
+## What this means for the project## Pricing a real hook: AntiSandwichHook
+
+`./bench-antisandwich.bash` measures OpenZeppelin's
+[`AntiSandwichHook`](https://github.com/OpenZeppelin/uniswap-hooks/blob/master/src/general/AntiSandwichHook.sol),
+the most compute-looking hook in the library the official v4-template depends on. It checkpoints the
+pool at the top of each block and, for `zeroForOne == false` swaps, replays `Pool.swap` against that
+checkpoint so a trade cannot get a better price than the block started with. `zeroForOne == true`
+swaps skip the replay, so the gap between the two directions isolates the simulation.
+
+| | gas per swap | over baseline |
+| --- | ---: | ---: |
+| no hook, 0→1 | 125,414 | — |
+| no hook, 1→0 | 119,619 | — |
+| AntiSandwichHook, 0→1 (no replay) | 181,702 | +56,288 |
+| AntiSandwichHook, 1→0 (with replay) | 200,906 | +81,287 |
+| **the `Pool.swap` replay alone** | | **24,999** |
+
+So the arithmetic is **31 %** of what this hook costs. The other 56,288 is checkpointing pool state
+into the hook's own storage — `extsload` calls to the pool manager, then `SSTORE`s — and settling
+an ERC-6909 fee. None of that gets cheaper in Stylus.
+
+Projecting the port from the rates measured above: the replay at 4× would drop from 24,999 to about
+6,250, saving ~18,700, against a Stylus entry fee of ~20,000 uncached or ~5,400 cached. **Porting
+this hook is roughly break-even uncached and perhaps 20 % better cached.** Not the demonstration it
+looks like from the outside.
+
+The bar set by the `mulDiv` sweep is ~52 operations, about 51,000 gas of Solidity arithmetic per
+call. AntiSandwichHook has ~25,000. It is under the bar — and it is the *best* candidate in that
+library.
+
+Two caveats. The measured pool holds a single full-range position, so the replay crosses no ticks;
+a pool with concentrated liquidity would walk further and the replay would grow. And Uniswap's own
+snapshots put `swapSimulator_before_singleTick` at 28,803 against `multiTick` at 28,899, which
+suggests tick crossing adds much less than one might hope.
+
+### `block.number` does not mean what this hook thinks on Arbitrum
+
+The hook would not run at all until it was fixed. It keys its checkpoint on `block.number`, and on
+Arbitrum the `NUMBER` opcode returns an estimate of the **L1** block number, not the L2 one. On the
+dev node used here it reports `0` while the L2 chain is at block 3:
+
+```
+solidity block.number      0
+ArbSys.arbBlockNumber()    3
+eth_blockNumber            3
+```
+
+Since the checkpoint starts at block 0, `_lastCheckpoint.blockNumber != currentBlock` is never true,
+the checkpoint is never taken, and `Pool.swap` runs against an empty state — the first
+`zeroForOne == false` swap reverts with `InvalidPrice()`.
+
+On Arbitrum One the number does advance, so the hook runs; but the beginning-of-block price is then
+frozen for an entire L1 block, spanning many L2 blocks, which is a much wider window than intended.
+`_getBlockNumber` is `virtual` precisely so this can be fixed, and
+[`ArbAntiSandwichMock`](uniswap/script/bench/ArbAntiSandwichMock.sol) overrides it onto
+`ArbSys.arbBlockNumber()` — a one-line change, but one nothing in the hook tells you to make.
+
+## What this means for the project
 
 The airdrop hook was the wrong thing to port. It is a bookkeeping hook: read a counter, add to it,
 write it back. That is the exact shape of hook where Stylus has nothing to offer.
