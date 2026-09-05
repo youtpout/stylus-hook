@@ -379,24 +379,33 @@ suggests tick crossing adds much less than one might hope.
 ### `block.number` does not mean what this hook thinks on Arbitrum
 
 The hook would not run at all until it was fixed. It keys its checkpoint on `block.number`, and on
-Arbitrum the `NUMBER` opcode returns an estimate of the **L1** block number, not the L2 one. On the
-dev node used here it reports `0` while the L2 chain is at block 3:
+Arbitrum the `NUMBER` opcode does not return the block number — it returns the **L1** block number.
+Measured on Arbitrum One itself, not on a fork (a fork replays Arbitrum's state through a vanilla
+EVM and would not reproduce this):
 
-```
-solidity block.number      0
-ArbSys.arbBlockNumber()    3
-eth_blockNumber            3
-```
+| | |
+| --- | ---: |
+| Solidity `block.number`, via `Multicall3.getBlockNumber()` | 25,912,325 |
+| Ethereum L1 height, read at the same moment | 25,912,326 |
+| `NodeInterface.blockL1Num(502057926)` | 25,912,325 |
+| Arbitrum L2 block, `eth_blockNumber` | 502,057,928 |
 
-Since the checkpoint starts at block 0, `_lastCheckpoint.blockNumber != currentBlock` is never true,
-the checkpoint is never taken, and `Pool.swap` runs against an empty state — the first
-`zeroForOne == false` swap reverts with `InvalidPrice()`.
+Two consequences, one per environment.
 
-On Arbitrum One the number does advance, so the hook runs; but the beginning-of-block price is then
-frozen for an entire L1 block, spanning many L2 blocks, which is a much wider window than intended.
+On a dev node there is no L1, so `block.number` is `0` while the L2 chain runs. The checkpoint also
+starts at 0, `_lastCheckpoint.blockNumber != currentBlock` is never true, the checkpoint is never
+taken, and `Pool.swap` runs against an empty state — the first `zeroForOne == false` swap reverts
+with `InvalidPrice()`. That is what `bench-antisandwich.bash` hit.
+
+On Arbitrum One the number does advance, so the hook runs, but it advances once per **L1** block.
+Arbitrum produces L2 blocks roughly every 250 ms, so the "beginning-of-block" reference price is
+held for about forty-eight L2 blocks rather than one. The protection is not absent — it is applied
+over a twelve-second window, during which honest price movement is also refused. That is a different
+economic instrument from the one the hook describes.
+
 `_getBlockNumber` is `virtual` precisely so this can be fixed, and
 [`ArbAntiSandwichMock`](uniswap/script/bench/ArbAntiSandwichMock.sol) overrides it onto
-`ArbSys.arbBlockNumber()` — a one-line change, but one nothing in the hook tells you to make.
+`ArbSys.arbBlockNumber()`. A one-line change, but nothing in the hook tells you to make it.
 
 ## Which shipping hooks are worth porting
 
@@ -561,24 +570,33 @@ suggests tick crossing adds much less than one might hope.
 ### `block.number` does not mean what this hook thinks on Arbitrum
 
 The hook would not run at all until it was fixed. It keys its checkpoint on `block.number`, and on
-Arbitrum the `NUMBER` opcode returns an estimate of the **L1** block number, not the L2 one. On the
-dev node used here it reports `0` while the L2 chain is at block 3:
+Arbitrum the `NUMBER` opcode does not return the block number — it returns the **L1** block number.
+Measured on Arbitrum One itself, not on a fork (a fork replays Arbitrum's state through a vanilla
+EVM and would not reproduce this):
 
-```
-solidity block.number      0
-ArbSys.arbBlockNumber()    3
-eth_blockNumber            3
-```
+| | |
+| --- | ---: |
+| Solidity `block.number`, via `Multicall3.getBlockNumber()` | 25,912,325 |
+| Ethereum L1 height, read at the same moment | 25,912,326 |
+| `NodeInterface.blockL1Num(502057926)` | 25,912,325 |
+| Arbitrum L2 block, `eth_blockNumber` | 502,057,928 |
 
-Since the checkpoint starts at block 0, `_lastCheckpoint.blockNumber != currentBlock` is never true,
-the checkpoint is never taken, and `Pool.swap` runs against an empty state — the first
-`zeroForOne == false` swap reverts with `InvalidPrice()`.
+Two consequences, one per environment.
 
-On Arbitrum One the number does advance, so the hook runs; but the beginning-of-block price is then
-frozen for an entire L1 block, spanning many L2 blocks, which is a much wider window than intended.
+On a dev node there is no L1, so `block.number` is `0` while the L2 chain runs. The checkpoint also
+starts at 0, `_lastCheckpoint.blockNumber != currentBlock` is never true, the checkpoint is never
+taken, and `Pool.swap` runs against an empty state — the first `zeroForOne == false` swap reverts
+with `InvalidPrice()`. That is what `bench-antisandwich.bash` hit.
+
+On Arbitrum One the number does advance, so the hook runs, but it advances once per **L1** block.
+Arbitrum produces L2 blocks roughly every 250 ms, so the "beginning-of-block" reference price is
+held for about forty-eight L2 blocks rather than one. The protection is not absent — it is applied
+over a twelve-second window, during which honest price movement is also refused. That is a different
+economic instrument from the one the hook describes.
+
 `_getBlockNumber` is `virtual` precisely so this can be fixed, and
 [`ArbAntiSandwichMock`](uniswap/script/bench/ArbAntiSandwichMock.sol) overrides it onto
-`ArbSys.arbBlockNumber()` — a one-line change, but one nothing in the hook tells you to make.
+`ArbSys.arbBlockNumber()`. A one-line change, but nothing in the hook tells you to make it.
 
 ## Which shipping hooks are worth porting
 
