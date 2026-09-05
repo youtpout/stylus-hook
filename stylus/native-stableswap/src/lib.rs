@@ -21,11 +21,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use alloy_primitives::{Address, FixedBytes, U256};
-use stylus_sdk::{
-    abi::Bytes,
-    prelude::*,
-    storage::{StorageAddress, StorageU256},
-};
+use stylus_sdk::{abi::Bytes, prelude::*, storage::StorageU256};
 use stylus_uniswap_v4::{
     hooks::{selector, HookConfig, HookGuards, IHooks},
     types::{BeforeSwapDelta, PoolKey, SwapParams, U24},
@@ -35,10 +31,13 @@ use stylus_uniswap_v4::{
 /// Amplification coefficient times n^n, for n = 2. Higher means a flatter curve.
 const DEFAULT_ANN: u64 = 100;
 
+// The pool manager address, baked in at build time from `$POOL_MANAGER`. Reading a `const` costs
+// nothing; the storage slot it replaces cost a cold SLOAD on every single callback.
+include!(concat!(env!("OUT_DIR"), "/pool_manager.rs"));
+
 #[storage]
 #[entrypoint]
 pub struct StableSwapHook {
-    pool_manager: StorageAddress,
     reserve0: StorageU256,
     reserve1: StorageU256,
     ann: StorageU256,
@@ -47,7 +46,7 @@ pub struct StableSwapHook {
 
 impl HookConfig for StableSwapHook {
     fn pool_manager(&self) -> Address {
-        self.pool_manager.get()
+        POOL_MANAGER
     }
 
     fn permissions(&self) -> Permissions {
@@ -59,8 +58,7 @@ impl HookConfig for StableSwapHook {
 #[implements(IHooks)]
 impl StableSwapHook {
     #[constructor]
-    pub fn constructor(&mut self, pool_manager: Address) -> Result<(), Vec<u8>> {
-        self.pool_manager.set(pool_manager);
+    pub fn constructor(&mut self) -> Result<(), Vec<u8>> {
         self.ann.set(U256::from(DEFAULT_ANN));
         self.reserve0
             .set(U256::from(1000u64) * U256::from(10u64).pow(U256::from(18)));
@@ -70,7 +68,7 @@ impl StableSwapHook {
     }
 
     pub fn pool_manager(&self) -> Address {
-        self.pool_manager.get()
+        POOL_MANAGER
     }
 
     pub fn reserves(&self) -> (U256, U256) {
@@ -208,7 +206,7 @@ mod tests {
     fn deployed(vm: &TestVM) -> StableSwapHook {
         vm.set_contract_address(HOOK);
         let mut c = StableSwapHook::from(vm);
-        c.constructor(Address::new([0x4e; 20])).unwrap();
+        c.constructor().unwrap();
         c
     }
 

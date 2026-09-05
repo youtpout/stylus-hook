@@ -140,12 +140,14 @@ fn run(args: Args) -> Result<(), String> {
         return Err("pass --permissions: a hook with no callbacks needs no mined address".into());
     }
 
+    // A contract with no constructor is not the same as one whose constructor takes no arguments:
+    // the second is still called, with the bare selector, which changes the address.
     let encoded_args = match &args.constructor_signature {
-        Some(signature) => encode_constructor_args(signature, &args.constructor_args)?,
-        None if args.constructor_args.is_empty() => Vec::new(),
+        Some(signature) => Some(encode_constructor_args(signature, &args.constructor_args)?),
+        None if args.constructor_args.is_empty() => None,
         None => return Err("--constructor-args needs --constructor-signature".into()),
     };
-    let init_data = init_data(&encoded_args);
+    let init_data = init_data(encoded_args.as_deref());
     let init_code_hash = keccak256(&initcode);
 
     let MinedSalt {

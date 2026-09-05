@@ -17,17 +17,21 @@ pub const STYLUS_DEPLOYER: Address = address!("cEcba2F1DC234f70Dd89F2041029807F8
 /// deployed contract with, followed by the ABI-encoded constructor arguments.
 pub const STYLUS_CONSTRUCTOR_SELECTOR: [u8; 4] = [0x55, 0x85, 0x25, 0x8d];
 
-/// The init data `StylusDeployer` will call the contract with, for the given constructor arguments.
+/// The init data `StylusDeployer` will call the contract with.
 ///
-/// Pass an empty slice when the contract has no constructor.
-pub fn init_data(encoded_constructor_args: &[u8]) -> Vec<u8> {
-    if encoded_constructor_args.is_empty() {
-        return Vec::new();
+/// `None` means the contract has no constructor and the deployer will not call it at all. A
+/// constructor that takes no arguments is *not* the same thing: it still gets called, with the bare
+/// selector, and that changes the salt.
+pub fn init_data(encoded_constructor_args: Option<&[u8]>) -> Vec<u8> {
+    match encoded_constructor_args {
+        None => Vec::new(),
+        Some(args) => {
+            let mut data = Vec::with_capacity(4 + args.len());
+            data.extend_from_slice(&STYLUS_CONSTRUCTOR_SELECTOR);
+            data.extend_from_slice(args);
+            data
+        }
     }
-    let mut data = Vec::with_capacity(4 + encoded_constructor_args.len());
-    data.extend_from_slice(&STYLUS_CONSTRUCTOR_SELECTOR);
-    data.extend_from_slice(encoded_constructor_args);
-    data
 }
 
 /// `StylusDeployer.initSalt` — the deployer hashes the caller's salt together with the init data so
@@ -111,13 +115,21 @@ mod tests {
 
     #[test]
     fn no_constructor_means_no_init_data() {
-        assert!(init_data(&[]).is_empty());
+        assert!(init_data(None).is_empty());
+    }
+
+    #[test]
+    fn a_constructor_taking_nothing_still_gets_a_selector() {
+        // the distinction that matters: no constructor is not the same as a constructor with no
+        // arguments, and getting it wrong mines a salt for the wrong address
+        assert_eq!(init_data(Some(&[])), STYLUS_CONSTRUCTOR_SELECTOR.to_vec());
+        assert_ne!(init_data(Some(&[])), init_data(None));
     }
 
     #[test]
     fn init_data_is_the_selector_then_the_arguments() {
         let args = [0u8; 32];
-        let data = init_data(&args);
+        let data = init_data(Some(&args));
         assert_eq!(data.len(), 36);
         assert_eq!(&data[..4], STYLUS_CONSTRUCTOR_SELECTOR);
     }
@@ -131,7 +143,7 @@ mod tests {
             .with_before_remove_liquidity()
             .flags();
         let init_code_hash = keccak256(b"a stylus contract's init code");
-        let data = init_data(&[0x11u8; 32]);
+        let data = init_data(Some(&[0x11u8; 32]));
 
         let found = mine(STYLUS_DEPLOYER, &data, init_code_hash, flags, 1_000_000)
             .expect("a salt should exist within a million tries");
@@ -151,13 +163,13 @@ mod tests {
         let a = predict_address(
             STYLUS_DEPLOYER,
             salt,
-            &init_data(&[0x11u8; 32]),
+            &init_data(Some(&[0x11u8; 32])),
             init_code_hash,
         );
         let b = predict_address(
             STYLUS_DEPLOYER,
             salt,
-            &init_data(&[0x22u8; 32]),
+            &init_data(Some(&[0x22u8; 32])),
             init_code_hash,
         );
         assert_ne!(a, b);

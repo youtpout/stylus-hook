@@ -57,18 +57,22 @@ FIXTURE=$(addr_of "fixture")
 SOLIDITY_HOOK=$(addr_of "StableSwap (sol)")
 grep -E "^  [a-zA-Z].*0x" "$WORK/deploy.log" | sed 's/^  //'
 
+# The Rust hook takes the pool manager as a build-time constant rather than a stored constructor
+# argument, so it costs nothing to read on every callback. See stylus/native-stableswap/build.rs.
+export POOL_MANAGER="$POOL_MANAGER"
+
 log "mining and deploying the Rust twin"
 (cd "$ROOT/stylus" && cargo stylus get-initcode --contract stylus-native-stableswap) 2>/dev/null \
   | tail -1 >"$WORK/initcode.hex"
 CONSTRUCTOR=$( (cd "$ROOT/stylus" && cargo stylus constructor --contract stylus-native-stableswap) 2>/dev/null | tail -1)
 (cd "$ROOT/stylus" && cargo run -q -p stylus-hook-miner -- \
   --initcode-file "$WORK/initcode.hex" --permissions before-swap \
-  --constructor-signature "$CONSTRUCTOR" --constructor-args "$POOL_MANAGER" \
+  --constructor-signature "$CONSTRUCTOR" \
   --deployer "$STYLUS_DEPLOYER") >"$WORK/mine.log" 2>&1 || { cat "$WORK/mine.log"; exit 1; }
 SALT=$(grep -m1 '^salt:' "$WORK/mine.log" | grep -oE '0x[0-9a-fA-F]{64}')
 (cd "$ROOT/stylus" && cargo stylus deploy --contract stylus-native-stableswap --no-verify \
-  -e "$RPC" --private-key $KEY --deployer-address "$STYLUS_DEPLOYER" --deployer-salt "$SALT" \
-  --constructor-args "$POOL_MANAGER") >"$WORK/native.log" 2>&1 \
+  -e "$RPC" --private-key $KEY --deployer-address "$STYLUS_DEPLOYER" --deployer-salt "$SALT") \
+  >"$WORK/native.log" 2>&1 \
   || { tail -30 "$WORK/native.log"; exit 1; }
 RUST_HOOK=$(grep -aoiE '(contract deployed at address|deployed code at address)[^0]*0x[0-9a-fA-F]{40}' \
   "$WORK/native.log" | grep -oE '0x[0-9a-fA-F]{40}' | tail -1)

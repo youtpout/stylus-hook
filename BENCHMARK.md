@@ -235,9 +235,9 @@ measuring.
 | --- | ---: | ---: |
 | no hook | 115,061 | — |
 | StableSwap in Solidity | 149,112 | +34,051 |
-| **StableSwap in Rust** | **176,519** | **+61,458** |
+| **StableSwap in Rust** | **174,417** | **+59,356** |
 
-**Rust loses by 27,407 gas.** So the next question is where that goes, and the answer is not where
+**Rust loses by 25,305 gas.** So the next question is where that goes, and the answer is not where
 it first appears to be. Calling the pure functions directly, with no hook and no storage in the way:
 
 | | Solidity | Rust | ratio |
@@ -251,18 +251,33 @@ Plain 256-bit multiply-and-divide is **three times cheaper in Rust**, flat acros
 magnitude. The arithmetic is not the problem.
 
 The problem is that there is so little of it. **One `getY` — twelve Newton iterations — is 8,629
-gas.** Three times cheaper saves under 6,000, against a fixed cost of 19,953 to load the WASM
-program plus the storage read described below. That is the whole 27,407, and it says the curve is
+gas.** Three times cheaper saves under 6,000, against a fixed cost of 19,724 to load the WASM
+program. That is nearly the whole 25,305, and it says the curve is
 nowhere near the ~62,000 gas of arithmetic the crossover needs. Twelve Newton iterations sounds like
 a lot and is not: the bar is closer to 220 plain multiply-divides, or seven `getY` calls, per swap.
 
-### A structural tax on Stylus hooks
+### A structural tax on Stylus hooks, and how to avoid it
 
 Solidity hooks hold the pool manager in an `immutable`, which costs nothing to read. The Stylus SDK
-has no equivalent — a constructor argument can only go to storage — so every callback pays a cold
-`SLOAD`, 2,100 gas, purely to check that the caller is the pool manager. On a hook whose whole job
-is a few thousand gas of arithmetic that is not a rounding error, and no amount of optimisation in
-the hook removes it.
+has no equivalent, so a constructor argument can only go to storage and every callback pays a cold
+`SLOAD` — 2,100 gas — purely to check that its caller is the pool manager.
+
+There is a way out. A Rust `const` lives in the WASM code and costs nothing to read, and
+[`stylus/native-stableswap/build.rs`](stylus/native-stableswap/build.rs) bakes the address in from
+`$POOL_MANAGER` at build time:
+
+```bash
+POOL_MANAGER=0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32 cargo stylus deploy ...
+```
+
+Measured, the hook goes from 176,519 gas per swap to **174,417** — 2,102 saved, which is the cold
+`SLOAD` to the byte.
+
+The trade is that the address is fixed at build time rather than deploy time. For a hook that costs
+nothing: the address has to be mined against the init code anyway, so the contract is already
+rebuilt per deployment. `native-counter` and `native-compute` still read theirs from storage, so
+their figures elsewhere in this document carry the 2,100 — twice per swap in the counter's case,
+which is called on both `beforeSwap` and `afterSwap`.
 
 ### The rule this all adds up to
 
