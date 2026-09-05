@@ -594,9 +594,32 @@ That it was never deployed is the argument, not a counterargument. TWAMM is a we
 Uniswap wrote, benchmarked, and shipped as an example — and half a million gas per execution is why
 nobody runs one. It is precisely the hook that is too expensive to exist in Solidity.
 
-None of that is a measurement of a Rust TWAMM. It is a measurement of the workload — 86 quad-float
-operations per interval, at ~100,000 gas — against ratios measured separately. Porting it is the
-experiment this whole document has been looking for.
+### Why the port cannot be written
+
+Stylus has no floating point. A contract that so much as converts an integer to an `f64` is refused
+at activation:
+
+```
+program activation failed: failed to build user module
+No implementation for floating point operation ConvertIntOp(F64, I64, false) in user
+```
+
+The SDK's own README says the same: "we may add … floating point and SIMD, which the Stylus VM does
+not yet support". Stylus is at version 3 on both Arbitrum One and Sepolia.
+
+That takes the argument apart. TWAMM is expensive because ABDK emulates IEEE 754 binary128 in
+software over 256-bit words. The reason that looked like Stylus's best case was the assumption that
+WASM would run those floats natively — and it will not, because Stylus forbids them. Neither
+machine has floating point.
+
+So a Rust TWAMM has two options, and neither is the experiment it appeared to be. Emulate binary128
+in Rust as well, which measures one software float implementation against another rather than one
+language against another. Or drop floats for integer fixed point — but a Solidity TWAMM could do
+that too, and would get most of the same saving. That is an algorithmic change wearing a language
+change's clothes.
+
+**The one workload in this document that clears the bar clears it for a reason Stylus cannot
+exploit.**
 
 ## The search, exhausted
 
@@ -884,9 +907,32 @@ That it was never deployed is the argument, not a counterargument. TWAMM is a we
 Uniswap wrote, benchmarked, and shipped as an example — and half a million gas per execution is why
 nobody runs one. It is precisely the hook that is too expensive to exist in Solidity.
 
-None of that is a measurement of a Rust TWAMM. It is a measurement of the workload — 86 quad-float
-operations per interval, at ~100,000 gas — against ratios measured separately. Porting it is the
-experiment this whole document has been looking for.
+### Why the port cannot be written
+
+Stylus has no floating point. A contract that so much as converts an integer to an `f64` is refused
+at activation:
+
+```
+program activation failed: failed to build user module
+No implementation for floating point operation ConvertIntOp(F64, I64, false) in user
+```
+
+The SDK's own README says the same: "we may add … floating point and SIMD, which the Stylus VM does
+not yet support". Stylus is at version 3 on both Arbitrum One and Sepolia.
+
+That takes the argument apart. TWAMM is expensive because ABDK emulates IEEE 754 binary128 in
+software over 256-bit words. The reason that looked like Stylus's best case was the assumption that
+WASM would run those floats natively — and it will not, because Stylus forbids them. Neither
+machine has floating point.
+
+So a Rust TWAMM has two options, and neither is the experiment it appeared to be. Emulate binary128
+in Rust as well, which measures one software float implementation against another rather than one
+language against another. Or drop floats for integer fixed point — but a Solidity TWAMM could do
+that too, and would get most of the same saving. That is an algorithmic change wearing a language
+change's clothes.
+
+**The one workload in this document that clears the bar clears it for a reason Stylus cannot
+exploit.**
 
 ## The search, exhausted
 
