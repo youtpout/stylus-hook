@@ -5,7 +5,7 @@ overall design.
 
 | Crate | What it is | WASM |
 | --- | --- | --- |
-| [`base-hook`](base-hook/src/lib.rs) | `BaseHook.sol`'s counterpart in Stylus: v4 types, permission flags, the ten `IHooks` callbacks | library |
+| [`base-hook`](base-hook/src/lib.rs) | `BaseHook.sol`'s counterpart in Stylus: v4 types, permission flags, the ten `IHooks` callbacks, and the `PoolManager` calls a hook makes | library |
 | [`native-counter`](native-counter/src/lib.rs) | a v4 hook with no Solidity at all, built on `base-hook` | 15.7 KB |
 | [`hook-miner`](hook-miner/src/lib.rs) | mines the CREATE2 salt that puts a Stylus contract on a hook address | host CLI |
 | [`airdrop`](airdrop/src/lib.rs) | airdrop accounting behind `AirdropHookProxy.sol` | 14.7 KB |
