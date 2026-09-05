@@ -127,6 +127,24 @@ impl StableSwapHook {
         y
     }
 
+    /// `n` chained `a * b / c` on values that never overflow 256 bits.
+    ///
+    /// The isolation probe for the StableSwap result. In the EVM a multiply is one `MUL` and a
+    /// divide is one `DIV`, five gas each. In WASM there is no 256-bit word, so this is limb
+    /// arithmetic either way. Nothing else is measured here.
+    pub fn plain_mul_div(&self, n: U256) -> U256 {
+        let one = U256::from(1);
+        let z = one << 100;
+        let y = (one << 100) - one;
+        let mut a = (one << 100) + one;
+        let mut i = U256::ZERO;
+        while i < n {
+            a = (a * y) / z + one;
+            i += one;
+        }
+        a
+    }
+
     /// Prices `amount_in` against the current reserves without touching them.
     pub fn quote(&self, amount_in: U256) -> U256 {
         let (x0, x1) = (self.reserve0.get(), self.reserve1.get());

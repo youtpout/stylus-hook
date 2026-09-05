@@ -109,6 +109,26 @@ for round in $(seq 1 "$ROUNDS"); do
   printf '%-8s %14s %14s %14s\n' "$round" "$s" "$r" "$((r - s))"
 done
 
+log "isolating the arithmetic (cast estimate, no hook plumbing, no storage)"
+# A pure function called directly: the difference between n and n=0 is the arithmetic alone.
+est() { cast estimate "$1" "$2" "${@:3}" --rpc-url "$RPC" --from 0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E 2>/dev/null | awk '{print $1}'; }
+
+SIG='plainMulDiv(uint256)'
+printf '%-10s %12s %12s   %s\n' 'a*b/c x' solidity rust ratio
+for n in 100 400 1000; do
+  s0=$(est "$SOLIDITY_HOOK" "$SIG" 0); sn=$(est "$SOLIDITY_HOOK" "$SIG" "$n")
+  r0=$(est "$RUST_HOOK" "$SIG" 0);     rn=$(est "$RUST_HOOK" "$SIG" "$n")
+  ds=$((sn - s0)); dr=$((rn - r0))
+  printf '%-10s %12s %12s   %s\n' "$n" "$ds" "$dr" "$(python3 -c "print(f'{$ds/max($dr,1):.2f}x')")"
+done
+
+SIG='getY(uint256,uint256,uint256,uint256)'
+sy=$(est "$SOLIDITY_HOOK" "$SIG" 1000000000000000000 1000000000000000000000 600000000000000000000 100)
+ry=$(est "$RUST_HOOK" "$SIG" 1000000000000000000 1000000000000000000000 600000000000000000000 100)
+sb=$(est "$SOLIDITY_HOOK" 'reserves()' ); rb=$(est "$RUST_HOOK" 'reserves()')
+printf 'one StableSwap getY           solidity %8s   rust %8s\n' "$((sy - sb))" "$((ry - rb))"
+printf '  (baselines: an empty call is %s in solidity, %s in rust)\n' "$sb" "$rb"
+
 BASE=$(swap_gas 0)
 echo
 printf 'baseline swap with no hook at all        %10s\n' "$BASE"

@@ -237,38 +237,57 @@ measuring.
 | StableSwap in Solidity | 149,112 | +34,051 |
 | **StableSwap in Rust** | **176,519** | **+61,458** |
 
-**Rust loses by 27,407 gas.** Not close.
+**Rust loses by 27,407 gas.** So the next question is where that goes, and the answer is not where
+it first appears to be. Calling the pure functions directly, with no hook and no storage in the way:
 
-The reason is the sharpest result in this document. The StableSwap invariant is written with plain
-`*` and `/` on values that never overflow 256 bits — `(d * d) / (x0 * 2)`. In the EVM that is a
-`MUL` and a `DIV`: **five gas each**. In WASM there is no 256-bit word at all, so the multiply
-becomes sixteen 64-bit multiplies with carry propagation and the divide becomes a full long-division
-routine. Stylus is not paying a fixed overhead here, it is doing genuinely more work.
+| | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| 100 × `a * b / c`, no overflow | 27,834 | 9,390 | 2.96× |
+| 400 × | 111,365 | 37,534 | 2.97× |
+| 1,000 × | 279,387 | 92,622 | 3.02× |
+| one StableSwap `getY` | 8,629 | below the estimate's resolution | — |
 
-The whole curve costs 34,051 gas in Solidity. Twelve Newton iterations of it. That is what the EVM's
-256-bit word buys, and it is why every candidate in this document came up short.
+Plain 256-bit multiply-and-divide is **three times cheaper in Rust**, flat across three orders of
+magnitude. The arithmetic is not the problem.
+
+The problem is that there is so little of it. **One `getY` — twelve Newton iterations — is 8,629
+gas.** Three times cheaper saves under 6,000, against a fixed cost of 19,953 to load the WASM
+program plus the storage read described below. That is the whole 27,407, and it says the curve is
+nowhere near the ~62,000 gas of arithmetic the crossover needs. Twelve Newton iterations sounds like
+a lot and is not: the bar is closer to 220 plain multiply-divides, or seven `getY` calls, per swap.
+
+### A structural tax on Stylus hooks
+
+Solidity hooks hold the pool manager in an `immutable`, which costs nothing to read. The Stylus SDK
+has no equivalent — a constructor argument can only go to storage — so every callback pays a cold
+`SLOAD`, 2,100 gas, purely to check that the caller is the pool manager. On a hook whose whole job
+is a few thousand gas of arithmetic that is not a rounding error, and no amount of optimisation in
+the hook removes it.
 
 ### The rule this all adds up to
 
-Five measurements of the same question, ordered by how badly the work fits a 256-bit word:
+Five measurements of the same question:
 
 | operation | what it needs | Solidity | Rust | ratio |
 | --- | --- | ---: | ---: | ---: |
-| plain `*` and `/` (StableSwap) | one EVM opcode each | 5 gas | limb arithmetic | **EVM wins** |
+| plain `a * b / c` | one `MUL`, one `DIV`, checked | 278 | 93 | 3.0× |
 | `rpow` (Bunni's LDF) | `mulDiv`, Q96, fits in 256 bits | 3,058 | 1,850 | 1.65× |
 | `mulDiv` | 512-bit intermediate | 694 | 247 | 2.8× |
 | `sqrt` | 512-bit intermediate + bit length | 2,009 | 447 | 4.5× |
 | xorshift64 | 64-bit words | 115 | 10.9 | 10.6× |
 
-**Stylus wins exactly where the EVM cannot express the work in raw 256-bit opcodes**, and by how far
-it cannot. Arithmetic that fits in one `MUL` and one `DIV` is five gas apiece and unbeatable.
-Arithmetic needing 512 bits forces Solidity through Remco Bloemen's long division and Stylus wins a
-few times over. Arithmetic needing a bit length, which the EVM has no instruction for, widens that
-further. Arithmetic in words *smaller* than 256 bits — where the EVM pays for a word it cannot use —
-gains an order of magnitude.
+Rust is cheaper in every row, by between 1.65× and 10.6×. How much cheaper tracks how badly the work
+fits a 256-bit word: `rpow` in Q96 gains least because that is exactly the shape the EVM is built
+for, and 64-bit words gain most because the EVM pays for a word it cannot use.
 
-"Compute is cheaper in Stylus" is not the rule. **"Work the 256-bit word cannot do" is the rule**,
-and most AMM maths, including a StableSwap curve, is not that.
+But the ratio was never the binding constraint. **The amount of arithmetic is.** Against a fixed
+cost of roughly 20,000 gas to enter a Stylus contract, a 3× saving needs about 30,000 gas of
+Solidity arithmetic just to break even, and 62,000 to be worth the trouble. Nothing measured in this
+document gets there: AntiSandwichHook has 21,000, a StableSwap curve 8,600, the counter and airdrop
+hooks essentially none.
+
+That is the finding. Not that Stylus computes slowly — it does not — but that **hooks do not compute
+enough** for it to matter.
 
 ### Writing storage
 

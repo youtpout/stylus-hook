@@ -125,9 +125,14 @@ own swap math is made of:
 | 5,000 | 3,594,426 | **1,401,533** |
 
 694 gas per `mulDiv` in Solidity against 247 in Rust — **2.8× cheaper** — and a Stylus call costs
-~39,000 gas more to enter, so the two cross at **89 operations**. Small-word arithmetic is 10.6×
-cheaper and crosses at ~371 rounds. [BENCHMARK.md](BENCHMARK.md) has all three sweeps, a profile of
-the shipping hooks against that bar, and why the EVM's 256-bit word does not help it here.
+~39,000 gas more to enter, so the two cross at **89 operations**. Rust is cheaper on every kind of
+arithmetic measured, by 1.65× to 10.6×.
+
+The catch is that hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
+gas of Solidity arithmetic to be worth it, and nothing shipping gets close: OpenZeppelin's
+`AntiSandwichHook` has 21,000, a StableSwap curve 8,600, the counter and airdrop hooks essentially
+none. [BENCHMARK.md](BENCHMARK.md) has every sweep, an opcode profile of the shipping hooks, and a
+hook built specifically to clear the bar that still does not.
 
 ## Deploy a hook with no Solidity (Arbitrum Sepolia)
 

@@ -84,6 +84,20 @@ contract StableSwapHook is BaseHook {
         }
     }
 
+    /// @notice `n` chained `a * b / c` on values that never overflow 256 bits.
+    /// @dev The isolation probe for the StableSwap result. Here a multiply is one `MUL` and a
+    ///      divide is one `DIV`, five gas each, with no `FullMath` wrapper and no 512-bit
+    ///      intermediate. Nothing else is measured: no storage, no hook plumbing.
+    function plainMulDiv(uint256 n) public pure returns (uint256) {
+        uint256 z = 1 << 100;
+        uint256 y = (1 << 100) - 1;
+        uint256 a = (1 << 100) + 1;
+        for (uint256 i = 0; i < n; i++) {
+            a = (a * y) / z + 1;
+        }
+        return a;
+    }
+
     /// @notice Prices `amountIn` against the current reserves without touching them.
     function quote(uint256 amountIn) public view returns (uint256) {
         uint256 y = getY(amountIn, reserve0, reserve1, ann);
