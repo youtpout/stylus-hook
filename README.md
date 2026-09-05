@@ -103,12 +103,12 @@ receipts.
 
 | hook | gas per swap | costs |
 | --- | ---: | ---: |
-| none | 124,590 | — |
-| one Solidity contract | 160,276 | +35,686 |
-| two Solidity contracts | 166,835 | +42,245 |
-| Solidity shell + Stylus | 201,121 | +76,531 |
+| none | 119,562 | — |
+| one Solidity contract | 153,107 | +33,545 |
+| two Solidity contracts | 158,688 | +39,126 |
+| Solidity shell + Stylus | 194,049 | +74,487 |
 
-Stylus costs 2.14× what Solidity does here. That is the workload's fault, not the port's: `afterSwap`
+Stylus costs 2.22× what Solidity does here. That is the workload's fault, not the port's: `afterSwap`
 is six `SLOAD`s and six `SSTORE`s with almost no arithmetic, and Stylus makes compute cheap, not
 storage.
 
@@ -118,16 +118,16 @@ own swap math is made of:
 
 | `mulDiv`s per swap | Solidity | Rust |
 | ---: | ---: | ---: |
-| 0 | 130,092 | 168,577 |
-| 50 | 179,538 | 181,049 |
-| 200 | 327,588 | **218,177** |
-| 1,000 | 1,117,188 | **416,193** |
-| 5,000 | 5,065,156 | **1,406,241** |
+| 0 | 124,362 | 163,869 |
+| 50 | 159,158 | 176,341 |
+| 200 | 263,258 | **213,469** |
+| 1,000 | 818,458 | **411,485** |
+| 5,000 | 3,594,426 | **1,401,533** |
 
-987 gas per `mulDiv` in Solidity against 247 in Rust — **4× cheaper** — and a Stylus call costs
-~38,000 gas more to enter, so the two cross at only **52 operations**. Small-word arithmetic is 13×
-cheaper and crosses at ~284 rounds. [BENCHMARK.md](BENCHMARK.md) has both sweeps and why the EVM's
-256-bit word does not help it here.
+694 gas per `mulDiv` in Solidity against 247 in Rust — **2.8× cheaper** — and a Stylus call costs
+~39,000 gas more to enter, so the two cross at **89 operations**. Small-word arithmetic is 10.6×
+cheaper and crosses at ~371 rounds. [BENCHMARK.md](BENCHMARK.md) has all three sweeps, a profile of
+the shipping hooks against that bar, and why the EVM's 256-bit word does not help it here.
 
 ## Deploy a hook with no Solidity (Arbitrum Sepolia)
 
@@ -179,6 +179,7 @@ cd uniswap && STYLUS_AIRDROP=0x... forge script script/01_DeployStylusAirdropHoo
 | End-to-end proof that it works | [`prove-native-hook.bash`](prove-native-hook.bash) |
 | CREATE2 salt mining for a hook address | [`stylus/hook-miner/src/lib.rs`](stylus/hook-miner/src/lib.rs) |
 | Gas benchmarks | [`bench.bash`](bench.bash), [`bench-counter.bash`](bench-counter.bash), [`bench-compute.bash`](bench-compute.bash) |
+| Opcode profile of shipping hooks | [`profile-hooks.bash`](profile-hooks.bash), [`bench-antisandwich.bash`](bench-antisandwich.bash) |
 | Hook forwarding v4 callbacks to Stylus | [`uniswap/src/AirdropHookProxy.sol`](uniswap/src/AirdropHookProxy.sol) |
 | The same hook in pure Solidity | [`uniswap/src/AirdropHook.sol`](uniswap/src/AirdropHook.sol) |
 | Hook state and logic in Rust | [`stylus/airdrop/src/lib.rs`](stylus/airdrop/src/lib.rs) |

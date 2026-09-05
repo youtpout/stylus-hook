@@ -4,6 +4,10 @@ out = "out"
 libs = ["lib"]
 solc_version = "0.8.30"
 evm_version = "cancun"
+# Matches what OpenZeppelin's uniswap-hooks ships with. Benchmarks compare optimised Rust against
+# optimised Solidity or they compare nothing.
+optimizer = true
+optimizer_runs = 200
 bytecode_hash = "none"
 via_ir = false
 ffi = true

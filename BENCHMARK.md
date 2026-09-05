@@ -1,3 +1,20 @@
+# What a hook costs per swap
+
+## Method
+
+Every figure here comes from a transaction on an Arbitrum Nitro dev node — the cheapest chain that
+executes both EVM bytecode and WASM — with one swap per transaction, so the cost is read off the
+receipt rather than estimated.
+
+Both sides are optimised. Solidity is compiled with `optimizer = true, optimizer_runs = 200`, which
+is what OpenZeppelin's `uniswap-hooks` ships with; Rust is built in release with LTO and the pinned
+`wasm-opt -Oz` that `Stylus.toml` declares. An earlier revision of this file reported numbers taken
+with the Solidity optimiser off, which flattered Stylus — those have been remeasured.
+
+The benchmarks also set `ArbOwner.setL1PricePerUnit(0)`. The L1 data-posting component is identical
+across the variants being compared — same calldata, same swap — and on a real chain it dwarfs the
+L2 execution gas the comparison is about.
+
 # What the airdrop hook costs per swap
 
 Measured on an Arbitrum Nitro dev node (ArbOS 59, Stylus v3), the cheapest chain that can execute
@@ -29,23 +46,23 @@ Gas per swap, warm (the first swap on a pool pays zero-to-non-zero `SSTORE` pric
 
 | | gas per swap | hook costs |
 | --- | ---: | ---: |
-| no hook | 124,590 | — |
-| hook in one Solidity contract | 160,276 | +35,686 |
-| hook split over two Solidity contracts | 166,835 | +42,245 |
-| **hook with its state in Stylus** | **201,121** | **+76,531** |
-| hook with its state in Stylus, if cached | 183,894 (projected) | +59,304 |
+| no hook | 119,562 | — |
+| hook in one Solidity contract | 153,107 | +33,545 |
+| hook split over two Solidity contracts | 158,688 | +39,126 |
+| **hook with its state in Stylus** | **194,049** | **+74,487** |
+| hook with its state in Stylus, if cached | 176,822 (projected) | +57,260 |
 
-Breaking down the 76,531:
+Breaking down the 74,487:
 
 | | gas |
 | --- | ---: |
-| the accounting itself, as Solidity would do it | 35,686 |
-| the extra call the split design needs | 6,559 |
-| Stylus, over the identical Solidity callee | 34,286 |
+| the accounting itself, as Solidity would do it | 33,545 |
+| the extra call the split design needs | 5,581 |
+| Stylus, over the identical Solidity callee | 35,361 |
 | — of which loading the WASM program, uncached | 20,439 |
 | — the same, once the contract is cached | 3,212 |
 
-**Stylus costs 2.14× what Solidity does for this hook, or 1.66× once the contract is cached.**
+**Stylus costs 2.22× what Solidity does for this hook, or 1.71× once the contract is cached.**
 
 The dev node has no `CacheManager`, so the cached row is computed from
 `ArbWasm.programInitGas(address)`, which reports both figures, rather than measured directly.
@@ -56,7 +73,7 @@ Stylus makes *compute* roughly an order of magnitude cheaper. It does not make *
 `SLOAD` and `SSTORE` are host calls priced in EVM gas either way.
 
 `afterSwap` on this hook does about six `SLOAD`s and six `SSTORE`s and almost no arithmetic — six
-warm `SSTORE`s alone are 17,400 gas of the 35,686 the Solidity version costs. There is no compute
+warm `SSTORE`s alone are 17,400 gas of the 33,545 the Solidity version costs. There is no compute
 for Stylus to win back, so all that is left is what it adds: ~20k to load the program on a cold
 call, plus the cross-VM call itself.
 
@@ -73,14 +90,15 @@ hook twice — `beforeSwap` and `afterSwap` — so every figure below is two hoo
 
 | | gas per swap | hook costs |
 | --- | ---: | ---: |
-| no hook | 120,224 | — |
-| `Counter.sol`, one Solidity contract | 141,891 | +21,667 |
-| `CounterProxy.sol` → Stylus | 207,885 | +87,661 |
-| **`native-counter`, no Solidity in the hook** | **204,452** | **+84,228** |
-| the same, if the contract is cached | 189,355 (projected) | +69,131 |
+| no hook | 115,125 | — |
+| `Counter.sol`, one Solidity contract | 134,063 | +18,938 |
+| `CounterProxy.sol` → Stylus | 199,968 | +84,843 |
+| **`native-counter`, no Solidity in the hook** | **199,353** | **+84,228** |
+| the same, if the contract is cached | 184,256 (projected) | +69,131 |
 
-Going fully native saves **3,433 gas**, and only after Binaryen gets involved. Without `-Oz` the
-native hook was *worse* than the shell, by 3,859:
+Going fully native saves **615 gas** — a rounding error — and only because of Binaryen. `-Oz` cuts
+the native hook's init gas from 21,274 to 17,751, and this hook is entered twice per swap, so
+without it the shell would win by several thousand:
 
 | | compiled size | init gas, uncached / cached |
 | --- | ---: | ---: |
@@ -98,11 +116,13 @@ Two things pull against going native, and they nearly cancel the win:
   shape is cheap, and passes Stylus a single `bytes32`.
 
 So the shell is not only overhead: it doubles as a calldata decoder. Removing it is still the right
-call — it is one less contract, one less trust assumption, and it does now win on gas — but the
-margin is thin, and it will only widen for a hook whose own work is worth more than its front door.
+call — one less contract, one less trust assumption, and it no longer costs anything — but on gas
+alone it is a wash, and it will only pay for a hook whose own work is worth more than its front
+door.
 
-Against pure Solidity the native hook still costs 62,561 gas more per swap. Same conclusion as the
-airdrop: this hook writes one storage slot per callback and computes nothing.
+Against pure Solidity the native hook still costs 65,290 gas more per swap, 4.4× the Solidity hook.
+Same conclusion as the airdrop: this hook writes one storage slot per callback and computes
+nothing.
 
 ## Where Rust starts winning
 
@@ -115,14 +135,14 @@ xorshift64 loop in `beforeSwap`, and the only thing that changes between rows is
 
 | rounds | Solidity | Rust | delta |
 | ---: | ---: | ---: | ---: |
-| 0 | 130,080 | 167,626 | +37,546 |
-| 50 | 137,202 | 168,142 | +30,940 |
-| 200 | 158,652 | 169,774 | +11,122 |
-| 500 | 201,580 | **173,067** | −28,513 |
-| 1,000 | 273,116 | **178,543** | −94,573 |
-| 5,000 | 845,048 | **222,001** | −623,047 |
+| 0 | 124,342 | 162,918 | +38,576 |
+| 50 | 130,064 | 163,434 | +33,370 |
+| 200 | 147,314 | 165,066 | +17,752 |
+| 500 | 181,842 | **168,359** | −13,483 |
+| 1,000 | 239,378 | **173,835** | −65,543 |
+| 5,000 | 699,310 | **217,293** | −482,017 |
 
-143 gas per round in Solidity, 10.9 in Rust: **13× cheaper**. The crossover is at ~284 rounds.
+115 gas per round in Solidity, 10.9 in Rust: **10.6× cheaper**. The crossover is at ~371 rounds.
 
 ### `mulDiv` on 256-bit words
 
@@ -132,23 +152,24 @@ This is the one that matters, because it is what Uniswap's own swap math is made
 
 | rounds | Solidity | Rust | delta |
 | ---: | ---: | ---: | ---: |
-| 0 | 130,092 | 168,577 | +38,485 |
-| 50 | 179,538 | 181,049 | +1,511 |
-| 200 | 327,588 | **218,177** | −109,411 |
-| 500 | 623,624 | **292,369** | −331,255 |
-| 1,000 | 1,117,188 | **416,193** | −700,995 |
-| 5,000 | 5,065,156 | **1,406,241** | −3,658,915 |
+| 0 | 124,362 | 163,869 | +39,507 |
+| 50 | 159,158 | 176,341 | +17,183 |
+| 200 | 263,258 | **213,469** | −49,789 |
+| 500 | 471,394 | **287,661** | −183,733 |
+| 1,000 | 818,458 | **411,485** | −406,973 |
+| 5,000 | 3,594,426 | **1,401,533** | −2,192,893 |
 
-987 gas per `mulDiv` in Solidity, 247 in Rust: **4× cheaper**, and the crossover is only **52
-operations** — about 51,000 gas of Solidity-side arithmetic.
+694 gas per `mulDiv` in Solidity, 247 in Rust: **2.8× cheaper**, and the crossover is **89
+operations** — about 62,000 gas of Solidity-side arithmetic.
 
-That is the opposite of what the 256-bit word size suggests, and the reason is worth stating.
-A bare `MUL` or `DIV` *is* a single 5-gas EVM opcode, and Stylus would lose that comparison. But
-Uniswap does not use bare `mul` and `div` for pool math — it uses `FullMath.mulDiv`, which needs the
-full 512-bit product, and the EVM has no 512-bit anything. Solidity gets there with Remco Bloemen's
-long-division routine: `mulmod`, a modular inverse built by Newton iteration, and several dozen
-opcodes. Rust gets there with a `U512` multiply and divide over limbs. The EVM's 256-bit word is an
-advantage right up to the point where you need 257 bits, which is most of Uniswap's math.
+That Stylus wins here at all is the opposite of what the 256-bit word size suggests, and the reason
+is worth stating. A bare `MUL` or `DIV` *is* a single 5-gas EVM opcode, and Stylus would lose that
+comparison. But Uniswap does not use bare `mul` and `div` for pool math — it uses `FullMath.mulDiv`,
+which needs the full 512-bit product, and the EVM has no 512-bit anything. Solidity gets there with
+Remco Bloemen's long-division routine: `mulmod`, a modular inverse built by Newton iteration, and
+several dozen opcodes. Rust gets there with a `U512` multiply and divide over limbs. The EVM's
+256-bit word is an advantage right up to the point where you need 257 bits, which is most of
+Uniswap's math.
 
 ### Writing storage
 
@@ -158,25 +179,24 @@ them. This mode checks that rather than assuming it — each round writes one ma
 
 | slots written | Solidity | Rust | delta |
 | ---: | ---: | ---: | ---: |
-| 0 | 130,082 | 167,986 | +37,904 |
-| 5 | 142,777 | 179,719 | +36,942 |
-| 25 | 193,621 | 226,841 | +33,220 |
-| 100 | 383,986 | 403,411 | +19,425 |
+| 0 | 124,329 | 162,887 | +38,558 |
+| 5 | 136,314 | 174,620 | +38,306 |
+| 25 | 184,318 | 221,742 | +37,424 |
+| 100 | 364,033 | 398,312 | +34,279 |
 
-2,539 gas per slot in Solidity, 2,354 in Rust. Stylus is **7 % cheaper**, not 4× and not 13×, and
-that margin is not the store itself: a cold slot costs 2,100 to touch and 100 to write the value it
-already holds, identically in both. What Stylus shaves is the arithmetic wrapped around the access —
-hashing the mapping key, and the loop. Paying off the entry fee on storage alone would take about
-205 writes per call.
+2,397 gas per slot in Solidity, 2,354 in Rust. Stylus is **1.8 % cheaper**, not 2.8× and not 10×,
+and that margin is not the store itself: a cold slot costs 2,100 to touch and 100 to write the value
+it already holds, identically in both. What Stylus shaves is the arithmetic wrapped around the
+access — hashing the mapping key, and the loop. Paying off the entry fee on storage alone would take
+about 900 writes per call.
 
-So the earlier claim in this document — that storage costs the same in both worlds — is very nearly
-right, and right for every purpose a hook cares about. Moving state into a Stylus contract does not
-make it cheaper to store; it makes the code around it cheaper.
+So moving state into a Stylus contract does not make it cheaper to store. It makes the code around
+it cheaper.
 
 ### The fixed cost
 
-At zero rounds the Rust hook still costs ~38,000 gas more, of which 21,759 is loading its WASM
-program on every call — 5,417 once the contract is cached. That figure is higher here than for
+At zero rounds the Rust hook still costs ~38,500 gas more, of which 22,142 is loading its WASM
+program on every call — 5,432 once the contract is cached. That figure is higher here than for
 `native-counter` because this hook carries both workloads and `U512` arithmetic; the program is
 bigger, and `ArbWasm` charges by compiled size.
 
@@ -191,23 +211,23 @@ swaps skip the replay, so the gap between the two directions isolates the simula
 
 | | gas per swap | over baseline |
 | --- | ---: | ---: |
-| no hook, 0→1 | 125,414 | — |
-| no hook, 1→0 | 119,619 | — |
-| AntiSandwichHook, 0→1 (no replay) | 181,702 | +56,288 |
-| AntiSandwichHook, 1→0 (with replay) | 200,906 | +81,287 |
-| **the `Pool.swap` replay alone** | | **24,999** |
+| no hook, 0→1 | 120,315 | — |
+| no hook, 1→0 | 114,520 | — |
+| AntiSandwichHook, 0→1 (no replay) | 168,425 | +48,110 |
+| AntiSandwichHook, 1→0 (with replay) | 184,090 | +69,570 |
+| **the `Pool.swap` replay alone** | | **21,460** |
 
-So the arithmetic is **31 %** of what this hook costs. The other 56,288 is checkpointing pool state
+So the arithmetic is **31 %** of what this hook costs. The other 48,110 is checkpointing pool state
 into the hook's own storage — `extsload` calls to the pool manager, then `SSTORE`s — and settling
 an ERC-6909 fee. None of that gets cheaper in Stylus.
 
-Projecting the port from the rates measured above: the replay at 4× would drop from 24,999 to about
-6,250, saving ~18,700, against a Stylus entry fee of ~20,000 uncached or ~5,400 cached. **Porting
-this hook is roughly break-even uncached and perhaps 20 % better cached.** Not the demonstration it
+Projecting the port from the rates measured above: the replay at 2.8× would drop from 21,460 to
+about 7,700, saving ~13,800, against a Stylus entry fee of ~22,000 uncached or ~5,400 cached.
+**Porting this hook loses money uncached and saves perhaps 4 % cached.** Not the demonstration it
 looks like from the outside.
 
-The bar set by the `mulDiv` sweep is ~52 operations, about 51,000 gas of Solidity arithmetic per
-call. AntiSandwichHook has ~25,000. It is under the bar — and it is the *best* candidate in that
+The bar set by the `mulDiv` sweep is 89 operations, about 62,000 gas of Solidity arithmetic per
+call. AntiSandwichHook has ~21,000 — a third of it — and it is the *best* candidate in that
 library.
 
 Two caveats. The measured pool holds a single full-range position, so the replay crosses no ticks;
@@ -236,6 +256,45 @@ frozen for an entire L1 block, spanning many L2 blocks, which is a much wider wi
 `_getBlockNumber` is `virtual` precisely so this can be fixed, and
 [`ArbAntiSandwichMock`](uniswap/script/bench/ArbAntiSandwichMock.sol) overrides it onto
 `ArbSys.arbBlockNumber()` — a one-line change, but one nothing in the hook tells you to make.
+
+## Which shipping hooks are worth porting
+
+`./profile-hooks.bash` answers that generically. It swaps through one pool per hook and traces the
+transaction opcode by opcode, summing gas by class, then subtracts the same swap through a pool with
+no hook. Only the compute column moves in Stylus.
+
+A call opcode's `gasCost` in the trace is the gas handed to the callee, and the callee's own opcodes
+are logged too, so calls are counted rather than summed — the numbers below are the work itself.
+
+| | compute | storage | keccak | calls | total gas |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| no hook | 26,656 | 48,100 | 684 | 11 | 114,608 |
+| AntiSandwich | 50,272 | 86,500 | 1,350 | 19 | 181,405 |
+| LimitOrder | 31,433 | 50,300 | 828 | 13 | 124,441 |
+| PanopticOracle | 32,150 | 72,700 | 912 | 13 | 147,642 |
+
+What each one adds over the hookless swap:
+
+| hook | compute | storage | keccak | compute share |
+| --- | ---: | ---: | ---: | ---: |
+| **AntiSandwich** | **23,616** | 38,400 | 666 | 37 % |
+| LimitOrder | 4,777 | 2,200 | 144 | 67 % |
+| PanopticOracle | 5,494 | 24,600 | 228 | 18 % |
+
+The profiler and the direction trick agree on AntiSandwich — 23,616 against 21,460 — which is the
+main reason to trust either.
+
+None of them clears the 62,000-gas bar. The best is at a third of it. And note the first row: a
+plain v4 swap is itself 26,656 of compute against 48,100 of storage, so a hook would have to compute
+more than twice what the AMM does to be worth moving.
+
+Two caveats on this table. `LimitOrderHook` was profiled with no orders resting, so it shows its
+framework cost and not a fill; its 67 % compute share is of a very small number. And the heaviest
+hooks Uniswap publishes — `NativeBookHook` at 155k–221k, `ALFMultiplexer` at 235k, `DualPoolHook` at
+506k in their own snapshots — each need vaults, ladders and makers configured before their expensive
+path runs at all, so they are not in this table. `ALFMultiplexer` is the one worth setting up: it
+runs a `SwapSimulator` pass per routing candidate, and a simulation is roughly an AntiSandwich
+replay, so three or more candidates would clear the bar.
 
 ## What this means for the project## Pricing a real hook: AntiSandwichHook
 
@@ -248,23 +307,23 @@ swaps skip the replay, so the gap between the two directions isolates the simula
 
 | | gas per swap | over baseline |
 | --- | ---: | ---: |
-| no hook, 0→1 | 125,414 | — |
-| no hook, 1→0 | 119,619 | — |
-| AntiSandwichHook, 0→1 (no replay) | 181,702 | +56,288 |
-| AntiSandwichHook, 1→0 (with replay) | 200,906 | +81,287 |
-| **the `Pool.swap` replay alone** | | **24,999** |
+| no hook, 0→1 | 120,315 | — |
+| no hook, 1→0 | 114,520 | — |
+| AntiSandwichHook, 0→1 (no replay) | 168,425 | +48,110 |
+| AntiSandwichHook, 1→0 (with replay) | 184,090 | +69,570 |
+| **the `Pool.swap` replay alone** | | **21,460** |
 
-So the arithmetic is **31 %** of what this hook costs. The other 56,288 is checkpointing pool state
+So the arithmetic is **31 %** of what this hook costs. The other 48,110 is checkpointing pool state
 into the hook's own storage — `extsload` calls to the pool manager, then `SSTORE`s — and settling
 an ERC-6909 fee. None of that gets cheaper in Stylus.
 
-Projecting the port from the rates measured above: the replay at 4× would drop from 24,999 to about
-6,250, saving ~18,700, against a Stylus entry fee of ~20,000 uncached or ~5,400 cached. **Porting
-this hook is roughly break-even uncached and perhaps 20 % better cached.** Not the demonstration it
+Projecting the port from the rates measured above: the replay at 2.8× would drop from 21,460 to
+about 7,700, saving ~13,800, against a Stylus entry fee of ~22,000 uncached or ~5,400 cached.
+**Porting this hook loses money uncached and saves perhaps 4 % cached.** Not the demonstration it
 looks like from the outside.
 
-The bar set by the `mulDiv` sweep is ~52 operations, about 51,000 gas of Solidity arithmetic per
-call. AntiSandwichHook has ~25,000. It is under the bar — and it is the *best* candidate in that
+The bar set by the `mulDiv` sweep is 89 operations, about 62,000 gas of Solidity arithmetic per
+call. AntiSandwichHook has ~21,000 — a third of it — and it is the *best* candidate in that
 library.
 
 Two caveats. The measured pool holds a single full-range position, so the replay crosses no ticks;
@@ -294,13 +353,52 @@ frozen for an entire L1 block, spanning many L2 blocks, which is a much wider wi
 [`ArbAntiSandwichMock`](uniswap/script/bench/ArbAntiSandwichMock.sol) overrides it onto
 `ArbSys.arbBlockNumber()` — a one-line change, but one nothing in the hook tells you to make.
 
+## Which shipping hooks are worth porting
+
+`./profile-hooks.bash` answers that generically. It swaps through one pool per hook and traces the
+transaction opcode by opcode, summing gas by class, then subtracts the same swap through a pool with
+no hook. Only the compute column moves in Stylus.
+
+A call opcode's `gasCost` in the trace is the gas handed to the callee, and the callee's own opcodes
+are logged too, so calls are counted rather than summed — the numbers below are the work itself.
+
+| | compute | storage | keccak | calls | total gas |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| no hook | 26,656 | 48,100 | 684 | 11 | 114,608 |
+| AntiSandwich | 50,272 | 86,500 | 1,350 | 19 | 181,405 |
+| LimitOrder | 31,433 | 50,300 | 828 | 13 | 124,441 |
+| PanopticOracle | 32,150 | 72,700 | 912 | 13 | 147,642 |
+
+What each one adds over the hookless swap:
+
+| hook | compute | storage | keccak | compute share |
+| --- | ---: | ---: | ---: | ---: |
+| **AntiSandwich** | **23,616** | 38,400 | 666 | 37 % |
+| LimitOrder | 4,777 | 2,200 | 144 | 67 % |
+| PanopticOracle | 5,494 | 24,600 | 228 | 18 % |
+
+The profiler and the direction trick agree on AntiSandwich — 23,616 against 21,460 — which is the
+main reason to trust either.
+
+None of them clears the 62,000-gas bar. The best is at a third of it. And note the first row: a
+plain v4 swap is itself 26,656 of compute against 48,100 of storage, so a hook would have to compute
+more than twice what the AMM does to be worth moving.
+
+Two caveats on this table. `LimitOrderHook` was profiled with no orders resting, so it shows its
+framework cost and not a fill; its 67 % compute share is of a very small number. And the heaviest
+hooks Uniswap publishes — `NativeBookHook` at 155k–221k, `ALFMultiplexer` at 235k, `DualPoolHook` at
+506k in their own snapshots — each need vaults, ladders and makers configured before their expensive
+path runs at all, so they are not in this table. `ALFMultiplexer` is the one worth setting up: it
+runs a `SwapSimulator` pass per routing candidate, and a simulation is roughly an AntiSandwich
+replay, so three or more candidates would clear the bar.
+
 ## What this means for the project
 
 The airdrop hook was the wrong thing to port. It is a bookkeeping hook: read a counter, add to it,
 write it back. That is the exact shape of hook where Stylus has nothing to offer.
 
 Stylus pays off when a hook has to *think* on every swap — past the crossover measured above, which
-is ~284 rounds of small-word arithmetic or only ~52 `mulDiv`s. In practice:
+is ~371 rounds of small-word arithmetic or 89 `mulDiv`s. In practice:
 
 - on-chain math: TWAP and volatility oracles, curve solvers, Newton iterations
 - dynamic fees computed from a model rather than looked up
@@ -318,5 +416,5 @@ calldata, same swap — and on a real chain it dwarfs the differences being meas
 
 [`uniswap/test/Gas.t.sol`](uniswap/test/Gas.t.sol) runs the same comparison inside `forge test`, but
 forge cannot execute WASM, so its "stylus" row is really the `replica` row. Its numbers
-(35,686 / 42,245 hook cost measured here vs 33,820 / 40,375 in forge) track the on-chain ones
-closely for the Solidity variants, which is what makes it useful as a fast check.
+(33,545 / 39,126 hook cost measured on-chain vs 31,732 / 37,309 in forge) track each other within
+about 5 % for the Solidity variants, which is what makes it useful as a fast check.

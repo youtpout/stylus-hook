@@ -92,5 +92,5 @@ printf 'the hook costs, 1->0 (with replay)   %10s\n' "$((d - b))"
 printf 'the Pool.swap replay on its own      %10s\n' "$(( (d - b) - (c - a) ))"
 echo
 echo "Everything outside that last line is checkpointing pool state into the hook's own"
-echo "storage and settling an ERC-6909 fee. Storage is ~7% cheaper in Stylus (see"
+echo "storage and settling an ERC-6909 fee. Storage is ~2% cheaper in Stylus (see"
 echo "BENCHMARK.md), so only the replay is worth porting."
