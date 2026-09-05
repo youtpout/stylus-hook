@@ -19,6 +19,12 @@ contract ComputeHookTest is Test {
         deployCodeTo("ComputeHook.sol:ComputeHook", abi.encode(IPoolManager(address(0))), address(hook));
     }
 
+    function test_mulDiv_matches_the_rust_twin() public view {
+        assertEq(hook.workMulDiv(0), 0x9e3779b97f4a7c15c2b2ae3d27d4eb4f165667b19e3779f9165667b19e3779f9);
+        assertEq(hook.workMulDiv(1), 0x9e3779b97f4a7c15c2b2ae3d27d4eb4e781eedf81eecfde353a3b97476628eaa);
+        assertEq(hook.workMulDiv(100), 0x9e3779b97f4a7c15c2b2ae3d27d4eb1148aadb3be51f0179088a57ce0f0bae90);
+    }
+
     function test_xorshift_matches_the_rust_twin() public view {
         assertEq(hook.work(0), 0x9e3779b97f4a7c15);
         assertEq(hook.work(1), 0xdc1b77ae0bf34dad);

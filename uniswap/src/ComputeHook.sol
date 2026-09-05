@@ -8,6 +8,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @title ComputeHook
 /// @notice A hook that does nothing but arithmetic, with a dial for how much of it.
@@ -24,6 +25,9 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/type
 contract ComputeHook is BaseHook {
     uint256 public rounds;
     uint64 public lastResult;
+
+    /// @notice 0 runs xorshift64, 1 runs `FullMath.mulDiv`. See `work` and `workMulDiv`.
+    uint8 public mode;
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
@@ -50,6 +54,10 @@ contract ComputeHook is BaseHook {
         rounds = newRounds;
     }
 
+    function setMode(uint8 newMode) external {
+        mode = newMode;
+    }
+
     /// @notice xorshift64, `n` times. Must agree with the Rust implementation.
     function work(uint256 n) public pure returns (uint64) {
         uint64 x = 0x9E3779B97F4A7C15;
@@ -61,12 +69,27 @@ contract ComputeHook is BaseHook {
         return x;
     }
 
+    /// @notice `FullMath.mulDiv` on 256-bit words, `n` times. Must agree with the Rust twin.
+    /// @dev This is the atom Uniswap's own swap math is built from: `computeSwapStep`,
+    ///      `SqrtPriceMath` and every tick-walking simulation are mostly chains of mulDiv. A single
+    ///      256-bit multiply and divide is one EVM opcode each; in WASM it is limb arithmetic. This
+    ///      is the case that decides whether porting real AMM math to Stylus is worth anything.
+    function workMulDiv(uint256 n) public pure returns (uint256) {
+        uint256 a = 0x9E3779B97F4A7C15C2B2AE3D27D4EB4F165667B19E3779F9165667B19E3779F9;
+        uint256 b = type(uint128).max; // one ulp below the denominator, so `a` stays 256-bit wide
+        uint256 d = 1 << 128;
+        for (uint256 i = 0; i < n; i++) {
+            a = FullMath.mulDiv(a | (1 << 249), b, d) + i + 1;
+        }
+        return a;
+    }
+
     function _beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
         internal
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        lastResult = work(rounds);
+        lastResult = mode == 0 ? work(rounds) : uint64(workMulDiv(rounds));
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 }

@@ -17,7 +17,7 @@ use alloy_primitives::{aliases::U64, Address, FixedBytes, U256};
 use stylus_sdk::{
     abi::Bytes,
     prelude::*,
-    storage::{StorageAddress, StorageU256, StorageU64},
+    storage::{StorageAddress, StorageU256, StorageU64, StorageU8},
 };
 use stylus_uniswap_v4::{
     hooks::{selector, HookConfig, HookGuards, IHooks},
@@ -31,6 +31,23 @@ pub struct ComputeHook {
     pool_manager: StorageAddress,
     rounds: StorageU256,
     last_result: StorageU64,
+    /// 0 runs xorshift64, 1 runs `mulDiv`. See [`ComputeHook::work`] and [`ComputeHook::work_mul_div`].
+    mode: StorageU8,
+}
+
+/// 256-bit `mulDiv` needs a 512-bit intermediate, which WASM has to build out of limbs.
+type U512 = alloy_primitives::Uint<512, 8>;
+
+/// Full-precision `(a * b) / d`, matching `FullMath.mulDiv` in v4-core.
+fn mul_div(a: U256, b: U256, d: U256) -> U256 {
+    let wide = U512::from(a) * U512::from(b);
+    let quotient = wide / U512::from(d);
+    U256::from_limbs([
+        quotient.as_limbs()[0],
+        quotient.as_limbs()[1],
+        quotient.as_limbs()[2],
+        quotient.as_limbs()[3],
+    ])
 }
 
 impl HookConfig for ComputeHook {
@@ -64,6 +81,14 @@ impl ComputeHook {
         self.rounds.set(new_rounds);
     }
 
+    pub fn mode(&self) -> u8 {
+        self.mode.get().to::<u8>()
+    }
+
+    pub fn set_mode(&mut self, new_mode: u8) {
+        self.mode.set(alloy_primitives::aliases::U8::from(new_mode));
+    }
+
     pub fn last_result(&self) -> u64 {
         self.last_result.get().to::<u64>()
     }
@@ -83,6 +108,29 @@ impl ComputeHook {
         }
         x
     }
+
+    /// `mulDiv` on 256-bit words, `n` times. Must agree with `ComputeHook.sol`.
+    ///
+    /// This is the atom Uniswap's own swap math is built from — `computeSwapStep`, `SqrtPriceMath`
+    /// and every tick-walking simulation are mostly chains of it. A 256-bit multiply and divide is
+    /// one EVM opcode each; WASM has no 256-bit word and has to do it over limbs. This is the case
+    /// that decides whether porting real AMM math to Stylus buys anything.
+    pub fn work_mul_div(&self, n: U256) -> U256 {
+        let mut a = U256::from_str_radix(
+            "9E3779B97F4A7C15C2B2AE3D27D4EB4F165667B19E3779F9165667B19E3779F9",
+            16,
+        )
+        .unwrap();
+        let b = U256::from(u128::MAX);
+        let d = U256::from(1u8) << 128;
+        let high_bit = U256::from(1u8) << 249;
+        let mut i = U256::ZERO;
+        while i < n {
+            a = mul_div(a | high_bit, b, d) + i + U256::from(1);
+            i += U256::from(1);
+        }
+        a
+    }
 }
 
 #[public]
@@ -96,7 +144,13 @@ impl IHooks for ComputeHook {
     ) -> Result<(FixedBytes<4>, BeforeSwapDelta, U24), Vec<u8>> {
         self.require_pool_manager()?;
         self.require_valid_pool(&key)?;
-        let result = self.work(self.rounds.get());
+        let rounds = self.rounds.get();
+        let result = if self.mode.get().is_zero() {
+            self.work(rounds)
+        } else {
+            // `uint64(...)` on the Solidity side: keep the low 64 bits, do not panic on overflow
+            self.work_mul_div(rounds).as_limbs()[0]
+        };
         self.last_result.set(U64::from(result));
         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
     }
@@ -126,6 +180,28 @@ mod tests {
         assert_eq!(contract.work(U256::from(1)), 0xdc1b_77ae_0bf3_4dad);
         assert_eq!(contract.work(U256::from(10)), 0x8f8e_a9d3_4942_8d8e);
         assert_eq!(contract.work(U256::from(100)), 0xab59_17a8_1f0f_b2ae);
+    }
+
+    #[test]
+    fn mul_div_matches_the_solidity_twin() {
+        let vm = TestVM::default();
+        vm.set_contract_address(HOOK);
+        let mut contract = ComputeHook::from(&vm);
+        contract.constructor(Address::new([0x4e; 20])).unwrap();
+
+        let expect = |hex: &str| U256::from_str_radix(hex, 16).unwrap();
+        assert_eq!(
+            contract.work_mul_div(U256::ZERO),
+            expect("9E3779B97F4A7C15C2B2AE3D27D4EB4F165667B19E3779F9165667B19E3779F9")
+        );
+        assert_eq!(
+            contract.work_mul_div(U256::from(1)),
+            expect("9e3779b97f4a7c15c2b2ae3d27d4eb4e781eedf81eecfde353a3b97476628eaa")
+        );
+        assert_eq!(
+            contract.work_mul_div(U256::from(100)),
+            expect("9e3779b97f4a7c15c2b2ae3d27d4eb1148aadb3be51f0179088a57ce0f0bae90")
+        );
     }
 
     #[test]

@@ -112,19 +112,22 @@ Stylus costs 2.14× what Solidity does here. That is the workload's fault, not t
 is six `SLOAD`s and six `SSTORE`s with almost no arithmetic, and Stylus makes compute cheap, not
 storage.
 
-`./bench-compute.bash` shows the other side of it, running the same arithmetic loop in both
-languages and sweeping how much of it there is:
+`./bench-compute.bash` shows the other side of it, running the same arithmetic in both languages and
+sweeping how much of it there is. The interesting column is `mulDiv`, because that is what Uniswap's
+own swap math is made of:
 
-| rounds of work | Solidity | Rust |
+| `mulDiv`s per swap | Solidity | Rust |
 | ---: | ---: | ---: |
-| 0 | 129,910 | 162,554 |
-| 200 | 158,482 | 164,703 |
-| 500 | 201,410 | **167,995** |
-| 5,000 | 844,878 | **216,929** |
+| 0 | 130,092 | 168,577 |
+| 50 | 179,538 | 181,049 |
+| 200 | 327,588 | **218,177** |
+| 1,000 | 1,117,188 | **416,193** |
+| 5,000 | 5,065,156 | **1,406,241** |
 
-Computation is **13× cheaper** in Stylus — 10.9 gas per round against 143 — but a Stylus call costs
-32,644 gas more to enter, most of it loading the WASM program. The two cross at roughly 250 rounds.
-[BENCHMARK.md](BENCHMARK.md) has the full breakdown.
+987 gas per `mulDiv` in Solidity against 247 in Rust — **4× cheaper** — and a Stylus call costs
+~38,000 gas more to enter, so the two cross at only **52 operations**. Small-word arithmetic is 13×
+cheaper and crosses at ~284 rounds. [BENCHMARK.md](BENCHMARK.md) has both sweeps and why the EVM's
+256-bit word does not help it here.
 
 ## Deploy a hook with no Solidity (Arbitrum Sepolia)
 

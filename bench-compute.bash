@@ -87,11 +87,13 @@ open_pool "$RUST_HOOK"
 
 # the two implementations must agree, or the sweep compares different work
 for n in 1 100; do
-  a=$(cast call "$SOLIDITY_HOOK" 'work(uint256)(uint64)' "$n" --rpc-url "$RPC" | awk '{print $1}')
-  b=$(cast call "$RUST_HOOK" 'work(uint256)(uint64)' "$n" --rpc-url "$RPC" | awk '{print $1}')
-  [ "$a" = "$b" ] || { echo "the two loops disagree at n=$n: $a vs $b"; exit 1; }
+  for fn in 'work(uint256)(uint64)' 'workMulDiv(uint256)(uint256)'; do
+    a=$(cast call "$SOLIDITY_HOOK" "$fn" "$n" --rpc-url "$RPC" | awk '{print $1}')
+    b=$(cast call "$RUST_HOOK" "$fn" "$n" --rpc-url "$RPC" | awk '{print $1}')
+    [ "$a" = "$b" ] || { echo "the two hooks disagree on $fn at n=$n: $a vs $b"; exit 1; }
+  done
 done
-echo "both hooks compute the same xorshift64"
+echo "both hooks compute the same xorshift64 and the same mulDiv"
 
 swap_gas() {
   cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$1" "$SWAP_AMOUNT" true \
@@ -102,15 +104,28 @@ log "sweeping the amount of work"
 # warm every slot first
 for i in 0 1 2; do swap_gas "$i" >/dev/null; done
 
-printf '%-8s %12s %12s %12s %12s\n' rounds solidity rust delta winner
-for n in $ROUNDS_SWEEP; do
-  cast send "$SOLIDITY_HOOK" "setRounds(uint256)" "$n" --rpc-url "$RPC" --private-key $KEY >/dev/null
-  cast send "$RUST_HOOK" "setRounds(uint256)" "$n" --rpc-url "$RPC" --private-key $KEY >/dev/null
-  swap_gas 1 >/dev/null; swap_gas 2 >/dev/null   # warm the new value
-  s=$(swap_gas 1); r=$(swap_gas 2)
-  d=$((r - s))
-  if [ "$d" -lt 0 ]; then w=rust; else w=solidity; fi
-  printf '%-8s %12s %12s %12s %12s\n' "$n" "$s" "$r" "$d" "$w"
+for mode in 0 1; do
+  if [ "$mode" = 0 ]; then
+    echo
+    echo "mode 0: xorshift64 on a u64 — a native WASM word, no native EVM equivalent"
+  else
+    echo
+    echo "mode 1: mulDiv on 256-bit words — one EVM opcode each, limb arithmetic in WASM."
+    echo "        This is what Uniswap's own swap math is made of."
+  fi
+  cast send "$SOLIDITY_HOOK" "setMode(uint8)" "$mode" --rpc-url "$RPC" --private-key $KEY >/dev/null
+  cast send "$RUST_HOOK" "setMode(uint8)" "$mode" --rpc-url "$RPC" --private-key $KEY >/dev/null
+
+  printf '%-8s %12s %12s %12s %12s\n' rounds solidity rust delta winner
+  for n in $ROUNDS_SWEEP; do
+    cast send "$SOLIDITY_HOOK" "setRounds(uint256)" "$n" --rpc-url "$RPC" --private-key $KEY >/dev/null
+    cast send "$RUST_HOOK" "setRounds(uint256)" "$n" --rpc-url "$RPC" --private-key $KEY >/dev/null
+    swap_gas 1 >/dev/null; swap_gas 2 >/dev/null   # warm the new value
+    s=$(swap_gas 1); r=$(swap_gas 2)
+    d=$((r - s))
+    if [ "$d" -lt 0 ]; then w=rust; else w=solidity; fi
+    printf '%-8s %12s %12s %12s %12s\n' "$n" "$s" "$r" "$d" "$w"
+  done
 done
 
 BASE=$(swap_gas 0)

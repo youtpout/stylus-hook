@@ -111,49 +111,59 @@ it is *differently priced*. It costs more to enter and far less to run. `./bench
 measures both halves of that: `ComputeHook.sol` and `stylus/native-compute` run the identical
 xorshift64 loop in `beforeSwap`, and the only thing that changes between rows is how many rounds.
 
+### xorshift64 on a `u64`
+
 | rounds | Solidity | Rust | delta |
 | ---: | ---: | ---: | ---: |
-| 0 | 129,910 | 162,554 | +32,644 |
-| 50 | 137,032 | 163,070 | +26,038 |
-| 200 | 158,482 | 164,703 | +6,221 |
-| 500 | 201,410 | 167,995 | **−33,415** |
-| 1,000 | 272,946 | 173,472 | **−99,474** |
-| 2,000 | 415,846 | 184,253 | **−231,593** |
-| 5,000 | 844,878 | 216,929 | **−627,949** |
+| 0 | 130,080 | 167,626 | +37,546 |
+| 50 | 137,202 | 168,142 | +30,940 |
+| 200 | 158,652 | 169,774 | +11,122 |
+| 500 | 201,580 | **173,067** | −28,513 |
+| 1,000 | 273,116 | **178,543** | −94,573 |
+| 5,000 | 845,048 | **222,001** | −623,047 |
 
-Two numbers fall out of that table:
+143 gas per round in Solidity, 10.9 in Rust: **13× cheaper**. The crossover is at ~284 rounds.
 
-- **Marginal cost.** Solidity spends 143 gas per round of the loop, Rust spends 10.9. Computation is
-  **13× cheaper** in Stylus.
-- **Fixed cost.** At zero rounds the Rust hook still costs 32,644 gas more, most of it the 16,717
-  it pays to load its WASM program on every call. Caching the contract cuts that to 2,685.
+### `mulDiv` on 256-bit words
 
-So the crossover is at **roughly 250 rounds** — about 18,000 gas of EVM arithmetic — and around 140
-rounds if the contract is cached. Below that the entry fee dominates; above it, nothing else
-matters.
+This is the one that matters, because it is what Uniswap's own swap math is made of.
+`SwapMath.computeSwapStep`, `SqrtPriceMath` and every tick-walking simulation are mostly chains of
+`FullMath.mulDiv`.
 
-The counter and the airdrop hook sit at the far left of that table. They do essentially zero rounds:
-read a slot, add one, write it back. Storage costs the same in both worlds, so there is no marginal
-saving to pay off the entry fee, and Solidity wins by construction. That is not a defect in the
-Rust port — it is what the first row of this table says will happen.
+| rounds | Solidity | Rust | delta |
+| ---: | ---: | ---: | ---: |
+| 0 | 130,092 | 168,577 | +38,485 |
+| 50 | 179,538 | 181,049 | +1,511 |
+| 200 | 327,588 | **218,177** | −109,411 |
+| 500 | 623,624 | **292,369** | −331,255 |
+| 1,000 | 1,117,188 | **416,193** | −700,995 |
+| 5,000 | 5,065,156 | **1,406,241** | −3,658,915 |
 
-### A caveat on the loop
+987 gas per `mulDiv` in Solidity, 247 in Rust: **4× cheaper**, and the crossover is only **52
+operations** — about 51,000 gas of Solidity-side arithmetic.
 
-The benchmark uses a `u64` accumulator, which is the honest comparison but worth naming: a `u64` is
-a native WASM word, while the EVM has no word smaller than 256 bits, so Solidity's `uint64` is a
-256-bit value masked back down after every shift. Each language is using what it is good at.
+That is the opposite of what the 256-bit word size suggests, and the reason is worth stating.
+A bare `MUL` or `DIV` *is* a single 5-gas EVM opcode, and Stylus would lose that comparison. But
+Uniswap does not use bare `mul` and `div` for pool math — it uses `FullMath.mulDiv`, which needs the
+full 512-bit product, and the EVM has no 512-bit anything. Solidity gets there with Remco Bloemen's
+long-division routine: `mulmod`, a modular inverse built by Newton iteration, and several dozen
+opcodes. Rust gets there with a `U512` multiply and divide over limbs. The EVM's 256-bit word is an
+advantage right up to the point where you need 257 bits, which is most of Uniswap's math.
 
-The reverse asymmetry also exists. `U256` arithmetic is a single EVM opcode and emulated over limbs
-in WASM, so a hook whose work is mostly 256-bit multiplication and division will show a much smaller
-Stylus advantage than 13×, and possibly none.
+### The fixed cost
 
-## What this means for the project
+At zero rounds the Rust hook still costs ~38,000 gas more, of which 21,759 is loading its WASM
+program on every call — 5,417 once the contract is cached. That figure is higher here than for
+`native-counter` because this hook carries both workloads and `U512` arithmetic; the program is
+bigger, and `ArbWasm` charges by compiled size.
+
+## What this means for the project## What this means for the project
 
 The airdrop hook was the wrong thing to port. It is a bookkeeping hook: read a counter, add to it,
 write it back. That is the exact shape of hook where Stylus has nothing to offer.
 
-Stylus pays off when a hook has to *think* on every swap — past the ~250-round crossover measured
-above, which in practice means the cases that are too expensive to write in Solidity at all:
+Stylus pays off when a hook has to *think* on every swap — past the crossover measured above, which
+is ~284 rounds of small-word arithmetic or only ~52 `mulDiv`s. In practice:
 
 - on-chain math: TWAP and volatility oracles, curve solvers, Newton iterations
 - dynamic fees computed from a model rather than looked up
