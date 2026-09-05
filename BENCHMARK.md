@@ -559,6 +559,45 @@ on a workload shape this document did not find, and the docs do not say which.
 Two pieces of the guidance the work here follows independently: cache storage reads rather than
 re-reading in a loop, and measure on a live endpoint because `TestVM` has no gas meter.
 
+## The candidate: Uniswap's own TWAMM
+
+The search above looked at what is *deployed*. It missed what Uniswap *published*. Their v4-periphery
+carried a set of example hooks — `TWAMM`, `FullRange`, `GeomeanOracle`, `LimitOrder`,
+`VolatilityOracle` — removed from the tree in December 2024 but still in its history, together with
+the gas snapshots their own tests recorded:
+
+| | gas |
+| --- | ---: |
+| `executTWAMMOrders`, 1 interval | 489,927 |
+| 2 intervals | 595,404 |
+| 3 intervals | 692,853 |
+| `executTWAMMOrders singleSell`, 1 interval | 262,033 |
+| 2 intervals | 294,134 |
+| `FullRangeSwap`, an ordinary swap for scale | 81,970 |
+
+An extra interval costs about **100,000 gas**, and that is marginal cost — the incremental work of one
+more iteration, with the fixed overhead already paid.
+
+What that hundred thousand buys is arithmetic. `TwammMath` runs on `ABDKMathQuad`: **IEEE 754
+quadruple-precision floating point, emulated in Solidity over `bytes16`**. One pass performs 20
+multiplies, 19 divides, 21 conversions, 7 square roots, 4 additions, 8 subtractions — and **two
+exponentials and a logarithm**. The EVM has no floating point at all, no `exp`, no `ln`, and no
+instruction for the bit-scan every normalisation needs.
+
+**This is the first workload in this document that clears the 62,000-gas bar**, and it clears it by
+60 % on marginal cost alone. It is also, by the rule the five sweeps establish, the profile where
+Stylus should gain most rather than least: quad floats are built from 64-bit limbs, which is WASM's
+native word and the 10.6× regime, and their normalisation needs a bit-scan, which is `i64.clz` and
+the 4.5× regime.
+
+That it was never deployed is the argument, not a counterargument. TWAMM is a well-known design that
+Uniswap wrote, benchmarked, and shipped as an example — and half a million gas per execution is why
+nobody runs one. It is precisely the hook that is too expensive to exist in Solidity.
+
+None of that is a measurement of a Rust TWAMM. It is a measurement of the workload — 86 quad-float
+operations per interval, at ~100,000 gas — against ratios measured separately. Porting it is the
+experiment this whole document has been looking for.
+
 ## The search, exhausted
 
 `Uniswap/hooklist` was searched three ways. By permission flags:
@@ -809,6 +848,45 @@ on a workload shape this document did not find, and the docs do not say which.
 
 Two pieces of the guidance the work here follows independently: cache storage reads rather than
 re-reading in a loop, and measure on a live endpoint because `TestVM` has no gas meter.
+
+## The candidate: Uniswap's own TWAMM
+
+The search above looked at what is *deployed*. It missed what Uniswap *published*. Their v4-periphery
+carried a set of example hooks — `TWAMM`, `FullRange`, `GeomeanOracle`, `LimitOrder`,
+`VolatilityOracle` — removed from the tree in December 2024 but still in its history, together with
+the gas snapshots their own tests recorded:
+
+| | gas |
+| --- | ---: |
+| `executTWAMMOrders`, 1 interval | 489,927 |
+| 2 intervals | 595,404 |
+| 3 intervals | 692,853 |
+| `executTWAMMOrders singleSell`, 1 interval | 262,033 |
+| 2 intervals | 294,134 |
+| `FullRangeSwap`, an ordinary swap for scale | 81,970 |
+
+An extra interval costs about **100,000 gas**, and that is marginal cost — the incremental work of one
+more iteration, with the fixed overhead already paid.
+
+What that hundred thousand buys is arithmetic. `TwammMath` runs on `ABDKMathQuad`: **IEEE 754
+quadruple-precision floating point, emulated in Solidity over `bytes16`**. One pass performs 20
+multiplies, 19 divides, 21 conversions, 7 square roots, 4 additions, 8 subtractions — and **two
+exponentials and a logarithm**. The EVM has no floating point at all, no `exp`, no `ln`, and no
+instruction for the bit-scan every normalisation needs.
+
+**This is the first workload in this document that clears the 62,000-gas bar**, and it clears it by
+60 % on marginal cost alone. It is also, by the rule the five sweeps establish, the profile where
+Stylus should gain most rather than least: quad floats are built from 64-bit limbs, which is WASM's
+native word and the 10.6× regime, and their normalisation needs a bit-scan, which is `i64.clz` and
+the 4.5× regime.
+
+That it was never deployed is the argument, not a counterargument. TWAMM is a well-known design that
+Uniswap wrote, benchmarked, and shipped as an example — and half a million gas per execution is why
+nobody runs one. It is precisely the hook that is too expensive to exist in Solidity.
+
+None of that is a measurement of a Rust TWAMM. It is a measurement of the workload — 86 quad-float
+operations per interval, at ~100,000 gas — against ratios measured separately. Porting it is the
+experiment this whole document has been looking for.
 
 ## The search, exhausted
 
