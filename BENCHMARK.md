@@ -559,6 +559,39 @@ on a workload shape this document did not find, and the docs do not say which.
 Two pieces of the guidance the work here follows independently: cache storage reads rather than
 re-reading in a loop, and measure on a live endpoint because `TestVM` has no gas meter.
 
+## The search, exhausted
+
+`Uniswap/hooklist` was searched three ways. By permission flags:
+`beforeSwapReturnsDelta` marks a hook that prices swaps itself, which is 17 of the 33 on Arbitrum.
+By description, across five categories whose arithmetic could plausibly clear the bar — zero-knowledge
+proofs, encryption, signatures, options pricing, order books. And by deployed bytecode size, which
+needs no description at all and is the most honest screen: a hook that fits comfortably under the
+24,576-byte limit is not doing much.
+
+The largest hooks on Arbitrum:
+
+| bytes | hook | status |
+| ---: | --- | --- |
+| 24,039 | DopplerHookInitializer | not measured — no quote function to isolate |
+| 23,988 | **TokiHook** | not measured — Pendle-style fixed-rate curve, the one untested profile |
+| 23,510 | BunniHook | measured: `rpow` at Q96, 1.65×, and the protocol is dead |
+| 23,465 | GlueHook | buyback-and-burn, little arithmetic |
+| 22,906 | Alphix | not measured |
+| 17,835 | WLimitOrderHook | limit orders, storage-bound |
+
+The keyword sweep turned up nothing genuinely cryptographic. `UniswapV4KEMHook` was the closest —
+"KEM" reads as post-quantum, which would clear the bar by an order of magnitude — but it is an
+ordinary signed-quote RFQ hook using `ecrecover`, a 3,000-gas precompile that Stylus cannot beat.
+
+**TokiHook is the strongest remaining candidate and it is unmeasured.** A Pendle-style fixed-rate
+curve runs `exp` and `ln` in fixed point, the one arithmetic family not benchmarked here, and the
+one the EVM has no support for whatsoever. Measuring it needs a swap executed against it: it exposes
+no quote function to isolate, and anvil cannot fork Arbitrum because its block headers carry no blob
+fields. From the shape of the primitive — a bit-scan, which Stylus wins at 4.5×, over a polynomial in
+full-range 256-bit, which it wins at 2.8× — the ratio should land between the two, and a curve
+evaluation is a handful of them. That is an estimate, not a measurement, and it does not reach the
+bar.
+
 ## What this means for the project## Pricing a real hook: AntiSandwichHook
 
 `./bench-antisandwich.bash` measures OpenZeppelin's
@@ -776,6 +809,39 @@ on a workload shape this document did not find, and the docs do not say which.
 
 Two pieces of the guidance the work here follows independently: cache storage reads rather than
 re-reading in a loop, and measure on a live endpoint because `TestVM` has no gas meter.
+
+## The search, exhausted
+
+`Uniswap/hooklist` was searched three ways. By permission flags:
+`beforeSwapReturnsDelta` marks a hook that prices swaps itself, which is 17 of the 33 on Arbitrum.
+By description, across five categories whose arithmetic could plausibly clear the bar — zero-knowledge
+proofs, encryption, signatures, options pricing, order books. And by deployed bytecode size, which
+needs no description at all and is the most honest screen: a hook that fits comfortably under the
+24,576-byte limit is not doing much.
+
+The largest hooks on Arbitrum:
+
+| bytes | hook | status |
+| ---: | --- | --- |
+| 24,039 | DopplerHookInitializer | not measured — no quote function to isolate |
+| 23,988 | **TokiHook** | not measured — Pendle-style fixed-rate curve, the one untested profile |
+| 23,510 | BunniHook | measured: `rpow` at Q96, 1.65×, and the protocol is dead |
+| 23,465 | GlueHook | buyback-and-burn, little arithmetic |
+| 22,906 | Alphix | not measured |
+| 17,835 | WLimitOrderHook | limit orders, storage-bound |
+
+The keyword sweep turned up nothing genuinely cryptographic. `UniswapV4KEMHook` was the closest —
+"KEM" reads as post-quantum, which would clear the bar by an order of magnitude — but it is an
+ordinary signed-quote RFQ hook using `ecrecover`, a 3,000-gas precompile that Stylus cannot beat.
+
+**TokiHook is the strongest remaining candidate and it is unmeasured.** A Pendle-style fixed-rate
+curve runs `exp` and `ln` in fixed point, the one arithmetic family not benchmarked here, and the
+one the EVM has no support for whatsoever. Measuring it needs a swap executed against it: it exposes
+no quote function to isolate, and anvil cannot fork Arbitrum because its block headers carry no blob
+fields. From the shape of the primitive — a bit-scan, which Stylus wins at 4.5×, over a polynomial in
+full-range 256-bit, which it wins at 2.8× — the ratio should land between the two, and a curve
+evaluation is a handful of them. That is an estimate, not a measurement, and it does not reach the
+bar.
 
 ## What this means for the project
 
