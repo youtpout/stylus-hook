@@ -618,8 +618,42 @@ language against another. Or drop floats for integer fixed point — but a Solid
 that too, and would get most of the same saving. That is an algorithmic change wearing a language
 change's clothes.
 
-**The one workload in this document that clears the bar clears it for a reason Stylus cannot
-exploit.**
+So the port was written in fixed point, and — because that would otherwise compare an algorithm
+rather than a language — `TwammHook.sol` carries the identical fixed-point form alongside the
+quad-float one. All three agree: the two fixed-point implementations are identical to the wei, and
+both track the quad-float original to two parts in 10^18. The quadruple precision was buying
+nothing.
+
+`./bench-twamm.bash`, gas for the arithmetic alone, called directly with no hook and no storage:
+
+| intervals | Solidity, quad floats | Solidity, fixed point | Rust, fixed point |
+| ---: | ---: | ---: | ---: |
+| 1 | 23,587 | 14,011 | **2,329** |
+| 2 | 47,521 | 27,842 | **4,645** |
+| 4 | 94,458 | 55,950 | **9,278** |
+| 8 | 189,590 | 111,385 | **18,544** |
+
+Per interval: **23,700 gas in Solidity as written, 13,950 in Solidity done differently, 2,320 in
+Rust.**
+
+That splits cleanly into the two changes it is made of:
+
+- **1.7× from the algorithm.** Dropping ABDK's software binary128 for fixed point is worth that much
+  without leaving Solidity at all, and it costs two parts in 10^18 of precision.
+- **6.0× from the language.** That is the largest gain measured anywhere in this document on
+  arithmetic that a real hook actually runs — larger than `sqrt` at 4.5×, and approaching the 10.6×
+  of the synthetic 64-bit loop.
+
+Together, 10.2×. Against a ~20,600 gas entry fee and 11,630 saved per interval, a Stylus TWAMM
+**breaks even at under two intervals** and is ahead of Solidity from the second one onwards.
+
+This is the first workload in this document where porting to Stylus is worth doing, and the reason
+it is worth doing is not that the arithmetic is exotic. It is that there is enough of it.
+
+The interval implemented here is the price update — the closed form and its exponential. Uniswap's
+example also computes earnings factors for both order pools and writes back the order-pool state,
+which is why theirs costs ~100,000 per interval where this one costs 23,700. The 6× applies to the
+arithmetic, not to the storage they wrap around it.
 
 ## The search, exhausted
 
@@ -931,8 +965,42 @@ language against another. Or drop floats for integer fixed point — but a Solid
 that too, and would get most of the same saving. That is an algorithmic change wearing a language
 change's clothes.
 
-**The one workload in this document that clears the bar clears it for a reason Stylus cannot
-exploit.**
+So the port was written in fixed point, and — because that would otherwise compare an algorithm
+rather than a language — `TwammHook.sol` carries the identical fixed-point form alongside the
+quad-float one. All three agree: the two fixed-point implementations are identical to the wei, and
+both track the quad-float original to two parts in 10^18. The quadruple precision was buying
+nothing.
+
+`./bench-twamm.bash`, gas for the arithmetic alone, called directly with no hook and no storage:
+
+| intervals | Solidity, quad floats | Solidity, fixed point | Rust, fixed point |
+| ---: | ---: | ---: | ---: |
+| 1 | 23,587 | 14,011 | **2,329** |
+| 2 | 47,521 | 27,842 | **4,645** |
+| 4 | 94,458 | 55,950 | **9,278** |
+| 8 | 189,590 | 111,385 | **18,544** |
+
+Per interval: **23,700 gas in Solidity as written, 13,950 in Solidity done differently, 2,320 in
+Rust.**
+
+That splits cleanly into the two changes it is made of:
+
+- **1.7× from the algorithm.** Dropping ABDK's software binary128 for fixed point is worth that much
+  without leaving Solidity at all, and it costs two parts in 10^18 of precision.
+- **6.0× from the language.** That is the largest gain measured anywhere in this document on
+  arithmetic that a real hook actually runs — larger than `sqrt` at 4.5×, and approaching the 10.6×
+  of the synthetic 64-bit loop.
+
+Together, 10.2×. Against a ~20,600 gas entry fee and 11,630 saved per interval, a Stylus TWAMM
+**breaks even at under two intervals** and is ahead of Solidity from the second one onwards.
+
+This is the first workload in this document where porting to Stylus is worth doing, and the reason
+it is worth doing is not that the arithmetic is exotic. It is that there is enough of it.
+
+The interval implemented here is the price update — the closed form and its exponential. Uniswap's
+example also computes earnings factors for both order pools and writes back the order-pool state,
+which is why theirs costs ~100,000 per interval where this one costs 23,700. The 6× applies to the
+arithmetic, not to the storage they wrap around it.
 
 ## The search, exhausted
 

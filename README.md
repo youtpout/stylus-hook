@@ -128,7 +128,21 @@ own swap math is made of:
 ~39,000 gas more to enter, so the two cross at **89 operations**. Rust is cheaper on every kind of
 arithmetic measured, by 1.65× to 10.6×.
 
-The catch is that hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
+One workload does clear it. Uniswap's own TWAMM example spends its gas on IEEE 754 binary128
+emulated in software, and Stylus has no floating point either — so the port works in fixed point,
+with the same fixed-point form written in Solidity so the comparison is of languages and not
+algorithms. Per interval:
+
+| | gas |
+| --- | ---: |
+| Solidity, quad floats (as Uniswap wrote it) | 23,700 |
+| Solidity, fixed point | 13,950 |
+| **Rust, fixed point** | **2,320** |
+
+1.7× of that is available without leaving Solidity; **6.0× is the language**. A Stylus TWAMM breaks
+even at under two intervals.
+
+The catch is that most hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
 gas of Solidity arithmetic to be worth it, and nothing shipping gets close: OpenZeppelin's
 `AntiSandwichHook` has 21,000, a StableSwap curve 8,600, the counter and airdrop hooks essentially
 none. [BENCHMARK.md](BENCHMARK.md) has every sweep, an opcode profile of the shipping hooks, and a

@@ -24,6 +24,19 @@ contract TwammHookTest is Test {
 
     /// @notice The curve has to move in the right direction: rate1 outsells rate0, so the pool
     ///         price walks up towards sqrt(rate1/rate0).
+    /// @notice The fixed-point form has to track the quad-float one, or the benchmark compares two
+    ///         different curves rather than two languages.
+    function test_fixed_point_tracks_the_quad_floats() public view {
+        for (uint256 n = 1; n <= 3; n++) {
+            uint256 quad = hook.work(n);
+            uint256 fixedPoint = hook.workFixed(n);
+            console.log(n, quad, fixedPoint);
+            uint256 diff = quad > fixedPoint ? quad - fixedPoint : fixedPoint - quad;
+            // within a part in 10^12 of each other
+            assertLt(diff * 1e12 / quad, 1, "the two forms disagree");
+        }
+    }
+
     function test_price_walks_towards_the_sell_ratio() public view {
         uint256 one = hook.work(1);
         uint256 three = hook.work(3);
