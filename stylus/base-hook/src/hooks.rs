@@ -21,11 +21,17 @@ use crate::types::{
 
 sol! {
     /// The callback was invoked but the hook does not implement it.
+    #[derive(Debug)]
     error HookNotImplemented();
     /// The caller is not the pool manager.
+    #[derive(Debug)]
     error NotPoolManager();
     /// The deployed address does not encode the declared permissions.
+    #[derive(Debug)]
     error HookAddressNotValid(address hooks);
+    /// The pool is not configured to use this hook.
+    #[derive(Debug)]
+    error InvalidPool();
 }
 
 /// The `IHooks` selectors a callback must echo back, as v4-core checks them.
@@ -78,14 +84,28 @@ pub trait HookGuards: HookConfig + HostAccess {
 
     /// Reverts unless this contract's own address encodes exactly [`HookConfig::permissions`].
     ///
-    /// The Solidity `BaseHook` runs this in its constructor. A Stylus contract is deployed by
-    /// `cargo stylus`, which cannot mine an address, so call this from the constructor of a
-    /// CREATE2-deployed hook — or at least once after deployment — to catch a mis-mined address
-    /// before a pool is created on it.
+    /// The Solidity `BaseHook` asserts this in its constructor and so should a Stylus hook: call it
+    /// from `#[constructor]`. A hook at an address that does not carry its flags is not a hook —
+    /// v4 will simply never invoke the callbacks it thinks it implements.
+    ///
+    /// This is also what makes a hook undeployable by a plain `cargo stylus deploy`: the address
+    /// has to be mined first. See `stylus/hook-miner`.
     fn validate_hook_address(&self) -> Result<(), Vec<u8>> {
         let address = self.vm().contract_address();
         if !is_valid_hook_address(address, &self.permissions()) {
             return Err(HookAddressNotValid { hooks: address }.abi_encode());
+        }
+        Ok(())
+    }
+
+    /// Reverts unless `key` names this contract as its hook.
+    ///
+    /// The pool manager passes whatever `PoolKey` the caller supplied, so a callback that trusts it
+    /// blindly can be driven with a key belonging to some other pool. `BaseHook`'s
+    /// `onlyValidPools` modifier in the OpenZeppelin hooks library does the same check.
+    fn require_valid_pool(&self, key: &PoolKey) -> Result<(), Vec<u8>> {
+        if key.hooks != self.vm().contract_address() {
+            return Err(InvalidPool {}.abi_encode());
         }
         Ok(())
     }
@@ -217,6 +237,20 @@ pub trait IHooks: HookConfig {
 
 /// The zero deltas a callback returns when it does not take a share of the swap.
 pub const NO_DELTA: I256 = ZERO_DELTA;
+
+/// The callback the pool manager makes on whoever called [`unlock`].
+///
+/// Only a hook that unlocks the manager itself needs this — inside a swap or liquidity callback the
+/// manager is already unlocked. Implement it alongside [`IHooks`] and list it in `#[implements]`.
+///
+/// [`unlock`]: crate::pool_manager::PoolManagerCalls::unlock
+#[public]
+pub trait IUnlockCallback: HookConfig {
+    fn unlock_callback(&mut self, data: Bytes) -> Result<Bytes, Vec<u8>> {
+        let _ = data;
+        Err(HookNotImplemented {}.abi_encode())
+    }
+}
 
 #[cfg(test)]
 mod tests {

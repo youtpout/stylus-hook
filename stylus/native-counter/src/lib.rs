@@ -53,9 +53,13 @@ impl HookConfig for Counter {
 #[public]
 #[implements(IHooks)]
 impl Counter {
+    /// Reverts unless the deployed address carries exactly the flags [`HookConfig::permissions`]
+    /// declares, the same assertion the Solidity `BaseHook` makes in its constructor. Deploy this
+    /// through a CREATE2 salt mined by `stylus/hook-miner`.
     #[constructor]
-    pub fn constructor(&mut self, pool_manager: Address) {
+    pub fn constructor(&mut self, pool_manager: Address) -> Result<(), Vec<u8>> {
         self.pool_manager.set(pool_manager);
+        HookGuards::validate_hook_address(self)
     }
 
     pub fn pool_manager(&self) -> Address {
@@ -66,12 +70,6 @@ impl Counter {
     /// Mine a CREATE2 salt against this value.
     pub fn required_hook_flags(&self) -> U256 {
         U256::from(HookConfig::permissions(self).flags())
-    }
-
-    /// Reverts unless the deployed address encodes exactly [`HookConfig::permissions`].
-    /// This is what the Solidity `BaseHook` asserts in its constructor.
-    pub fn validate(&self) -> Result<(), Vec<u8>> {
-        HookGuards::validate_hook_address(self)
     }
 
     pub fn before_swap_count(&self, pool_id: FixedBytes<32>) -> U256 {
@@ -101,6 +99,7 @@ impl IHooks for Counter {
         _hook_data: Bytes,
     ) -> Result<(FixedBytes<4>, BeforeSwapDelta, U24), Vec<u8>> {
         self.require_pool_manager()?;
+        self.require_valid_pool(&key)?;
         Self::bump(&mut self.before_swap_count, key.to_id());
         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
     }
@@ -114,6 +113,7 @@ impl IHooks for Counter {
         _hook_data: Bytes,
     ) -> Result<(FixedBytes<4>, i128), Vec<u8>> {
         self.require_pool_manager()?;
+        self.require_valid_pool(&key)?;
         Self::bump(&mut self.after_swap_count, key.to_id());
         Ok((selector::AFTER_SWAP, 0))
     }
@@ -126,6 +126,7 @@ impl IHooks for Counter {
         _hook_data: Bytes,
     ) -> Result<FixedBytes<4>, Vec<u8>> {
         self.require_pool_manager()?;
+        self.require_valid_pool(&key)?;
         Self::bump(&mut self.before_add_liquidity_count, key.to_id());
         Ok(selector::BEFORE_ADD_LIQUIDITY)
     }
@@ -138,6 +139,7 @@ impl IHooks for Counter {
         _hook_data: Bytes,
     ) -> Result<FixedBytes<4>, Vec<u8>> {
         self.require_pool_manager()?;
+        self.require_valid_pool(&key)?;
         Self::bump(&mut self.before_remove_liquidity_count, key.to_id());
         Ok(selector::BEFORE_REMOVE_LIQUIDITY)
     }
@@ -160,13 +162,20 @@ mod tests {
 
     const POOL_MANAGER: Address = Address::new([0x4e; 20]);
 
+    /// An address whose low 14 bits are 0x0ac0 — beforeSwap | afterSwap | beforeAddLiquidity |
+    /// beforeRemoveLiquidity, exactly what this hook declares.
+    const HOOK: Address = Address::new([
+        0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xbe,
+        0xef, 0x00, 0x00, 0x0a, 0xc0,
+    ]);
+
     fn pool_key() -> PoolKey {
         PoolKey {
             currency0: Address::new([0xc0; 20]),
             currency1: Address::new([0xc1; 20]),
             fee: U24::from(3000u32),
             tickSpacing: I24::try_from(60i32).unwrap(),
-            hooks: Address::new([0xac; 20]),
+            hooks: HOOK,
         }
     }
 
@@ -188,8 +197,11 @@ mod tests {
     }
 
     fn deployed(vm: &TestVM) -> Counter {
+        vm.set_contract_address(HOOK);
         let mut contract = Counter::from(vm);
-        contract.constructor(POOL_MANAGER);
+        contract
+            .constructor(POOL_MANAGER)
+            .expect("HOOK carries the declared flags");
         vm.set_sender(POOL_MANAGER);
         contract
     }
@@ -284,5 +296,36 @@ mod tests {
         let contract = deployed(&vm);
         // beforeSwap | afterSwap | beforeAddLiquidity | beforeRemoveLiquidity
         assert_eq!(contract.required_hook_flags(), Uint::from(0x0ac0));
+    }
+
+    #[test]
+    fn refuses_to_deploy_at_an_address_without_the_flags() {
+        let vm = TestVM::default();
+        vm.set_contract_address(Address::new([0x11; 20]));
+        let mut contract = Counter::from(&vm);
+        assert!(
+            contract.constructor(POOL_MANAGER).is_err(),
+            "a hook at an address v4 will never call is not a hook"
+        );
+    }
+
+    #[test]
+    fn rejects_a_pool_that_names_another_hook() {
+        let vm = TestVM::default();
+        let mut contract = deployed(&vm);
+
+        let mut foreign = pool_key();
+        foreign.hooks = Address::new([0x77; 20]);
+
+        assert!(contract
+            .after_swap(
+                POOL_MANAGER,
+                foreign.clone(),
+                swap_params(),
+                I256::ZERO,
+                Vec::new().into()
+            )
+            .is_err());
+        assert_eq!(contract.after_swap_count(foreign.to_id()), Uint::ZERO);
     }
 }

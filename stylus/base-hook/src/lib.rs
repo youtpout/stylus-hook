@@ -37,10 +37,11 @@ pub mod permissions;
 pub mod pool_manager;
 pub mod types;
 
-pub use hooks::{selector, HookConfig, HookGuards, IHooks, NO_DELTA};
+pub use hooks::{selector, HookConfig, HookGuards, IHooks, IUnlockCallback, NO_DELTA};
 pub use permissions::Permissions;
 pub use pool_manager::PoolManagerCalls;
 pub use types::{
-    delta_amount0, delta_amount1, to_balance_delta, BalanceDelta, BeforeSwapDelta, Currency,
-    ModifyLiquidityParams, PoolKey, SwapParams, ZERO_DELTA,
+    amount0, amount1, lp_fee, specified_delta, to_balance_delta, to_before_swap_delta,
+    unspecified_delta, BalanceDelta, BeforeSwapDelta, Currency, ModifyLiquidityParams, PoolKey,
+    SwapParams, ZERO_DELTA,
 };
