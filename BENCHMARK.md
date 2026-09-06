@@ -649,37 +649,63 @@ expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncache
 cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
 half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
 
-### What the hook costs when it is actually doing the work
+### Against the TWAMM that is actually in production
 
 Everything above times the arithmetic on its own, called directly with no storage, no pool and no
 orders. That is the right way to compare two languages and the wrong way to answer "what does an
-interval cost", so `./bench-twamm.bash` also drives the deployed hook: eight long-term orders, two
-per expiry, and a swap through the pool after each of them has come due.
+interval cost", so `./bench-twamm.bash` also drives both hooks for real — and the control is not a
+strawman of my own making. It is [`akshatmittal/v4-twamm-hook`][prod], written by Uniswap Labs and
+Zaha Studio, audited by ABDK Consulting and Certora, live on Base and Unichain.
 
-| | gas |
-| --- | ---: |
-| swap, no hook at all | 115,087 |
-| swap, hook attached with nothing to do | 165,764 |
-| swap, one span of virtual orders | 287,337 |
-| swap, two spans — one expiry crossed | 291,907 |
-| swap, five spans — four expiries crossed | 385,234 |
+[prod]: https://github.com/akshatmittal/v4-twamm-hook
 
-Reading the differences: **50,677** to have the hook attached at all (30,289 of it loading the WASM,
-the rest the keccak of the pool key, the reads, and the clock it writes); **121,573** for the first
-catch-up, most of which is the settlement swap that moves the AMM to the price the closed form
-arrived at, and which is paid once however far behind the orders are; and **31,109 for each
-additional expiry crossed**.
+That hook rewrites the premise this document started from. It has **no floating point at all**: it
+never evaluates an exponential, matching the two order pools against each other at the pool price
+with integer `mulDiv` and swapping only the imbalance. The 489,927 gas figure that made TWAMM look
+like the workload worth porting came from the v4-periphery *example*, removed in December 2024.
+Production had already made the algorithmic saving, and more of it than the 1.7× measured above.
 
-That last number is the one that matters, and **2,356 of it is arithmetic — 7.6 %.** The other
-92 % is storage: two earnings factors written per span, an earnings-factor snapshot written per
-expiry for each order pool, and the mapping reads that find them. Storage costs the same in both
-languages; the earlier measurement in this document put Stylus 1.8 % ahead on an `SSTORE`, which is
-noise.
+Both hooks on the same node, same pool manager, same 5-second expiry grid, eight orders each, two
+per expiry. The Rust program is in Arbitrum's cache, which is what any hook with users would be:
 
-So the honest end-to-end statement is smaller than the arithmetic suggests. Against a fixed-point
-Solidity TWAMM, Rust saves 11,555 gas on a marginal interval that costs about 42,700 — **27 %**.
-Against the quad-float form Uniswap actually ships, it saves 21,359. The 5.9× is real, and it
-applies to less than a tenth of the bill.
+| | Rust | production Solidity |
+| --- | ---: | ---: |
+| swap, pool idle | 140,173 | 132,257 |
+| swap, one span of virtual orders | **305,104** | 339,612 |
+| swap, four expiries crossed | **412,801** | 494,950 |
+| **per expiry crossed** | **26,924** | **38,834** |
+
+Baseline swap with no hook at all: 115,065.
+
+So the Rust hook is **7,916 gas worse on an idle pool** and **11,910 better per expiry — 31 %** —
+and it is ahead from the first span of real work, because that first span alone saves 34,508.
+
+**This is not a language result.** The two implementations differ in a way that flatters mine:
+theirs settles against the pool at every interval, mine computes every span first and settles once
+at the end. Mine is also plainly less finished — no MEV mitigations, no kill switch, no batched
+claims, no splitting a span at an initialised tick. Some unknown part of that 31 % is the work I
+have not done. What the measurement does establish is that a pure-Rust hook holds its own against a
+production Solidity one on the workload where Stylus should be strongest.
+
+### What the caching is, and why the warm number is the honest one
+
+A Stylus contract is compressed WASM, and the node must fetch, decompress and instantiate it before
+running a byte of it. Arbitrum charges that as init gas on **every call**: 30,282 for this contract
+uncached, 5,024 cached — a fixed cost per call that Solidity does not pay, and one that grows with
+the binary.
+
+"Cached" is not a transient state that warms up during a transaction. It is a property of the
+deployment: Arbitrum keeps a 512 MiB cache of compiled programs, and getting in is a one-off bid on
+`CacheManager` (`0x51dEDBD2f190E0696AFbEE5E60bFdE96d86464ec` on One). A hook nobody has bid for pays
+the full load forever; a hook with users would be bid for. So the table above reports the cached
+figures, and the difference is measured rather than quoted: a dev node has no CacheManager, but the
+chain owner can appoint one, and the dev account owns the chain, so `cache_stylus_program` appoints
+itself and caches the program directly. The same idle swap costs 174,476 uncached and 140,173
+cached.
+
+One caveat on precision: the idle figure moved by about 9,000 gas between runs, because whether a
+swap lands in the same second as the previous one decides if the hook has a span to execute at all.
+The per-expiry numbers, which are differences over four expiries, are stable.
 
 Two things about the build are worth recording, because both are the opposite of what the
 documentation suggests:

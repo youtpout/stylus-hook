@@ -128,25 +128,25 @@ own swap math is made of:
 ~39,000 gas more to enter, so the two cross at **89 operations**. Rust is cheaper on every kind of
 arithmetic measured, by 1.65× to 10.6×.
 
-One workload does clear it. Uniswap's own TWAMM example spends its gas on IEEE 754 binary128
-emulated in software, and Stylus has no floating point either — so the port works in fixed point,
-with the same fixed-point form written in Solidity so the comparison is of languages and not
-algorithms. Per interval:
+One workload does clear it, and it was measured against the TWAMM that is actually deployed —
+[`akshatmittal/v4-twamm-hook`](https://github.com/akshatmittal/v4-twamm-hook), by Uniswap Labs and
+Zaha Studio, audited by ABDK and Certora, live on Base and Unichain. Both hooks on the same node,
+same pool manager, same expiry grid, same order book, with the Stylus program cached:
 
-| | gas |
-| --- | ---: |
-| Solidity, quad floats (as Uniswap wrote it) | 23,715 |
-| Solidity, fixed point | 13,911 |
-| **Rust, fixed point** | **2,356** |
+| | Rust | production Solidity |
+| --- | ---: | ---: |
+| swap, pool idle | 140,173 | 132,257 |
+| swap, one span of virtual orders | **305,104** | 339,612 |
+| **per expiry crossed** | **26,924** | **38,834** |
 
-1.7× of that is available without leaving Solidity; **5.9× is the language** — but that is the
-arithmetic in isolation. Driving the deployed hook, a marginal expiry costs **31,109 gas, of which
-2,356 is arithmetic**; the rest is storage, which Stylus does not make cheaper. End to end the port
-is worth about **27 %** against fixed-point Solidity, not 5.9×. The Rust side is a
-complete hook — [`stylus/native-twamm`](stylus/native-twamm/src/lib.rs): long-term orders, two order
-pools, an expiry grid, earnings factors, and settlement against the v4 singleton through
-[`PoolManagerCalls`](stylus/base-hook/src/pool_manager.rs), with no Solidity in it. It breaks even
-against fixed-point Solidity at 2.6 intervals cold and immediately once cached.
+**31 % cheaper per interval, 7,916 gas worse on an idle pool**, and ahead from the first span of
+work. The Rust hook is [`stylus/native-twamm`](stylus/native-twamm/src/lib.rs) — orders, order
+pools, an expiry grid, earnings factors and settlement against the v4 singleton through
+[`PoolManagerCalls`](stylus/base-hook/src/pool_manager.rs), with no Solidity in it.
+
+It is not a clean language comparison: the two implementations differ, mine settles once per catch-up
+where theirs settles per interval, and mine is the less finished of the two. `BENCHMARK.md` says so
+in more detail.
 
 The catch is that most hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
 gas of Solidity arithmetic to be worth it, and nothing shipping gets close: OpenZeppelin's

@@ -112,3 +112,62 @@ ensure_arbos() {
   cast call 0x000000000000000000000000000000000000006b \
     "getMaxStylusContractFragments()(uint16)" --rpc-url "$RPC" >/dev/null 2>&1
 }
+
+# Puts a deployed Stylus contract into Arbitrum's program cache, so its calls pay the cached init
+# gas rather than the full load.
+#
+# On a real chain this is an auction: `CacheManager.placeBid` costs ETH, space is finite and low
+# bids get evicted. A dev node has no CacheManager at all, which is why every other benchmark here
+# reports the uncached figure. But the chain owner can appoint one, and the dev account owns the
+# chain — so it appoints itself and caches the program directly. That turns the cached number from
+# something quoted out of `ArbWasm.programInitGas` into something measured.
+cache_stylus_program() {
+  local program=$1 eoa=$2
+  cast send 0x0000000000000000000000000000000000000070 "addWasmCacheManager(address)" "$eoa" \
+    --rpc-url "$RPC" --private-key "$KEY" >/dev/null 2>&1
+  cast send 0x0000000000000000000000000000000000000072 "cacheProgram(address)" "$program" \
+    --rpc-url "$RPC" --private-key "$KEY" >/dev/null || return 1
+  local codehash; codehash=$(cast keccak "$(cast code "$program" --rpc-url "$RPC")")
+  cast call 0x0000000000000000000000000000000000000072 "codehashIsCached(bytes32)(bool)" \
+    "$codehash" --rpc-url "$RPC"
+}
+
+# Builds and deploys the production TWAMM hook at a mined address.
+#
+# `uniswap/lib/v4-twamm-hook` is akshatmittal/v4-twamm-hook — the TWAMM written by Uniswap Labs and
+# Zaha Studio, audited by ABDK Consulting and Certora, live on Base and Unichain. It is UNLICENSED,
+# so it is a submodule rather than vendored, and it is built in its own checkout against its own
+# pinned v4 because its source predates v4-core moving `ModifyLiquidityParams` out of
+# `IPoolManager`. That only matters at the source level: the callback ABI is unchanged, so the
+# binary runs against the PoolManager this benchmark deploys.
+deploy_production_twamm() {
+  local pool_manager=$1 interval=$2 owner=$3 create2=$4 work=$5
+  local root; root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  local dir="$root/uniswap/lib/v4-twamm-hook"
+  [ -f "$dir/src/TWAMM.sol" ] || {
+    echo "submodule uniswap/lib/v4-twamm-hook is not initialised" >&2; return 1; }
+
+  (cd "$dir" && git submodule update --init --recursive --depth 1 -q \
+     && forge build --skip test --skip script) >"$work/prod-build.log" 2>&1 \
+    || { tail -20 "$work/prod-build.log" >&2; return 1; }
+
+  local code args initcode
+  code=$(python3 -c "import json;print(json.load(open('$dir/out/TWAMM.sol/TWAMM.json'))['bytecode']['object'])")
+  args=$(cast abi-encode "f(address,uint256,address)" "$pool_manager" "$interval" "$owner")
+  initcode="${code#0x}${args#0x}"
+  printf '0x%s' "$initcode" >"$work/prod-initcode.hex"
+
+  (cd "$root/stylus" && cargo run -q -p stylus-hook-miner -- \
+      --initcode-file "$work/prod-initcode.hex" --plain-create2 --deployer "$create2" \
+      --permissions before-initialize,before-add-liquidity,before-remove-liquidity,before-swap) \
+      >"$work/prod-mine.log" 2>&1 || { cat "$work/prod-mine.log" >&2; return 1; }
+  local salt; salt=$(grep -m1 '^salt:' "$work/prod-mine.log" | grep -oE '0x[0-9a-fA-F]{64}')
+
+  cast send "$create2" "${salt}${initcode}" --rpc-url "$RPC" --private-key "$KEY" \
+    >"$work/prod-deploy.log" 2>&1 || { tail -10 "$work/prod-deploy.log" >&2; return 1; }
+
+  local mined; mined=$(grep -m1 '^hook address:' "$work/prod-mine.log" | grep -oE '0x[0-9a-fA-F]{40}')
+  [ "$(cast code "$mined" --rpc-url "$RPC" | wc -c)" -gt 10 ] || {
+    echo "nothing deployed at the mined address $mined" >&2; return 1; }
+  echo "$mined"
+}

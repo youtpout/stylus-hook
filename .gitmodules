@@ -7,3 +7,6 @@
 [submodule "uniswap/lib/hookmate"]
 	path = uniswap/lib/hookmate
 	url = https://github.com/akshatmittal/hookmate
+[submodule "uniswap/lib/v4-twamm-hook"]
+	path = uniswap/lib/v4-twamm-hook
+	url = https://github.com/akshatmittal/v4-twamm-hook

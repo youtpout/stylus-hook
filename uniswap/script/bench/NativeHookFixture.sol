@@ -30,6 +30,32 @@ interface ITwammOrders {
     function executeVirtualOrders(PoolKey memory key) external;
 }
 
+/// @notice `ITWAMM.OrderKey` from the production TWAMM hook, redeclared because that contract is
+///         UNLICENSED and referenced as a submodule rather than compiled into this project.
+struct ProdOrderKey {
+    address owner;
+    uint160 expiration;
+    bool zeroForOne;
+}
+
+/// @notice `ITWAMM.SubmitOrderParams` from the same. Note `duration`, where this repo's Rust hook
+///         takes an absolute expiration.
+struct ProdSubmitOrderParams {
+    PoolKey key;
+    bool zeroForOne;
+    uint256 duration;
+    uint256 amountIn;
+}
+
+/// @notice The part of `akshatmittal/v4-twamm-hook` this fixture calls — the TWAMM that is live on
+///         Base and Unichain, used here as the Solidity control.
+interface IProductionTwamm {
+    function submitOrder(ProdSubmitOrderParams calldata params)
+        external
+        returns (bytes32 orderId, ProdOrderKey memory orderKey);
+    function executeTWAMMOrders(PoolKey memory key) external;
+}
+
 /// @notice Opens a pool on a given hook and swaps through it, entirely from on-chain calls.
 ///
 /// Every step here is reachable with a plain `cast send`, which is the point: a forge script cannot
@@ -131,6 +157,22 @@ contract NativeHookFixture {
         Currency sold = zeroForOne ? key.currency0 : key.currency1;
         IApprove(Currency.unwrap(sold)).approve(hook, type(uint256).max);
         ITwammOrders(hook).submitOrder(key, zeroForOne, expiration, amountIn);
+    }
+
+    /// @notice Places a long-term order into the production TWAMM hook.
+    /// @dev Same job as {submitTwammOrder}, against a different ABI: that hook takes a duration and
+    ///      rounds it onto its own interval grid, rather than an absolute expiration.
+    function submitProductionTwammOrder(
+        uint256 index,
+        address hook,
+        bool zeroForOne,
+        uint256 duration,
+        uint256 amountIn
+    ) external {
+        PoolKey memory key = keys[index];
+        Currency sold = zeroForOne ? key.currency0 : key.currency1;
+        IApprove(Currency.unwrap(sold)).approve(hook, type(uint256).max);
+        IProductionTwamm(hook).submitOrder(ProdSubmitOrderParams(key, zeroForOne, duration, amountIn));
     }
 
     /// @notice Withdraws what a long-term order has earned so far.

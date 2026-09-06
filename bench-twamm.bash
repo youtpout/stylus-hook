@@ -152,45 +152,66 @@ echo "note: this dev node has no CacheManager, so the cached figure comes from"
 echo "      ArbWasm.programInitGas rather than a measurement."
 
 
+
 # --- what the hook costs when it is actually doing the work ------------------------------------
 #
-# Everything above times the arithmetic on its own, called directly. A swap through the real hook
-# also pays for the earnings factors it writes, the two `extsload`s it reads the pool's price and
-# liquidity with, the expiry grid it walks, and the settlement swap that moves the pool to the price
-# the closed form arrived at. That is what Uniswap's ~100,000 gas per interval is made of too, so
-# this is the number that can be compared with it.
+# Everything above times the arithmetic on its own, called directly. A swap through a real hook also
+# pays for the earnings factors it writes, the reads that find them, the expiry grid it walks, and
+# the settlement swap that squares the pool. To see whether any of that leaves room for Stylus, the
+# control is not a strawman: it is `akshatmittal/v4-twamm-hook`, written by Uniswap Labs and Zaha
+# Studio, audited by ABDK Consulting and Certora, and live on Base and Unichain.
+#
+# It is a different algorithm, and deliberately so — that is what production does. It never
+# evaluates an exponential: it matches the two order pools against each other at the pool price with
+# integer `mulDiv`, and only the imbalance is swapped into the pool. So this measures two
+# implementations, not two languages.
 
-log "placing long-term orders on both sides of the Rust hook's pool"
-# Read the grid off the contract rather than trusting the environment: it is baked in at build
-# time, and an expiry off the grid is rejected.
+EOA=0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E
+
+log "deploying the production TWAMM hook as the Solidity control"
 grid=$(cast call "$RUST_HOOK" 'expirationInterval()(uint256)' --rpc-url "$RPC" | awk '{print $1}')
-pool_id=$(cast call "$FIXTURE" 'poolId(uint256)(bytes32)' 2 --rpc-url "$RPC")
-clock=$(cast call "$RUST_HOOK" 'lastVirtualOrderTimestamp(bytes32)(uint256)' "$pool_id" \
-  --rpc-url "$RPC" | awk '{print $1}')
+PROD_HOOK=$(deploy_production_twamm "$POOL_MANAGER" "$grid" "$EOA" "$CREATE2_DEPLOYER" "$WORK")
+[ -n "$PROD_HOOK" ] || { echo "could not deploy the production hook"; exit 1; }
+echo "  $PROD_HOOK  (interval ${grid}s, same grid as the Rust hook)"
+open_pool "$PROD_HOOK"
+swap_gas 3 >/dev/null
+
+log "what the Stylus program costs to load, measured rather than quoted"
+idle_cold=$(swap_gas 2)
+cached=$(cache_stylus_program "$RUST_HOOK" "$EOA")
+echo "  program cached: $cached"
+idle_warm=$(swap_gas 2)
+prod_idle=$(swap_gas 3)
+printf '  %-44s %10s\n' "Rust hook idle, program not cached" "$idle_cold"
+printf '  %-44s %10s\n' "Rust hook idle, program cached" "$idle_warm"
+printf '  %-44s %10s\n' "production Solidity hook idle" "$prod_idle"
+printf '  %-44s %10s\n' "measured saving from caching" "$((idle_cold - idle_warm))"
+
+log "placing the same order book on both hooks"
 now=$(cast block latest -f timestamp --rpc-url "$RPC")
-printf '  grid %ss, pool clock %s, now %s\n' "$grid" "$clock" "$now"
-[ "$clock" != "0" ] || { echo "the hook never saw this pool initialised"; exit 1; }
-EXPIRATION_INTERVAL=$grid
-# Far enough ahead that every order is still in the future by the time the last one is mined.
-base=$(( (now + 40) / EXPIRATION_INTERVAL * EXPIRATION_INTERVAL ))
-expiries=()
-for k in 1 2 3 4; do expiries+=( $((base + k * EXPIRATION_INTERVAL)) ); done
-submit_order() {
-  local side=$1 expiry=$2
-  if ! cast send "$FIXTURE" "submitTwammOrder(uint256,address,bool,uint256,uint256)" \
-      2 "$RUST_HOOK" "$side" "$expiry" "$ORDER_SIZE" \
-      --rpc-url "$RPC" --private-key $KEY >/dev/null 2>&1; then
-    echo "  order (zeroForOne=$side, expiry=$expiry) reverted:"
-    cast call "$FIXTURE" "submitTwammOrder(uint256,address,bool,uint256,uint256)" \
-      2 "$RUST_HOOK" "$side" "$expiry" "$ORDER_SIZE" --rpc-url "$RPC" 2>&1 | head -2 | sed 's/^/    /'
-    return 1
-  fi
+base=$(( (now + 90) / grid * grid ))
+last=$(( base + 4 * grid ))
+
+submit_rust() {
+  cast send "$FIXTURE" "submitTwammOrder(uint256,address,bool,uint256,uint256)" \
+    2 "$RUST_HOOK" "$1" "$2" "$ORDER_SIZE" --rpc-url "$RPC" --private-key $KEY >/dev/null
 }
-for e in "${expiries[@]}"; do
-  submit_order true "$e"
-  submit_order false "$e"
+# The production hook takes a duration and rounds it onto its own grid, so the duration has to be
+# recomputed against the clock at the moment the order is mined.
+submit_prod() {
+  local t it dur
+  t=$(cast block latest -f timestamp --rpc-url "$RPC")
+  it=$(( t / grid * grid ))
+  dur=$(( $2 - it ))
+  cast send "$FIXTURE" "submitProductionTwammOrder(uint256,address,bool,uint256,uint256)" \
+    3 "$PROD_HOOK" "$1" "$dur" "$ORDER_SIZE" --rpc-url "$RPC" --private-key $KEY >/dev/null
+}
+for k in 1 2 3 4; do
+  e=$(( base + k * grid ))
+  submit_rust true "$e";  submit_rust false "$e"
+  submit_prod true "$e";  submit_prod false "$e"
 done
-echo "  8 orders, two per expiry, ${EXPIRATION_INTERVAL}s apart from $base"
+echo "  8 orders each, two per expiry, ${grid}s apart, running to $last"
 
 # A nitro dev node only makes a block when there is a transaction to put in it, so its clock does
 # not move on its own. Poking it with a no-op is what carries `block.timestamp` past an expiry.
@@ -203,28 +224,23 @@ wait_past() {
   done
 }
 
-log "a swap through the hook, by how much of the order book it has to catch up on"
-# One span: time has passed since the orders were placed, but no expiry has been crossed yet.
+log "a swap through each hook, before and after four expiries come due"
 wait_past "$base"
-one_span=$(swap_gas 2)
-# Crossing the first expiry adds a second span, because the sell rates change there.
-wait_past "${expiries[0]}"
-two_spans=$(swap_gas 2)
-# And the last three expiries at once.
-wait_past "${expiries[3]}"
-five_spans=$(swap_gas 2)
-# With every order expired the pool is idle again, and the hook only moves its clock.
-idle=$(swap_gas 2)
+rust_one=$(swap_gas 2); prod_one=$(swap_gas 3)
+wait_past "$last"
+rust_all=$(swap_gas 2); prod_all=$(swap_gas 3)
 
-printf '%-46s %10s\n' "swap, no hook at all" "$BASE"
-printf '%-46s %10s\n' "swap, hook with nothing to do" "$idle"
-printf '%-46s %10s\n' "swap, one span of virtual orders" "$one_span"
-printf '%-46s %10s\n' "swap, two spans (one expiry crossed)" "$two_spans"
-printf '%-46s %10s\n' "swap, five spans (four expiries crossed)" "$five_spans"
+printf '%-52s %10s %10s\n' "" "Rust" "Solidity"
+printf '%-52s %10s %10s\n' "swap, one span of virtual orders" "$rust_one" "$prod_one"
+printf '%-52s %10s %10s\n' "swap, four expiries crossed" "$rust_all" "$prod_all"
+printf '%-52s %10s %10s\n' "per expiry crossed" \
+  "$(( (rust_all - rust_one) / 4 ))" "$(( (prod_all - prod_one) / 4 ))"
 echo
-printf 'one span, all in:            %8s\n' "$((one_span - idle))"
-printf 'each additional span:        %8s\n' "$(( (five_spans - two_spans) / 3 ))"
-printf 'of which arithmetic:         %8s\n' 2356
+printf 'baseline swap with no hook at all                    %10s\n' "$BASE"
+printf 'the Rust hook pays this on every call, uncached      %10s\n' "$INIT"
+printf '  and this once cached                               %10s\n' "$INIT_CACHED"
 echo
-echo "Uniswap's own TWAMM example records about 100,000 gas per interval, over the same kind of"
-echo "work: the closed form, the earnings factors, and the pool it has to settle against."
+echo "The Rust figures above are with the program cached, which is the state any hook with users"
+echo "would be in: caching is a one-off bid on Arbitrum's CacheManager, and an uncached hook pays"
+echo "the full load on every single call forever. The uncached column is what the same swap costs"
+echo "before anyone has bid, and is shown so the gap is visible rather than assumed."

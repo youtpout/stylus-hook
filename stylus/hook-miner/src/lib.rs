@@ -54,6 +54,32 @@ pub fn predict_address(
     deployer.create2(salt, init_code_hash)
 }
 
+/// Searches for a salt whose *plain* CREATE2 address carries exactly `flags` in its low 14 bits.
+///
+/// For an ordinary CREATE2 factory rather than `StylusDeployer`: the salt is used verbatim, and any
+/// constructor arguments are already appended to `init_code`. This is what a Solidity hook needs,
+/// and it is here so the benchmark can put a third-party hook on a valid address without importing
+/// its source into this project.
+pub fn mine_create2(
+    deployer: Address,
+    init_code_hash: B256,
+    flags: u32,
+    max_attempts: u64,
+) -> Option<MinedSalt> {
+    for attempt in 0..max_attempts {
+        let salt = B256::from(U256::from(attempt));
+        let address = deployer.create2(salt, init_code_hash);
+        if stylus_uniswap_v4::permissions::address_flags(address) == flags {
+            return Some(MinedSalt {
+                salt,
+                address,
+                attempts: attempt + 1,
+            });
+        }
+    }
+    None
+}
+
 /// What [`mine`] found.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MinedSalt {

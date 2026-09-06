@@ -47,6 +47,11 @@ struct Args {
     #[arg(long, default_value_t = STYLUS_DEPLOYER)]
     deployer: Address,
 
+    /// Mine for an ordinary CREATE2 factory instead of `StylusDeployer`: the salt is used as given,
+    /// and `--initcode` already carries any constructor arguments.
+    #[arg(long)]
+    plain_create2: bool,
+
     /// Give up after this many salts.
     #[arg(long, default_value_t = 2_000_000)]
     max_attempts: u64,
@@ -138,6 +143,25 @@ fn run(args: Args) -> Result<(), String> {
     let flags = permissions.flags();
     if flags == 0 {
         return Err("pass --permissions: a hook with no callbacks needs no mined address".into());
+    }
+
+    if args.plain_create2 {
+        let MinedSalt {
+            salt,
+            address,
+            attempts,
+        } = stylus_hook_miner::mine_create2(
+            args.deployer,
+            keccak256(&initcode),
+            flags,
+            args.max_attempts,
+        )
+        .ok_or_else(|| format!("no salt found in {} attempts", args.max_attempts))?;
+        println!("hook address:  {address}");
+        println!("required flags: {flags:#06x}");
+        println!("salt:          {salt}");
+        println!("found after:   {attempts} attempt(s)");
+        return Ok(());
     }
 
     // A contract with no constructor is not the same as one whose constructor takes no arguments:
