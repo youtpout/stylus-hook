@@ -649,6 +649,38 @@ expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncache
 cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
 half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
 
+### What the hook costs when it is actually doing the work
+
+Everything above times the arithmetic on its own, called directly with no storage, no pool and no
+orders. That is the right way to compare two languages and the wrong way to answer "what does an
+interval cost", so `./bench-twamm.bash` also drives the deployed hook: eight long-term orders, two
+per expiry, and a swap through the pool after each of them has come due.
+
+| | gas |
+| --- | ---: |
+| swap, no hook at all | 115,087 |
+| swap, hook attached with nothing to do | 165,764 |
+| swap, one span of virtual orders | 287,337 |
+| swap, two spans — one expiry crossed | 291,907 |
+| swap, five spans — four expiries crossed | 385,234 |
+
+Reading the differences: **50,677** to have the hook attached at all (30,289 of it loading the WASM,
+the rest the keccak of the pool key, the reads, and the clock it writes); **121,573** for the first
+catch-up, most of which is the settlement swap that moves the AMM to the price the closed form
+arrived at, and which is paid once however far behind the orders are; and **31,109 for each
+additional expiry crossed**.
+
+That last number is the one that matters, and **2,356 of it is arithmetic — 7.6 %.** The other
+92 % is storage: two earnings factors written per span, an earnings-factor snapshot written per
+expiry for each order pool, and the mapping reads that find them. Storage costs the same in both
+languages; the earlier measurement in this document put Stylus 1.8 % ahead on an `SSTORE`, which is
+noise.
+
+So the honest end-to-end statement is smaller than the arithmetic suggests. Against a fixed-point
+Solidity TWAMM, Rust saves 11,555 gas on a marginal interval that costs about 42,700 — **27 %**.
+Against the quad-float form Uniswap actually ships, it saves 21,359. The 5.9× is real, and it
+applies to less than a tenth of the bill.
+
 Two things about the build are worth recording, because both are the opposite of what the
 documentation suggests:
 
@@ -1010,6 +1042,38 @@ Together, 10.1×. The Rust side is a complete hook rather than a kernel — orde
 expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncached, or 5,025 once
 cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
 half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
+
+### What the hook costs when it is actually doing the work
+
+Everything above times the arithmetic on its own, called directly with no storage, no pool and no
+orders. That is the right way to compare two languages and the wrong way to answer "what does an
+interval cost", so `./bench-twamm.bash` also drives the deployed hook: eight long-term orders, two
+per expiry, and a swap through the pool after each of them has come due.
+
+| | gas |
+| --- | ---: |
+| swap, no hook at all | 115,087 |
+| swap, hook attached with nothing to do | 165,764 |
+| swap, one span of virtual orders | 287,337 |
+| swap, two spans — one expiry crossed | 291,907 |
+| swap, five spans — four expiries crossed | 385,234 |
+
+Reading the differences: **50,677** to have the hook attached at all (30,289 of it loading the WASM,
+the rest the keccak of the pool key, the reads, and the clock it writes); **121,573** for the first
+catch-up, most of which is the settlement swap that moves the AMM to the price the closed form
+arrived at, and which is paid once however far behind the orders are; and **31,109 for each
+additional expiry crossed**.
+
+That last number is the one that matters, and **2,356 of it is arithmetic — 7.6 %.** The other
+92 % is storage: two earnings factors written per span, an earnings-factor snapshot written per
+expiry for each order pool, and the mapping reads that find them. Storage costs the same in both
+languages; the earlier measurement in this document put Stylus 1.8 % ahead on an `SSTORE`, which is
+noise.
+
+So the honest end-to-end statement is smaller than the arithmetic suggests. Against a fixed-point
+Solidity TWAMM, Rust saves 11,555 gas on a marginal interval that costs about 42,700 — **27 %**.
+Against the quad-float form Uniswap actually ships, it saves 21,359. The 5.9× is real, and it
+applies to less than a tenth of the bill.
 
 Two things about the build are worth recording, because both are the opposite of what the
 documentation suggests:

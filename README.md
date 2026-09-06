@@ -139,7 +139,10 @@ algorithms. Per interval:
 | Solidity, fixed point | 13,911 |
 | **Rust, fixed point** | **2,356** |
 
-1.7× of that is available without leaving Solidity; **5.9× is the language**. The Rust side is a
+1.7× of that is available without leaving Solidity; **5.9× is the language** — but that is the
+arithmetic in isolation. Driving the deployed hook, a marginal expiry costs **31,109 gas, of which
+2,356 is arithmetic**; the rest is storage, which Stylus does not make cheaper. End to end the port
+is worth about **27 %** against fixed-point Solidity, not 5.9×. The Rust side is a
 complete hook — [`stylus/native-twamm`](stylus/native-twamm/src/lib.rs): long-term orders, two order
 pools, an expiry grid, earnings factors, and settlement against the v4 singleton through
 [`PoolManagerCalls`](stylus/base-hook/src/pool_manager.rs), with no Solidity in it. It breaks even

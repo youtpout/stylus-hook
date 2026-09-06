@@ -46,7 +46,8 @@ docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run --rm -d --name "$CONTAINER" -p 8547:8547 "$NITRO_IMAGE" \
   --dev --http.addr 0.0.0.0 --http.port 8547 --http.api=net,web3,eth,debug,arb \
   --http.corsdomain='*' --http.vhosts='*' >/dev/null
-trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
+# KEEP=1 leaves the node and its work directory behind, for poking at a failure by hand.
+trap '[ -n "${KEEP:-}" ] || { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; rm -rf "$WORK"; }' EXIT
 for _ in $(seq 1 60); do cast chain-id --rpc-url "$RPC" >/dev/null 2>&1 && break; sleep 1; done
 
 cast send $ARB_OWNER "setL1PricePerUnit(uint256)" 0 --rpc-url "$RPC" --private-key $KEY >/dev/null
@@ -104,8 +105,16 @@ open_pool "$RUST_HOOK"
 
 
 swap_gas() {
-  cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$1" "$SWAP_AMOUNT" true \
-    --rpc-url "$RPC" --private-key $KEY | awk '/^gasUsed/{print $2}'
+  local out
+  if ! out=$(cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$1" "$SWAP_AMOUNT" true \
+      --rpc-url "$RPC" --private-key $KEY 2>&1); then
+    echo "swap through pool $1 reverted:" >&2
+    printf '%s\n' "$out" | head -3 >&2
+    cast call "$FIXTURE" "swap(uint256,uint256,bool)" "$1" "$SWAP_AMOUNT" true \
+      --rpc-url "$RPC" 2>&1 | head -3 >&2
+    return 1
+  fi
+  printf '%s\n' "$out" | awk '/^gasUsed/{print $2}'
 }
 
 log "sweeping the amount of work"
