@@ -26,6 +26,11 @@ ARB_WASM=0x0000000000000000000000000000000000000071
 LIQUIDITY=1000000000000000000000
 SWAP_AMOUNT=1000000000000000000
 ROUNDS=${ROUNDS:-3}
+# Orders expire on a grid, and measuring what crossing one costs means crossing several. A nitro
+# dev node has no `evm_increaseTime`, so the only way past an expiry is to wait for it — hence a
+# five-second grid here rather than the sixty seconds the contract defaults to.
+export EXPIRATION_INTERVAL=${EXPIRATION_INTERVAL:-5}
+ORDER_SIZE=${ORDER_SIZE:-1000000000000000000}
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
@@ -136,3 +141,81 @@ printf '  the same once the contract is cached    %10s\n' "$INIT_CACHED"
 echo
 echo "note: this dev node has no CacheManager, so the cached figure comes from"
 echo "      ArbWasm.programInitGas rather than a measurement."
+
+
+# --- what the hook costs when it is actually doing the work ------------------------------------
+#
+# Everything above times the arithmetic on its own, called directly. A swap through the real hook
+# also pays for the earnings factors it writes, the two `extsload`s it reads the pool's price and
+# liquidity with, the expiry grid it walks, and the settlement swap that moves the pool to the price
+# the closed form arrived at. That is what Uniswap's ~100,000 gas per interval is made of too, so
+# this is the number that can be compared with it.
+
+log "placing long-term orders on both sides of the Rust hook's pool"
+# Read the grid off the contract rather than trusting the environment: it is baked in at build
+# time, and an expiry off the grid is rejected.
+grid=$(cast call "$RUST_HOOK" 'expirationInterval()(uint256)' --rpc-url "$RPC" | awk '{print $1}')
+pool_id=$(cast call "$FIXTURE" 'poolId(uint256)(bytes32)' 2 --rpc-url "$RPC")
+clock=$(cast call "$RUST_HOOK" 'lastVirtualOrderTimestamp(bytes32)(uint256)' "$pool_id" \
+  --rpc-url "$RPC" | awk '{print $1}')
+now=$(cast block latest -f timestamp --rpc-url "$RPC")
+printf '  grid %ss, pool clock %s, now %s\n' "$grid" "$clock" "$now"
+[ "$clock" != "0" ] || { echo "the hook never saw this pool initialised"; exit 1; }
+EXPIRATION_INTERVAL=$grid
+# Far enough ahead that every order is still in the future by the time the last one is mined.
+base=$(( (now + 40) / EXPIRATION_INTERVAL * EXPIRATION_INTERVAL ))
+expiries=()
+for k in 1 2 3 4; do expiries+=( $((base + k * EXPIRATION_INTERVAL)) ); done
+submit_order() {
+  local side=$1 expiry=$2
+  if ! cast send "$FIXTURE" "submitTwammOrder(uint256,address,bool,uint256,uint256)" \
+      2 "$RUST_HOOK" "$side" "$expiry" "$ORDER_SIZE" \
+      --rpc-url "$RPC" --private-key $KEY >/dev/null 2>&1; then
+    echo "  order (zeroForOne=$side, expiry=$expiry) reverted:"
+    cast call "$FIXTURE" "submitTwammOrder(uint256,address,bool,uint256,uint256)" \
+      2 "$RUST_HOOK" "$side" "$expiry" "$ORDER_SIZE" --rpc-url "$RPC" 2>&1 | head -2 | sed 's/^/    /'
+    return 1
+  fi
+}
+for e in "${expiries[@]}"; do
+  submit_order true "$e"
+  submit_order false "$e"
+done
+echo "  8 orders, two per expiry, ${EXPIRATION_INTERVAL}s apart from $base"
+
+# A nitro dev node only makes a block when there is a transaction to put in it, so its clock does
+# not move on its own. Poking it with a no-op is what carries `block.timestamp` past an expiry.
+wait_past() {
+  local target=$1
+  while [ "$(cast block latest -f timestamp --rpc-url "$RPC")" -le "$target" ]; do
+    sleep 1
+    cast send $ARB_OWNER "setL1PricePerUnit(uint256)" 0 \
+      --rpc-url "$RPC" --private-key $KEY >/dev/null
+  done
+}
+
+log "a swap through the hook, by how much of the order book it has to catch up on"
+# One span: time has passed since the orders were placed, but no expiry has been crossed yet.
+wait_past "$base"
+one_span=$(swap_gas 2)
+# Crossing the first expiry adds a second span, because the sell rates change there.
+wait_past "${expiries[0]}"
+two_spans=$(swap_gas 2)
+# And the last three expiries at once.
+wait_past "${expiries[3]}"
+five_spans=$(swap_gas 2)
+# With every order expired the pool is idle again, and the hook only moves its clock.
+idle=$(swap_gas 2)
+
+printf '%-46s %10s\n' "swap, no hook at all" "$BASE"
+printf '%-46s %10s\n' "swap, hook with nothing to do" "$idle"
+printf '%-46s %10s\n' "swap, one span of virtual orders" "$one_span"
+printf '%-46s %10s\n' "swap, two spans (one expiry crossed)" "$two_spans"
+printf '%-46s %10s\n' "swap, five spans (four expiries crossed)" "$five_spans"
+echo
+printf 'one span, all in:            %8s\n' "$((one_span - idle))"
+printf 'each additional span:        %8s\n' "$(( (five_spans - two_spans) / 3 ))"
+printf 'of which arithmetic:         %8s\n' 2356
+echo
+echo "Uniswap's own TWAMM example records about 100,000 gas per interval, over the same kind of"
+echo "work: the closed form, the earnings factors, and the pool it has to settle against."

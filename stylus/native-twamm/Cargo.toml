@@ -11,11 +11,14 @@ keywords.workspace = true
 [dependencies]
 alloy-primitives.workspace = true
 alloy-sol-types.workspace = true
-stylus-sdk.workspace = true
+# A v4 hook that settles has to re-enter itself: moving the pool to the price the virtual orders
+# arrived at means calling `poolManager.swap`, and v4 answers that by calling this contract's
+# `beforeSwap`. The SDK forbids that by default and the failure is a bare revert with no data.
+stylus-sdk = { workspace = true, features = ["reentrant"] }
 stylus-uniswap-v4 = { path = "../base-hook" }
 
 [dev-dependencies]
-stylus-sdk = { workspace = true, features = ["stylus-test"] }
+stylus-sdk = { workspace = true, features = ["stylus-test", "reentrant"] }
 
 [features]
 export-abi = ["stylus-sdk/export-abi", "stylus-uniswap-v4/export-abi"]

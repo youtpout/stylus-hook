@@ -18,6 +18,18 @@ interface IApprove {
     function approve(address spender, uint256 amount) external returns (bool);
 }
 
+/// @notice The part of `stylus/native-twamm` this fixture needs. Not a reimplementation of the
+///         hook — just the ABI of the Rust one, so its orders can be placed from on-chain.
+interface ITwammOrders {
+    function submitOrder(PoolKey memory key, bool zeroForOne, uint256 expiration, uint256 amountIn)
+        external
+        returns (bytes32);
+    function claimProceeds(PoolKey memory key, bool zeroForOne, uint256 expiration)
+        external
+        returns (uint256);
+    function executeVirtualOrders(PoolKey memory key) external;
+}
+
 /// @notice Opens a pool on a given hook and swaps through it, entirely from on-chain calls.
 ///
 /// Every step here is reachable with a plain `cast send`, which is the point: a forge script cannot
@@ -108,6 +120,27 @@ contract NativeHookFixture {
             receiver: address(this),
             deadline: block.timestamp + 3600
         });
+    }
+
+    /// @notice Places a long-term order into a TWAMM hook.
+    /// @dev The benchmark's tokens live in this fixture, so the orders have to come from here too.
+    function submitTwammOrder(uint256 index, address hook, bool zeroForOne, uint256 expiration, uint256 amountIn)
+        external
+    {
+        PoolKey memory key = keys[index];
+        Currency sold = zeroForOne ? key.currency0 : key.currency1;
+        IApprove(Currency.unwrap(sold)).approve(hook, type(uint256).max);
+        ITwammOrders(hook).submitOrder(key, zeroForOne, expiration, amountIn);
+    }
+
+    /// @notice Withdraws what a long-term order has earned so far.
+    function claimTwammProceeds(uint256 index, address hook, bool zeroForOne, uint256 expiration) external {
+        ITwammOrders(hook).claimProceeds(keys[index], zeroForOne, expiration);
+    }
+
+    /// @notice Brings a TWAMM pool up to date without swapping through it.
+    function executeTwammOrders(uint256 index, address hook) external {
+        ITwammOrders(hook).executeVirtualOrders(keys[index]);
     }
 
     /// @notice Removes some liquidity, calling the hook's `beforeRemoveLiquidity`.

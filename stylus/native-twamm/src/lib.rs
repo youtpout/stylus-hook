@@ -66,14 +66,12 @@ use stylus_uniswap_v4::{
     Permissions, PoolManagerCalls, ZERO_DELTA,
 };
 
+// `POOL_MANAGER` and `EXPIRATION_INTERVAL`, both fixed at build time.
+//
+// Constants rather than constructor arguments because Stylus has no `immutable`: a constructor
+// argument can only go to storage, and every callback would then pay a cold SLOAD for something
+// that never changes. See `build.rs`.
 include!(concat!(env!("OUT_DIR"), "/pool_manager.rs"));
-
-/// Orders may only expire on multiples of this many seconds.
-///
-/// A constant rather than a constructor argument because Stylus has no `immutable`: holding it
-/// would mean a cold storage read on every callback, which would show up in the benchmark as a
-/// language difference when it is nothing of the sort. `TwammHook.sol` uses the same number.
-pub const EXPIRATION_INTERVAL: u64 = 60;
 
 /// Slot of `PoolManager._pools`, as `StateLibrary.POOLS_SLOT`.
 const POOLS_SLOT: u8 = 6;
@@ -901,23 +899,28 @@ mod tests {
         let vm = TestVM::default();
         let mut hook = deployed(&vm);
         let key = key();
-        let off_grid = hook.submit_order(key.clone(), true, U256::from(90), U256::from(1000));
-        assert_eq!(
-            off_grid.unwrap_err(),
-            ExpirationNotOnInterval {
-                expiration: U256::from(90)
-            }
-            .abi_encode()
-        );
+        let interval = U256::from(EXPIRATION_INTERVAL);
 
-        vm.set_block_timestamp(1_000);
-        let past = hook.submit_order(key, true, U256::from(600), U256::from(1000));
+        // The benchmark builds with a short grid, on which every whole second is a valid expiry,
+        // so there is only something to reject when the grid is coarser than one second.
+        if EXPIRATION_INTERVAL > 1 {
+            let off_grid = interval + U256::from(1);
+            assert_eq!(
+                hook.submit_order(key.clone(), true, off_grid, U256::from(1000))
+                    .unwrap_err(),
+                ExpirationNotOnInterval {
+                    expiration: off_grid
+                }
+                .abi_encode()
+            );
+        }
+
+        vm.set_block_timestamp(1_000 * EXPIRATION_INTERVAL);
+        let past = interval;
         assert_eq!(
-            past.unwrap_err(),
-            ExpirationInThePast {
-                expiration: U256::from(600)
-            }
-            .abi_encode()
+            hook.submit_order(key, true, past, U256::from(1000))
+                .unwrap_err(),
+            ExpirationInThePast { expiration: past }.abi_encode()
         );
     }
 
