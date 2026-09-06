@@ -135,12 +135,15 @@ algorithms. Per interval:
 
 | | gas |
 | --- | ---: |
-| Solidity, quad floats (as Uniswap wrote it) | 23,700 |
-| Solidity, fixed point | 13,950 |
-| **Rust, fixed point** | **2,320** |
+| Solidity, quad floats (as Uniswap wrote it) | 23,715 |
+| Solidity, fixed point | 13,911 |
+| **Rust, fixed point** | **2,356** |
 
-1.7× of that is available without leaving Solidity; **6.0× is the language**. A Stylus TWAMM breaks
-even at under two intervals.
+1.7× of that is available without leaving Solidity; **5.9× is the language**. The Rust side is a
+complete hook — [`stylus/native-twamm`](stylus/native-twamm/src/lib.rs): long-term orders, two order
+pools, an expiry grid, earnings factors, and settlement against the v4 singleton through
+[`PoolManagerCalls`](stylus/base-hook/src/pool_manager.rs), with no Solidity in it. It breaks even
+against fixed-point Solidity at 2.6 intervals cold and immediately once cached.
 
 The catch is that most hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
 gas of Solidity arithmetic to be worth it, and nothing shipping gets close: OpenZeppelin's

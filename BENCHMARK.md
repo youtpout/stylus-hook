@@ -628,12 +628,12 @@ nothing.
 
 | intervals | Solidity, quad floats | Solidity, fixed point | Rust, fixed point |
 | ---: | ---: | ---: | ---: |
-| 1 | 23,587 | 14,011 | **2,329** |
-| 2 | 47,521 | 27,842 | **4,645** |
-| 4 | 94,458 | 55,950 | **9,278** |
-| 8 | 189,590 | 111,385 | **18,544** |
+| 1 | 23,587 | 14,011 | **2,368** |
+| 2 | 47,521 | 27,842 | **4,723** |
+| 4 | 94,458 | 55,950 | **9,435** |
+| 8 | 189,590 | 111,385 | **18,860** |
 
-Per interval: **23,700 gas in Solidity as written, 13,950 in Solidity done differently, 2,320 in
+Per interval: **23,715 gas in Solidity as written, 13,911 in Solidity done differently, 2,356 in
 Rust.**
 
 That splits cleanly into the two changes it is made of:
@@ -644,8 +644,23 @@ That splits cleanly into the two changes it is made of:
   arithmetic that a real hook actually runs — larger than `sqrt` at 4.5×, and approaching the 10.6×
   of the synthetic 64-bit loop.
 
-Together, 10.2×. Against a ~20,600 gas entry fee and 11,630 saved per interval, a Stylus TWAMM
-**breaks even at under two intervals** and is ahead of Solidity from the second one onwards.
+Together, 10.1×. The Rust side is a complete hook rather than a kernel — orders, order pools,
+expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncached, or 5,025 once
+cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
+half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
+
+Two things about the build are worth recording, because both are the opposite of what the
+documentation suggests:
+
+- **`opt-level = "z"` is a bad trade here.** It makes this contract 12 % smaller and 46 % more
+  expensive to run — 3,430 gas per interval against 2,356 — because the SDK runs `wasm-opt -Oz`
+  afterwards regardless, so all `z` adds is a slower code generator. Left at `"s"`.
+- **The hook does not fit in one code object.** 24 KB is one; ArbOS 61 lifts the ceiling by
+  splitting a contract across up to four fragments, and Arbitrum One and Sepolia both report four
+  today. But a hook's address encodes its callbacks, so it has to be CREATE2'd from a mined salt,
+  and `cargo stylus get-initcode` refuses fragmented contracts — the init code contains the
+  fragment addresses, and those do not exist until the fragments are deployed. `bench-lib.bash`
+  works around it; `FEEDBACK.md` is where it belongs.
 
 This is the first workload in this document where porting to Stylus is worth doing, and the reason
 it is worth doing is not that the arithmetic is exotic. It is that there is enough of it.
@@ -975,12 +990,12 @@ nothing.
 
 | intervals | Solidity, quad floats | Solidity, fixed point | Rust, fixed point |
 | ---: | ---: | ---: | ---: |
-| 1 | 23,587 | 14,011 | **2,329** |
-| 2 | 47,521 | 27,842 | **4,645** |
-| 4 | 94,458 | 55,950 | **9,278** |
-| 8 | 189,590 | 111,385 | **18,544** |
+| 1 | 23,587 | 14,011 | **2,368** |
+| 2 | 47,521 | 27,842 | **4,723** |
+| 4 | 94,458 | 55,950 | **9,435** |
+| 8 | 189,590 | 111,385 | **18,860** |
 
-Per interval: **23,700 gas in Solidity as written, 13,950 in Solidity done differently, 2,320 in
+Per interval: **23,715 gas in Solidity as written, 13,911 in Solidity done differently, 2,356 in
 Rust.**
 
 That splits cleanly into the two changes it is made of:
@@ -991,8 +1006,23 @@ That splits cleanly into the two changes it is made of:
   arithmetic that a real hook actually runs — larger than `sqrt` at 4.5×, and approaching the 10.6×
   of the synthetic 64-bit loop.
 
-Together, 10.2×. Against a ~20,600 gas entry fee and 11,630 saved per interval, a Stylus TWAMM
-**breaks even at under two intervals** and is ahead of Solidity from the second one onwards.
+Together, 10.1×. The Rust side is a complete hook rather than a kernel — orders, order pools,
+expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncached, or 5,025 once
+cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
+half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
+
+Two things about the build are worth recording, because both are the opposite of what the
+documentation suggests:
+
+- **`opt-level = "z"` is a bad trade here.** It makes this contract 12 % smaller and 46 % more
+  expensive to run — 3,430 gas per interval against 2,356 — because the SDK runs `wasm-opt -Oz`
+  afterwards regardless, so all `z` adds is a slower code generator. Left at `"s"`.
+- **The hook does not fit in one code object.** 24 KB is one; ArbOS 61 lifts the ceiling by
+  splitting a contract across up to four fragments, and Arbitrum One and Sepolia both report four
+  today. But a hook's address encodes its callbacks, so it has to be CREATE2'd from a mined salt,
+  and `cargo stylus get-initcode` refuses fragmented contracts — the init code contains the
+  fragment addresses, and those do not exist until the fragments are deployed. `bench-lib.bash`
+  works around it; `FEEDBACK.md` is where it belongs.
 
 This is the first workload in this document where porting to Stylus is worth doing, and the reason
 it is worth doing is not that the arithmetic is exotic. It is that there is enough of it.
