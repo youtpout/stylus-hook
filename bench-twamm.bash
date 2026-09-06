@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# Where does a hook start being cheaper in Rust than in Solidity?
+# A Uniswap TWAMM interval, in Solidity and in Rust.
 #
-#   ./bench-compute.bash
+#   ./bench-twamm.bash
 #
-# Stylus buys a lower marginal cost of computation at the price of a fixed cost per call. So the
-# same hook is cheaper in Solidity below some amount of work and cheaper in Rust above it. This
-# sweeps that amount: `ComputeHook.sol` and `stylus/native-compute` run the identical xorshift64
-# loop, and the only thing that changes between rows is how many rounds of it.
+# TWAMM is the one hook in BENCHMARK.md whose cost is arithmetic rather than storage, which is the
+# only shape where a Stylus port can win back what it pays to be called at all. Uniswap's own
+# v4-periphery example spends that arithmetic on IEEE 754 binary128, emulated in software because
+# the EVM has no floating point.
+#
+# Stylus has none either, so the port has to work in fixed point. That makes for a three-way
+# comparison, and the middle row is the one that matters: it separates the algorithmic change from
+# the language change.
+#
+# The Rust side is also a complete TWAMM hook — orders, order pools, expiries, settlement against
+# the pool manager — and it is too big for one Stylus code fragment, so deploying it at a mined
+# hook address takes the workaround in `deploy_fragmented_hook`.
 set -euo pipefail
 
 NITRO_IMAGE=${NITRO_IMAGE:-offchainlabs/nitro-node:v3.11.3-beb2108-dev}
@@ -37,6 +45,11 @@ trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
 for _ in $(seq 1 60); do cast chain-id --rpc-url "$RPC" >/dev/null 2>&1 && break; sleep 1; done
 
 cast send $ARB_OWNER "setL1PricePerUnit(uint256)" 0 --rpc-url "$RPC" --private-key $KEY >/dev/null
+# The complete TWAMM needs two code fragments, which is ArbOS 61 and up. The dev image ships 59.
+ensure_arbos 60 && ensure_arbos 61
+printf 'arbOS %s, up to %s stylus fragments\n' \
+  "$(cast call 0x0000000000000000000000000000000000000064 'arbOSVersion()(uint256)' --rpc-url "$RPC")" \
+  "$(cast call 0x000000000000000000000000000000000000006b 'getMaxStylusContractFragments()(uint16)' --rpc-url "$RPC")"
 CREATE2_DEPLOYER=$(cast send --rpc-url "$RPC" --private-key $KEY --create \
   0x604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3 \
   | awk '/^contractAddress/{print $2}')
@@ -64,20 +77,12 @@ grep -E "^  [a-zA-Z].*0x" "$WORK/deploy.log" | sed 's/^  //'
 export POOL_MANAGER="$POOL_MANAGER"
 
 log "mining and deploying the Rust twin"
-(cd "$ROOT/stylus" && cargo stylus get-initcode --contract stylus-native-twamm) 2>/dev/null \
-  | tail -1 >"$WORK/initcode.hex"
-CONSTRUCTOR=$( (cd "$ROOT/stylus" && cargo stylus constructor --contract stylus-native-twamm) 2>/dev/null | tail -1)
-(cd "$ROOT/stylus" && cargo run -q -p stylus-hook-miner -- \
-  --initcode-file "$WORK/initcode.hex" --permissions before-swap \
-  --constructor-signature "$CONSTRUCTOR" --constructor-args "$POOL_MANAGER" \
-  --deployer "$STYLUS_DEPLOYER") >"$WORK/mine.log" 2>&1 || { cat "$WORK/mine.log"; exit 1; }
-SALT=$(grep -m1 '^salt:' "$WORK/mine.log" | grep -oE '0x[0-9a-fA-F]{64}')
-(cd "$ROOT/stylus" && cargo stylus deploy --contract stylus-native-twamm --no-verify \
-  -e "$RPC" --private-key $KEY --deployer-address "$STYLUS_DEPLOYER" --deployer-salt "$SALT" \
-  --constructor-args "$POOL_MANAGER") >"$WORK/native.log" 2>&1 \
-  || { tail -30 "$WORK/native.log"; exit 1; }
-RUST_HOOK=$(grep -aoiE '(contract deployed at address|deployed code at address)[^0]*0x[0-9a-fA-F]{40}' \
-  "$WORK/native.log" | grep -oE '0x[0-9a-fA-F]{40}' | tail -1)
+# The complete TWAMM does not fit in one code fragment, so this is not the usual
+# get-initcode/mine/deploy. See bench-lib.bash for what it does instead and why.
+RUST_HOOK=$(deploy_fragmented_hook stylus-native-twamm \
+  before-initialize,before-add-liquidity,before-swap \
+  'stylus_constructor(address)' "$POOL_MANAGER" "$STYLUS_DEPLOYER" "$WORK")
+[ -n "$RUST_HOOK" ] || { echo "could not deploy the Rust hook"; exit 1; }
 echo "rust hook: $RUST_HOOK"
 read -r INIT INIT_CACHED <<<"$(cast call $ARB_WASM 'programInitGas(address)(uint64,uint64)' \
   "$RUST_HOOK" --rpc-url "$RPC" | awk '{print $1}' | tr '\n' ' ')"

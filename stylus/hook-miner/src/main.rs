@@ -164,6 +164,10 @@ fn run(args: Args) -> Result<(), String> {
     .ok_or_else(|| format!("no salt found in {} attempts", args.max_attempts))?;
 
     println!("hook address:  {address}");
+    // Printed because a contract too large for one code fragment cannot be deployed through
+    // `cargo stylus deploy --deployer-salt`; it has to be sent to the deployer by hand, and this
+    // is the second argument that call needs. See `deploy_fragmented_hook` in bench-lib.bash.
+    println!("init data:     0x{}", hex::encode(&init_data));
     println!("required flags: {flags:#06x}");
     println!("salt:          {salt}");
     println!("found after:   {attempts} attempt(s)");
