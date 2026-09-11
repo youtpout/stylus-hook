@@ -15,17 +15,11 @@ pub struct Counter {
 }
 ```
 
-No field for the pool manager. Solidity keeps it in an `immutable`, which is free to read; Stylus has
-no equivalent, so a constructor argument could only go to storage and **every callback would pay a
-cold `SLOAD` — 2,100 gas — just to check its caller.** Copy
-[`build.rs`](../native-counter/build.rs) instead: it turns `$POOL_MANAGER` into a `const` that lives
-in the WASM and costs nothing.
+The pool manager is not a field — [`build.rs`](../native-counter/build.rs) bakes it in as a `const`:
 
 ```rust
 include!(concat!(env!("OUT_DIR"), "/pool_manager.rs"));   // gives you POOL_MANAGER
 ```
-
-Measured on this hook, that is 2,568 gas off every swap.
 
 ## 2. Declare the pool manager and the callbacks
 
@@ -50,10 +44,8 @@ impl HookConfig for Counter {
 is why a plain `cargo stylus deploy` cannot deploy a hook, and [step 5](#5-deploy-at-a-mined-address)
 mines one first.
 
-The constructor also takes the pool manager, purely to compare it with the constant. Build against
-the wrong `$POOL_MANAGER` and you would otherwise get a hook that compiles, deploys, mines a valid
-address and then silently rejects every call v4 makes. Comparing costs 239 gas per swap, against 2,568
-saved.
+It also takes the pool manager, only to compare it against the constant — so a wrong `$POOL_MANAGER`
+fails the deployment instead of producing a hook that rejects every call.
 
 ```rust
 #[public]
@@ -68,10 +60,6 @@ impl Counter {
     }
 }
 ```
-
-Nothing can change the pool manager afterwards, and the guarantee is stronger than Solidity's
-`immutable`: the constant is part of the code, the code's hash is what the mined CREATE2 address
-commits to, so a different pool manager is a different hook address.
 
 ## 4. Implement the callbacks
 
@@ -134,6 +122,6 @@ and the rest; [`native-twamm`](../native-twamm/src/lib.rs) uses them for real.
 Two, both in this repository's `Cargo.toml` and `Stylus.toml` files, and both worth copying:
 
 - `opt-level = 3` — the default `"s"` compiles for size and costs roughly 2× the gas.
-- `build.rs` for the pool manager, as above — 2,568 gas per swap.
+- `build.rs` for the pool manager, as above.
 - `--llvm-memory-copy-fill-lowering` in the wasm-opt flags — without it, `opt-level` 2 or 3 emits a
   section ArbOS refuses to activate, and the failure only appears at deployment.
