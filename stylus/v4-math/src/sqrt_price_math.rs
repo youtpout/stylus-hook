@@ -6,11 +6,11 @@
 //! token1 rounds down, so the pool never rounds in the trader's favour. Each function keeps v4-core's
 //! direction exactly, because a hook that replays a swap and disagrees by one wei disagrees.
 
-use alloy_primitives::U256;
+use alloy_primitives::{uint, U256};
 
 use crate::full_math::{mul_div, mul_div_rounding_up};
 use crate::unsafe_math::div_rounding_up;
-use crate::{q96, RESOLUTION};
+use crate::{Q96, RESOLUTION};
 
 /// Why a price move was refused. v4-core reverts with these as custom errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,12 +26,10 @@ pub enum PriceError {
 }
 
 /// `type(uint160).max`.
-fn max_u160() -> U256 {
-    (U256::from(1u8) << 160) - U256::from(1)
-}
+const MAX_U160: U256 = uint!(0xffffffffffffffffffffffffffffffffffffffff_U256);
 
 fn to_u160(value: U256) -> Result<U256, PriceError> {
-    if value > max_u160() {
+    if value > MAX_U160 {
         Err(PriceError::PriceOverflow)
     } else {
         Ok(value)
@@ -85,17 +83,17 @@ pub fn get_next_sqrt_price_from_amount1_rounding_down(
     add: bool,
 ) -> Result<U256, PriceError> {
     if add {
-        let quotient = if amount <= max_u160() {
+        let quotient = if amount <= MAX_U160 {
             (amount << RESOLUTION) / liquidity
         } else {
-            mul_div(amount, q96(), liquidity)
+            mul_div(amount, Q96, liquidity)
         };
         to_u160(sqrt_px96 + quotient)
     } else {
-        let quotient = if amount <= max_u160() {
+        let quotient = if amount <= MAX_U160 {
             div_rounding_up(amount << RESOLUTION, liquidity)
         } else {
-            mul_div_rounding_up(amount, q96(), liquidity)
+            mul_div_rounding_up(amount, Q96, liquidity)
         };
         if sqrt_px96 <= quotient {
             return Err(PriceError::NotEnoughLiquidity);
@@ -184,9 +182,9 @@ pub fn get_amount1_delta(
 ) -> U256 {
     let numerator = abs_diff(sqrt_price_a, sqrt_price_b);
     if round_up {
-        mul_div_rounding_up(liquidity, numerator, q96())
+        mul_div_rounding_up(liquidity, numerator, Q96)
     } else {
-        mul_div(liquidity, numerator, q96())
+        mul_div(liquidity, numerator, Q96)
     }
 }
 
@@ -200,7 +198,7 @@ mod tests {
 
     /// `encodeSqrtPrice(1, 1)` in v4-core's tests.
     fn price_1_1() -> U256 {
-        q96()
+        Q96
     }
 
     fn eth(n: u64) -> U256 {
@@ -234,7 +232,7 @@ mod tests {
     /// "returns the minimum price for max inputs".
     #[test]
     fn from_input_returns_the_minimum_price_for_max_inputs() {
-        let sqrt_p = max_u160();
+        let sqrt_p = MAX_U160;
         let liquidity = (U256::from(1u8) << 128) - U256::from(1);
         let max_amount_no_overflow = U256::MAX - ((liquidity << RESOLUTION) / sqrt_p);
         assert_eq!(
@@ -372,7 +370,7 @@ mod tests {
     fn abs_diff_is_symmetric() {
         assert_eq!(abs_diff(U256::from(5), U256::from(3)), U256::from(2));
         assert_eq!(abs_diff(U256::from(3), U256::from(5)), U256::from(2));
-        assert_eq!(abs_diff(max_u160(), U256::ZERO), max_u160());
+        assert_eq!(abs_diff(MAX_U160, U256::ZERO), MAX_U160);
     }
 
     /// v4-core's echidna-derived boundary cases. At this price and liquidity the

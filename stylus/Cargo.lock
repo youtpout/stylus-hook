@@ -3737,6 +3737,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "stylus-native-v4-math"
+version = "0.2.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "stylus-sdk",
+ "stylus-v4-math",
+]
+
+[[package]]
 name = "stylus-proc"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

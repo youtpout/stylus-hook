@@ -175,6 +175,35 @@ repository was measuring size-optimised code until that was found, and every rat
 when it was fixed — in proportion to how arithmetic-bound the workload is, and not at all for the
 storage-bound ones.
 
+The widest margin, though, is on arithmetic that was in the codebase the whole time: v4-core's own
+swap math. [`stylus/v4-math`](stylus/v4-math/src/swap_math.rs) is `SwapMath`, `TickMath`,
+`SqrtPriceMath`, `FullMath` and `UnsafeMath` ported function for function and tested against
+v4-core's own vectors — every unit test in `test/libraries/` for those five, same inputs, same
+expected values. The control side is not a reimplementation:
+[`V4MathBench.sol`](uniswap/src/V4MathBench.sol) calls Uniswap's libraries directly.
+
+The workload is `Pool.swap`'s loop without the storage — find the next initialised tick, price the
+step, cross, repeat — which is what OpenZeppelin's `AntiSandwichHook` and Uniswap's own
+`alf/SwapSimulator` replay on every swap:
+
+| ticks crossed | Solidity | Rust | saving |
+| ---: | ---: | ---: | ---: |
+| 4 | 42,451 | 46,522 | −4,071 |
+| 8 | 58,870 | **48,380** | **+10,490** |
+| 32 | 155,342 | **62,055** | **+93,287** |
+
+**4,056 gas per tick against 570 — 7.1×**, `computeSwapStep` alone 4.55× and `getSqrtPriceAtTick`
+4.57×. A replay crossing six or more ticks is a net win. This code is bit-twiddling rather than
+big-number arithmetic — nineteen shifts and a conditional multiply for a tick's price — and Solidity
+pays a 5-gas opcode for every one of them with no cheaper way to write it.
+
+That result also produced the second trap worth knowing. The first run had Rust *losing* 3.6× on
+`getSqrtPriceAtTick`, because the nineteen fixed-point factors were `&str` constants parsed with
+`from_str_radix` inside the loop. Hoisting them to real `const` values moved the ratio from 0.28× to
+4.57× with the algorithm untouched. In Solidity a literal is a literal and this bug cannot be
+written; in Rust, building a `U256` from text is the most readable option and about a hundred times
+the cost of the arithmetic it feeds.
+
 `BaseHook.sol` is an abstract contract, so its `onlyPoolManager` guard cannot be forgotten. Rust has
 no abstract types, so [`#[guarded_hooks]`](stylus/base-hook-macros/src/lib.rs) does the same job with
 a procedural macro: it inserts the guards into the callbacks a hook writes, and costs nothing.

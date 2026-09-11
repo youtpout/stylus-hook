@@ -26,12 +26,10 @@ pub mod swap_math;
 pub mod tick_math;
 pub mod unsafe_math;
 
-use alloy_primitives::U256;
+use alloy_primitives::{uint, U256};
 
 /// `FixedPoint96.RESOLUTION`.
 pub const RESOLUTION: usize = 96;
 
 /// `FixedPoint96.Q96`.
-pub fn q96() -> U256 {
-    U256::from(1u8) << RESOLUTION
-}
+pub const Q96: U256 = uint!(0x1000000000000000000000000_U256);

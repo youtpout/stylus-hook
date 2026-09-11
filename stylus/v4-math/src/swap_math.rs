@@ -1,6 +1,6 @@
 //! One step of a swap inside a single tick, ported from v4-core's `SwapMath`.
 
-use alloy_primitives::{I256, U256};
+use alloy_primitives::{uint, I256, U256};
 
 use crate::full_math::{mul_div, mul_div_rounding_up};
 use crate::sqrt_price_math::{
@@ -11,9 +11,7 @@ use crate::sqrt_price_math::{
 /// A 100% fee, in hundredths of a bip.
 pub const MAX_SWAP_FEE: u64 = 1_000_000;
 
-fn max_swap_fee() -> U256 {
-    U256::from(MAX_SWAP_FEE)
-}
+const MAX_SWAP_FEE_U256: U256 = uint!(1_000_000_U256);
 
 /// The result of one swap step: the price reached, and the three amounts it moved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +63,7 @@ pub fn compute_swap_step(
     let specified = amount_remaining.unsigned_abs();
 
     let (sqrt_price_next, amount_in, amount_out, fee_amount) = if exact_in {
-        let remaining_less_fee = mul_div(specified, max_swap_fee() - fee, max_swap_fee());
+        let remaining_less_fee = mul_div(specified, MAX_SWAP_FEE_U256 - fee, MAX_SWAP_FEE_U256);
         let max_in = if zero_for_one {
             get_amount0_delta(sqrt_price_target, sqrt_price_current, liquidity, true)?
         } else {
@@ -74,12 +72,12 @@ pub fn compute_swap_step(
 
         let (next, amount_in, fee_amount) = if remaining_less_fee >= max_in {
             // The target price caps the input; the fee is grossed back up from it.
-            let fee_amount = if fee == max_swap_fee() {
+            let fee_amount = if fee == MAX_SWAP_FEE_U256 {
                 // `max_in` is necessarily zero here, so there is nothing to gross up — and the
                 // usual formula would divide by zero.
                 max_in
             } else {
-                mul_div_rounding_up(max_in, fee, max_swap_fee() - fee)
+                mul_div_rounding_up(max_in, fee, MAX_SWAP_FEE_U256 - fee)
             };
             (sqrt_price_target, max_in, fee_amount)
         } else {
@@ -124,7 +122,7 @@ pub fn compute_swap_step(
             get_amount1_delta(sqrt_price_current, next, liquidity, true)
         };
         // Exact output cannot carry a 100% fee, so this division is safe.
-        let fee_amount = mul_div_rounding_up(amount_in, fee, max_swap_fee() - fee);
+        let fee_amount = mul_div_rounding_up(amount_in, fee, MAX_SWAP_FEE_U256 - fee);
         (next, amount_in, amount_out, fee_amount)
     };
 

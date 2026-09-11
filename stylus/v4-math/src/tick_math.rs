@@ -1,6 +1,6 @@
 //! Ticks to sqrt prices and back, ported from v4-core's `TickMath` (and the `BitMath` it uses).
 
-use alloy_primitives::{I256, U256};
+use alloy_primitives::{uint, I256, U256};
 
 /// The lowest tick, `log_1.0001(2^-128)`.
 pub const MIN_TICK: i32 = -887272;
@@ -11,11 +11,17 @@ pub const MAX_TICK: i32 = 887272;
 pub const MIN_SQRT_PRICE: u64 = 4295128739;
 
 /// `get_sqrt_price_at_tick(MAX_TICK)`, which a live price never actually reaches.
-pub fn max_sqrt_price() -> U256 {
-    "1461446703485210103287273052203988822378723970342"
-        .parse()
-        .unwrap()
-}
+pub const MAX_SQRT_PRICE: U256 = uint!(1461446703485210103287273052203988822378723970342_U256);
+
+/// Q128.128 one, the seed of the price product.
+const ONE_Q128: U256 = uint!(0x100000000000000000000000000000000_U256);
+
+/// v4-core's rescaling constant from `log_2` to `log_sqrt(1.0001)`, Q22.128.
+const LOG_SCALE: I256 = I256::from_raw(uint!(255738958999603826347141_U256));
+
+/// The ceiling and floor of the error in that approximation, v4-core's two magic numbers.
+const ERROR_CEIL: I256 = I256::from_raw(uint!(3402992956809132418596140100660247210_U256));
+const ERROR_FLOOR: I256 = I256::from_raw(uint!(291339464771989622907027621153398088495_U256));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TickError {
@@ -33,34 +39,35 @@ pub fn min_usable_tick(tick_spacing: i32) -> i32 {
     (MIN_TICK / tick_spacing) * tick_spacing
 }
 
-fn u(hex: &str) -> U256 {
-    U256::from_str_radix(hex, 16).unwrap()
-}
+/// `1/sqrt(1.0001)` in Q128.128 -- the factor for bit 0, which seeds `price` rather than
+/// multiplying into it.
+const FACTOR_0: U256 = uint!(0xfffcb933bd6fad37aa2d162d1a594001_U256);
 
-/// The 19 Q128.128 factors of `1/sqrt(1.0001^(2^i))`, one per bit of `|tick|`.
+/// The remaining 19 Q128.128 factors of `1/sqrt(1.0001^(2^i))`, one per higher bit of `|tick|`.
 ///
-/// Bit 0 is handled separately because it seeds `price` rather than multiplying into it.
-const FACTORS: [&str; 19] = [
-    "fff97272373d413259a46990580e213a",
-    "fff2e50f5f656932ef12357cf3c7fdcc",
-    "ffe5caca7e10e4e61c3624eaa0941cd0",
-    "ffcb9843d60f6159c9db58835c926644",
-    "ff973b41fa98c081472e6896dfb254c0",
-    "ff2ea16466c96a3843ec78b326b52861",
-    "fe5dee046a99a2a811c461f1969c3053",
-    "fcbe86c7900a88aedcffc83b479aa3a4",
-    "f987a7253ac413176f2b074cf7815e54",
-    "f3392b0822b70005940c7a398e4b70f3",
-    "e7159475a2c29b7443b29c7fa6e889d9",
-    "d097f3bdfd2022b8845ad8f792aa5825",
-    "a9f746462d870fdf8a65dc1f90e061e5",
-    "70d869a156d2a1b890bb3df62baf32f7",
-    "31be135f97d08fd981231505542fcfa6",
-    "9aa508b5b7a84e1c677de54f3e99bc9",
-    "5d6af8dedb81196699c329225ee604",
-    "2216e584f5fa1ea926041bedfe98",
-    "48a170391f7dc42444e8fa2",
-];
+/// These have to be constants and not parsed strings: reading them from hex on every iteration cost
+/// more than the whole multiplication chain, and turned a 2.2x win into a 3.6x loss.
+const FACTORS: [U256; 19] = uint!([
+    0xfff97272373d413259a46990580e213a_U256,
+    0xfff2e50f5f656932ef12357cf3c7fdcc_U256,
+    0xffe5caca7e10e4e61c3624eaa0941cd0_U256,
+    0xffcb9843d60f6159c9db58835c926644_U256,
+    0xff973b41fa98c081472e6896dfb254c0_U256,
+    0xff2ea16466c96a3843ec78b326b52861_U256,
+    0xfe5dee046a99a2a811c461f1969c3053_U256,
+    0xfcbe86c7900a88aedcffc83b479aa3a4_U256,
+    0xf987a7253ac413176f2b074cf7815e54_U256,
+    0xf3392b0822b70005940c7a398e4b70f3_U256,
+    0xe7159475a2c29b7443b29c7fa6e889d9_U256,
+    0xd097f3bdfd2022b8845ad8f792aa5825_U256,
+    0xa9f746462d870fdf8a65dc1f90e061e5_U256,
+    0x70d869a156d2a1b890bb3df62baf32f7_U256,
+    0x31be135f97d08fd981231505542fcfa6_U256,
+    0x9aa508b5b7a84e1c677de54f3e99bc9_U256,
+    0x5d6af8dedb81196699c329225ee604_U256,
+    0x2216e584f5fa1ea926041bedfe98_U256,
+    0x48a170391f7dc42444e8fa2_U256,
+]);
 
 /// `sqrt(1.0001^tick) * 2^96`.
 ///
@@ -72,15 +79,15 @@ pub fn get_sqrt_price_at_tick(tick: i32) -> Result<U256, TickError> {
         return Err(TickError::InvalidTick(tick));
     }
 
-    let one = U256::from(1) << 128;
     let mut price = if abs_tick & 0x1 != 0 {
-        u("fffcb933bd6fad37aa2d162d1a594001")
+        FACTOR_0
     } else {
-        one
+        ONE_Q128
     };
     for (i, factor) in FACTORS.iter().enumerate() {
         if abs_tick & (1 << (i + 1)) != 0 {
-            price = (price * u(factor)) >> 128;
+            // Both operands are below 2^128, so the product is exact and the wrap never happens.
+            price = price.wrapping_mul(*factor) >> 128;
         }
     }
 
@@ -110,7 +117,7 @@ pub fn most_significant_bit(x: U256) -> u32 {
 /// `sqrt(1.0001)`. The approximation is good to within one tick, so the two candidates are
 /// compared against the forward direction to pick the right one.
 pub fn get_tick_at_sqrt_price(sqrt_price: U256) -> Result<i32, TickError> {
-    if sqrt_price < U256::from(MIN_SQRT_PRICE) || sqrt_price >= max_sqrt_price() {
+    if sqrt_price < U256::from(MIN_SQRT_PRICE) || sqrt_price >= MAX_SQRT_PRICE {
         return Err(TickError::InvalidSqrtPrice(sqrt_price));
     }
 
@@ -125,20 +132,19 @@ pub fn get_tick_at_sqrt_price(sqrt_price: U256) -> Result<i32, TickError> {
 
     let mut log_2 = (I256::try_from(msb).unwrap() - I256::try_from(128).unwrap()) << 64;
     for shift in (50u32..=63).rev() {
-        r = (r * r) >> 127;
+        // `r` is below 2^128 by construction, so squaring it is exact.
+        r = r.wrapping_mul(r) >> 127;
         // One bit of the fraction: the square either crossed 2 or it did not.
         let f = usize::from(r.bit(128));
         log_2 |= I256::try_from(f).unwrap() << shift;
         r >>= f;
     }
 
-    let log_sqrt10001: I256 = log_2 * idec("255738958999603826347141");
+    let log_sqrt10001: I256 = log_2 * LOG_SCALE;
 
     // The two magic numbers bound the error of the approximation above.
-    let low: I256 = log_sqrt10001 - idec("3402992956809132418596140100660247210");
-    let high: I256 = log_sqrt10001 + idec("291339464771989622907027621153398088495");
-    let tick_low = to_i24(low.asr(128));
-    let tick_hi = to_i24(high.asr(128));
+    let tick_low = to_i24((log_sqrt10001 - ERROR_CEIL).asr(128));
+    let tick_hi = to_i24((log_sqrt10001 + ERROR_FLOOR).asr(128));
 
     Ok(if tick_low == tick_hi {
         tick_low
@@ -147,10 +153,6 @@ pub fn get_tick_at_sqrt_price(sqrt_price: U256) -> Result<i32, TickError> {
     } else {
         tick_low
     })
-}
-
-fn idec(s: &str) -> I256 {
-    s.parse().unwrap()
 }
 
 /// Solidity's `int24(...)` cast: keep the low 24 bits and sign-extend them.
@@ -205,7 +207,7 @@ mod tests {
             get_sqrt_price_at_tick(MIN_TICK + 1),
             Ok(U256::from(4295343490u64))
         );
-        assert_eq!(get_sqrt_price_at_tick(MAX_TICK), Ok(max_sqrt_price()));
+        assert_eq!(get_sqrt_price_at_tick(MAX_TICK), Ok(MAX_SQRT_PRICE));
         assert_eq!(
             get_sqrt_price_at_tick(MAX_TICK - 1),
             Ok(d("1461373636630004318706518188784493106690254656249"))
@@ -230,8 +232,8 @@ mod tests {
             Err(TickError::InvalidSqrtPrice(too_low))
         );
         assert_eq!(
-            get_tick_at_sqrt_price(max_sqrt_price()),
-            Err(TickError::InvalidSqrtPrice(max_sqrt_price()))
+            get_tick_at_sqrt_price(MAX_SQRT_PRICE),
+            Err(TickError::InvalidSqrtPrice(MAX_SQRT_PRICE))
         );
         assert_eq!(
             get_tick_at_sqrt_price(U256::ZERO),
@@ -250,7 +252,7 @@ mod tests {
             Ok(MIN_TICK + 1)
         );
         assert_eq!(
-            get_tick_at_sqrt_price(max_sqrt_price() - U256::from(1)),
+            get_tick_at_sqrt_price(MAX_SQRT_PRICE - U256::from(1)),
             Ok(MAX_TICK - 1)
         );
         assert_eq!(

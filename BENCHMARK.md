@@ -929,399 +929,64 @@ full-range 256-bit, which it wins at 2.8× — the ratio should land between the
 evaluation is a handful of them. That is an estimate, not a measurement, and it does not reach the
 bar.
 
-## What this means for the project## Pricing a real hook: AntiSandwichHook
-
-`./bench-antisandwich.bash` measures OpenZeppelin's
-[`AntiSandwichHook`](https://github.com/OpenZeppelin/uniswap-hooks/blob/master/src/general/AntiSandwichHook.sol),
-the most compute-looking hook in the library the official v4-template depends on. It checkpoints the
-pool at the top of each block and, for `zeroForOne == false` swaps, replays `Pool.swap` against that
-checkpoint so a trade cannot get a better price than the block started with. `zeroForOne == true`
-swaps skip the replay, so the gap between the two directions isolates the simulation.
-
-| | gas per swap | over baseline |
-| --- | ---: | ---: |
-| no hook, 0→1 | 120,315 | — |
-| no hook, 1→0 | 114,520 | — |
-| AntiSandwichHook, 0→1 (no replay) | 168,425 | +48,110 |
-| AntiSandwichHook, 1→0 (with replay) | 184,090 | +69,570 |
-| **the `Pool.swap` replay alone** | | **21,460** |
-
-So the arithmetic is **31 %** of what this hook costs. The other 48,110 is checkpointing pool state
-into the hook's own storage — `extsload` calls to the pool manager, then `SSTORE`s — and settling
-an ERC-6909 fee. None of that gets cheaper in Stylus.
-
-Projecting the port from the rates measured above: the replay at 2.8× would drop from 21,460 to
-about 7,700, saving ~13,800, against a Stylus entry fee of ~22,000 uncached or ~5,400 cached.
-**Porting this hook loses money uncached and saves perhaps 4 % cached.** Not the demonstration it
-looks like from the outside.
-
-The bar set by the `mulDiv` sweep is 89 operations, about 62,000 gas of Solidity arithmetic per
-call. AntiSandwichHook has ~21,000 — a third of it — and it is the *best* candidate in that
-library.
-
-Two caveats. The measured pool holds a single full-range position, so the replay crosses no ticks;
-a pool with concentrated liquidity would walk further and the replay would grow. And Uniswap's own
-snapshots put `swapSimulator_before_singleTick` at 28,803 against `multiTick` at 28,899, which
-suggests tick crossing adds much less than one might hope.
-
-### `block.number` does not mean what this hook thinks on Arbitrum
-
-The hook would not run at all until it was fixed. It keys its checkpoint on `block.number`, and on
-Arbitrum the `NUMBER` opcode does not return the block number — it returns the **L1** block number.
-Measured on Arbitrum One itself, not on a fork (a fork replays Arbitrum's state through a vanilla
-EVM and would not reproduce this):
-
-| | |
-| --- | ---: |
-| Solidity `block.number`, via `Multicall3.getBlockNumber()` | 25,912,325 |
-| Ethereum L1 height, read at the same moment | 25,912,326 |
-| `NodeInterface.blockL1Num(502057926)` | 25,912,325 |
-| Arbitrum L2 block, `eth_blockNumber` | 502,057,928 |
-
-Two consequences, one per environment.
-
-On a dev node there is no L1, so `block.number` is `0` while the L2 chain runs. The checkpoint also
-starts at 0, `_lastCheckpoint.blockNumber != currentBlock` is never true, the checkpoint is never
-taken, and `Pool.swap` runs against an empty state — the first `zeroForOne == false` swap reverts
-with `InvalidPrice()`. That is what `bench-antisandwich.bash` hit.
-
-On Arbitrum One the number does advance, so the hook runs, but it advances once per **L1** block.
-Arbitrum produces L2 blocks roughly every 250 ms, so the "beginning-of-block" reference price is
-held for about forty-eight L2 blocks rather than one. The protection is not absent — it is applied
-over a twelve-second window, during which honest price movement is also refused. That is a different
-economic instrument from the one the hook describes.
-
-`_getBlockNumber` is `virtual` precisely so this can be fixed, and
-[`ArbAntiSandwichMock`](uniswap/script/bench/ArbAntiSandwichMock.sol) overrides it onto
-`ArbSys.arbBlockNumber()`. A one-line change, but nothing in the hook tells you to make it.
-
-## Which shipping hooks are worth porting
-
-`./profile-hooks.bash` answers that generically. It swaps through one pool per hook and traces the
-transaction opcode by opcode, summing gas by class, then subtracts the same swap through a pool with
-no hook. Only the compute column moves in Stylus.
-
-A call opcode's `gasCost` in the trace is the gas handed to the callee, and the callee's own opcodes
-are logged too, so calls are counted rather than summed — the numbers below are the work itself.
-
-| | compute | storage | keccak | calls | total gas |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| no hook | 26,656 | 48,100 | 684 | 11 | 114,608 |
-| AntiSandwich | 50,272 | 86,500 | 1,350 | 19 | 181,405 |
-| LimitOrder | 31,433 | 50,300 | 828 | 13 | 124,441 |
-| PanopticOracle | 32,150 | 72,700 | 912 | 13 | 147,642 |
-
-What each one adds over the hookless swap:
-
-| hook | compute | storage | keccak | compute share |
-| --- | ---: | ---: | ---: | ---: |
-| **AntiSandwich** | **23,616** | 38,400 | 666 | 37 % |
-| LimitOrder | 4,777 | 2,200 | 144 | 67 % |
-| PanopticOracle | 5,494 | 24,600 | 228 | 18 % |
-
-The profiler and the direction trick agree on AntiSandwich — 23,616 against 21,460 — which is the
-main reason to trust either.
-
-None of them clears the 62,000-gas bar. The best is at a third of it. And note the first row: a
-plain v4 swap is itself 26,656 of compute against 48,100 of storage, so a hook would have to compute
-more than twice what the AMM does to be worth moving.
-
-Two caveats on this table. `LimitOrderHook` was profiled with no orders resting, so it shows its
-framework cost and not a fill; its 67 % compute share is of a very small number. And the heaviest
-hooks Uniswap publishes — `NativeBookHook` at 155k–221k, `ALFMultiplexer` at 235k, `DualPoolHook` at
-506k in their own snapshots — each need vaults, ladders and makers configured before their expensive
-path runs at all, so they are not in this table. `ALFMultiplexer` is the one worth setting up: it
-runs a `SwapSimulator` pass per routing candidate, and a simulation is roughly an AntiSandwich
-replay, so three or more candidates would clear the bar.
-
-### Candidates, ranked by protocol rather than by library
-
-`Uniswap/hooklist` indexes what is deployed, but not what is used. Cross-checking the names against
-DefiLlama changes the picture:
-
-| protocol | TVL | its hook | maths per swap |
-| --- | ---: | --- | --- |
-| **Euler** | **$802M** | EulerSwap — the AMM *is* the hook | curve inverted by the quadratic formula: a 255-bit `sqrt`, full-range `mulDiv` chains |
-| Bunni V2 | $215k | BunniHook | Liquidity Density Function in Q96: repeated `rpow` |
-| flaunch | $1.8M | Flaunch PositionManager | fee routing, little arithmetic |
-| Clanker, Zora, launchpads | — | many | bonding curves, a handful of multiplications |
-
-Bunni looked like the answer and is not: its TVL collapsed to $215k after a ~$2.3M exploit of
-`BunniHub` in September 2025, and its Q96 arithmetic sits in the *worst* regime for Stylus at 1.65×.
-
-EulerSwap is the better target on every axis. It is a real, used protocol; its AMM is the hook
-rather than an accessory to one; and its curve inversion is full-range `sqrt` and `mulDiv`, the 4.5×
-and 2.8× regimes. It is absent from the registry because it deploys one hook instance per pool
-rather than a shared singleton.
-
-EulerSwap is BUSL-1.1, so it is referenced here for information and its code is not reproduced.
-
-### Measuring it
-
-Two EulerSwap v2 pools are live on Arbitrum. The pool exposes `computeQuote`, `getLimits` and
-`getReserves` separately, and Arbitrum's `NodeInterface.gasEstimateComponents` splits an estimate
-into its L2 and L1 halves, so the swap path can be taken apart on the real chain without a trace:
-
-| | L2 gas |
-| --- | ---: |
-| `getStaticParams()` — a `pure` call, the floor | 25,865 |
-| `getReserves()` | 26,819 |
-| **`getLimits()` — queries the Euler vaults** | **153,526** |
-| `computeQuote()` — the curve plus those limits | 156,773 |
-| `quoteExactInput()` — the whole path | 162,603 |
-
-`computeQuote` is `getLimits` plus about 3,200 gas. **The curve — the quadratic-formula inversion
-with its 255-bit square root — costs roughly 3,200 gas. The vault queries cost 127,700.**
-
-A second measurement says the same thing independently: the cost barely moves with trade size.
-Quoting 1,000 units costs 156,773 and quoting a thousand times more costs 156,825, a difference of
-52 gas. An iterative curve solve that were doing real work would not be that flat.
-
-So the protocol that looked most compute-heavy in the whole registry — its AMM *is* the hook, and it
-inverts its curve with a square root — spends about **2 % of its gas on arithmetic** and the rest
-talking to lending vaults. At the 4.5× measured for `sqrt`, porting the curve would save around
-2,300 gas against a ~20,000 gas entry fee.
-
-That is the search concluded. Every candidate, from a counter to a live $800M protocol, lands in the
-same place.
-
-### Looking further: the hook registry
-
-Uniswap keeps a public registry of deployed v4 hooks at
-[`Uniswap/hooklist`](https://github.com/Uniswap/hooklist) — 1,472 entries at the time of writing,
-each with its address, chain and all fourteen permission bits. That last part makes it searchable
-for the profile that matters here: `beforeSwapReturnsDelta` means the hook prices the swap itself
-rather than letting the pool do it, which is the flag a hook can only set if it is doing real math.
-
-Filtering to Arbitrum, the chain Stylus runs on, leaves 33 hooks, 17 of which price their own swaps.
-The ones whose descriptions and code size suggest heavy arithmetic:
-
-| hook | address | deployed bytecode | what the registry says it does |
-| --- | --- | ---: | --- |
-| **BunniHook** | `0x0000fe59…1888` | 23.5 KB | computes all swap math internally from a configurable Liquidity Density Function, with TWAP-based and surge fees |
-| **TokiHook** | `0x916bc355…1888` | 23.9 KB | custom-curve hook implementing a Pendle-style fixed-rate AMM |
-| Spot | `0xb4f4949e…10cc` | 11.2 KB | full-range AMM with a truncated geometric-mean oracle driving dynamic fees |
-| Clanker Dynamic Fee | `0xfd213be7…68cc` | — | fees adjusted from swap volatility via a tick accumulator |
-
-Bytecode sizes are measured from Arbitrum One; the descriptions are the registry's own. Both
-BunniHook and TokiHook are within a few hundred bytes of the 24 KB contract limit, which is itself a
-signal — a hook that fits comfortably is not doing much.
-
-BunniHook is the strongest candidate found anywhere, and its own repository backs that up. Bunni
-publishes gas snapshots: a swap through it costs **437,000–505,000 gas**, against roughly 115,000
-for a swap with no hook. So the hook adds 320,000–390,000 gas per swap — five times what
-AntiSandwichHook adds, and far into the range where arithmetic could plausibly dominate.
-
-Its swap path runs `rpow` repeatedly, which is why that operation is benchmarked above. But the
-answer that comes back is sobering: `rpow` at Q96 precision is only **1.65× cheaper** in Rust,
-because Q96 products fit in 256 bits and take `FullMath.mulDiv`'s single-`DIV` fast path.
-
-What is still missing is Bunni's compute share. Its 320,000–390,000 gas per swap mixes LDF
-arithmetic with vault accounting, TWAP observation writes and rebalance bookkeeping, and only the
-first of those moves. At 1.65×, a hook whose cost were 40 % arithmetic would save about 6 % overall
-after the Stylus entry fee; at 70 % arithmetic, about 15 %. Worth having, not the headline.
-
-Measuring that share needs a live Bunni pool, and pool discovery on Arbitrum turned out to be the
-hard part: the hub is an `internal immutable` with no getter, so it cannot simply be read off the
-hook.
-
-## Against the official guidance
-
-Arbitrum publishes [gas optimization best practices](https://docs.arbitrum.io/stylus/best-practices/gas-optimization)
-for Stylus. It says up front that its multipliers are directional and that you should benchmark your
-own contract, which is what this document is. Four of its claims are checkable against the
-measurements here, and they do not all hold.
-
-| the docs say | measured here |
-| --- | --- |
-| compute-heavy loops: **~50–100×** | **10.6×** at best, on 64-bit xorshift. 256-bit work runs 1.65× to 4.5×. |
-| storage operations: **none (1×)** | 1.8 % cheaper. Agrees, for every practical purpose. |
-| set `opt-level = "z"` for smaller binaries | makes them **bigger**: 18,555 → 18,928 bytes, because the SDK's own pinned `wasm-opt -Oz` already runs afterwards. `"s"` wins. |
-| `ecrecover`: 3,000 gas → **~300 gas, ~10×** | no mechanism for this is visible. `stylus_sdk::crypto` exposes exactly one primitive, `native_keccak256`; there is no signature hostio. A Stylus contract can only call the `0x01` precompile at its EVM price, or implement secp256k1 in Rust, and neither lands near 300. |
-
-The 50–100× figure is the one that matters most, because it is the number a team would use to decide
-whether to port. Nothing measured here — five kinds of arithmetic, across four orders of magnitude of
-loop length, on a current dev node — comes within a factor of five of it. If it is reachable, it is
-on a workload shape this document did not find, and the docs do not say which.
-
-Two pieces of the guidance the work here follows independently: cache storage reads rather than
-re-reading in a loop, and measure on a live endpoint because `TestVM` has no gas meter.
-
-## The candidate: Uniswap's own TWAMM
-
-The search above looked at what is *deployed*. It missed what Uniswap *published*. Their v4-periphery
-carried a set of example hooks — `TWAMM`, `FullRange`, `GeomeanOracle`, `LimitOrder`,
-`VolatilityOracle` — removed from the tree in December 2024 but still in its history, together with
-the gas snapshots their own tests recorded:
-
-| | gas |
-| --- | ---: |
-| `executTWAMMOrders`, 1 interval | 489,927 |
-| 2 intervals | 595,404 |
-| 3 intervals | 692,853 |
-| `executTWAMMOrders singleSell`, 1 interval | 262,033 |
-| 2 intervals | 294,134 |
-| `FullRangeSwap`, an ordinary swap for scale | 81,970 |
-
-An extra interval costs about **100,000 gas**, and that is marginal cost — the incremental work of one
-more iteration, with the fixed overhead already paid.
-
-What that hundred thousand buys is arithmetic. `TwammMath` runs on `ABDKMathQuad`: **IEEE 754
-quadruple-precision floating point, emulated in Solidity over `bytes16`**. One pass performs 20
-multiplies, 19 divides, 21 conversions, 7 square roots, 4 additions, 8 subtractions — and **two
-exponentials and a logarithm**. The EVM has no floating point at all, no `exp`, no `ln`, and no
-instruction for the bit-scan every normalisation needs.
-
-**This is the first workload in this document that clears the 62,000-gas bar**, and it clears it by
-60 % on marginal cost alone. It is also, by the rule the five sweeps establish, the profile where
-Stylus should gain most rather than least: quad floats are built from 64-bit limbs, which is WASM's
-native word and the 10.6× regime, and their normalisation needs a bit-scan, which is `i64.clz` and
-the 4.5× regime.
-
-That it was never deployed is the argument, not a counterargument. TWAMM is a well-known design that
-Uniswap wrote, benchmarked, and shipped as an example — and half a million gas per execution is why
-nobody runs one. It is precisely the hook that is too expensive to exist in Solidity.
-
-### Why the port cannot be written
-
-Stylus has no floating point. A contract that so much as converts an integer to an `f64` is refused
-at activation:
-
-```
-program activation failed: failed to build user module
-No implementation for floating point operation ConvertIntOp(F64, I64, false) in user
-```
-
-The SDK's own README says the same: "we may add … floating point and SIMD, which the Stylus VM does
-not yet support". Stylus is at version 3 on both Arbitrum One and Sepolia.
-
-That takes the argument apart. TWAMM is expensive because ABDK emulates IEEE 754 binary128 in
-software over 256-bit words. The reason that looked like Stylus's best case was the assumption that
-WASM would run those floats natively — and it will not, because Stylus forbids them. Neither
-machine has floating point.
-
-So a Rust TWAMM has two options, and neither is the experiment it appeared to be. Emulate binary128
-in Rust as well, which measures one software float implementation against another rather than one
-language against another. Or drop floats for integer fixed point — but a Solidity TWAMM could do
-that too, and would get most of the same saving. That is an algorithmic change wearing a language
-change's clothes.
-
-So the port was written in fixed point, and — because that would otherwise compare an algorithm
-rather than a language — `TwammHook.sol` carries the identical fixed-point form alongside the
-quad-float one. All three agree: the two fixed-point implementations are identical to the wei, and
-both track the quad-float original to two parts in 10^18. The quadruple precision was buying
-nothing.
-
-`./bench-twamm.bash`, gas for the arithmetic alone, called directly with no hook and no storage:
-
-| intervals | Solidity, quad floats | Solidity, fixed point | Rust, fixed point |
-| ---: | ---: | ---: | ---: |
-| 1 | 23,587 | 14,011 | **2,368** |
-| 2 | 47,521 | 27,842 | **4,723** |
-| 4 | 94,458 | 55,950 | **9,435** |
-| 8 | 189,590 | 111,385 | **18,860** |
-
-Per interval: **23,715 gas in Solidity as written, 13,911 in Solidity done differently, 2,356 in
-Rust.**
-
-That splits cleanly into the two changes it is made of:
-
-- **1.7× from the algorithm.** Dropping ABDK's software binary128 for fixed point is worth that much
-  without leaving Solidity at all, and it costs two parts in 10^18 of precision.
-- **6.0× from the language.** That is the largest gain measured anywhere in this document on
-  arithmetic that a real hook actually runs — larger than `sqrt` at 4.5×, and approaching the 10.6×
-  of the synthetic 64-bit loop.
-
-Together, 10.1×. The Rust side is a complete hook rather than a kernel — orders, order pools,
-expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncached, or 5,025 once
-cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
-half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
-
-### What the hook costs when it is actually doing the work
-
-Everything above times the arithmetic on its own, called directly with no storage, no pool and no
-orders. That is the right way to compare two languages and the wrong way to answer "what does an
-interval cost", so `./bench-twamm.bash` also drives the deployed hook: eight long-term orders, two
-per expiry, and a swap through the pool after each of them has come due.
-
-| | gas |
-| --- | ---: |
-| swap, no hook at all | 115,087 |
-| swap, hook attached with nothing to do | 165,764 |
-| swap, one span of virtual orders | 287,337 |
-| swap, two spans — one expiry crossed | 291,907 |
-| swap, five spans — four expiries crossed | 385,234 |
-
-Reading the differences: **50,677** to have the hook attached at all (30,289 of it loading the WASM,
-the rest the keccak of the pool key, the reads, and the clock it writes); **121,573** for the first
-catch-up, most of which is the settlement swap that moves the AMM to the price the closed form
-arrived at, and which is paid once however far behind the orders are; and **31,109 for each
-additional expiry crossed**.
-
-That last number is the one that matters, and **2,356 of it is arithmetic — 7.6 %.** The other
-92 % is storage: two earnings factors written per span, an earnings-factor snapshot written per
-expiry for each order pool, and the mapping reads that find them. Storage costs the same in both
-languages; the earlier measurement in this document put Stylus 1.8 % ahead on an `SSTORE`, which is
-noise.
-
-So the honest end-to-end statement is smaller than the arithmetic suggests. Against a fixed-point
-Solidity TWAMM, Rust saves 11,555 gas on a marginal interval that costs about 42,700 — **27 %**.
-Against the quad-float form Uniswap actually ships, it saves 21,359. The 5.9× is real, and it
-applies to less than a tenth of the bill.
-
-Two things about the build are worth recording, because both are the opposite of what the
-documentation suggests:
-
-- **`opt-level = "z"` is a bad trade here.** It makes this contract 12 % smaller and 46 % more
-  expensive to run — 3,430 gas per interval against 2,356 — because the SDK runs `wasm-opt -Oz`
-  afterwards regardless, so all `z` adds is a slower code generator. Left at `"s"`.
-- **The hook does not fit in one code object.** 24 KB is one; ArbOS 61 lifts the ceiling by
-  splitting a contract across up to four fragments, and Arbitrum One and Sepolia both report four
-  today. But a hook's address encodes its callbacks, so it has to be CREATE2'd from a mined salt,
-  and `cargo stylus get-initcode` refuses fragmented contracts — the init code contains the
-  fragment addresses, and those do not exist until the fragments are deployed. `bench-lib.bash`
-  works around it; `FEEDBACK.md` is where it belongs.
-
-This is the first workload in this document where porting to Stylus is worth doing, and the reason
-it is worth doing is not that the arithmetic is exotic. It is that there is enough of it.
-
-The interval implemented here is the price update — the closed form and its exponential. Uniswap's
-example also computes earnings factors for both order pools and writes back the order-pool state,
-which is why theirs costs ~100,000 per interval where this one costs 23,700. The 6× applies to the
-arithmetic, not to the storage they wrap around it.
-
-## The search, exhausted
-
-`Uniswap/hooklist` was searched three ways. By permission flags:
-`beforeSwapReturnsDelta` marks a hook that prices swaps itself, which is 17 of the 33 on Arbitrum.
-By description, across five categories whose arithmetic could plausibly clear the bar — zero-knowledge
-proofs, encryption, signatures, options pricing, order books. And by deployed bytecode size, which
-needs no description at all and is the most honest screen: a hook that fits comfortably under the
-24,576-byte limit is not doing much.
-
-The largest hooks on Arbitrum:
-
-| bytes | hook | status |
-| ---: | --- | --- |
-| 24,039 | DopplerHookInitializer | not measured — no quote function to isolate |
-| 23,988 | **TokiHook** | not measured — Pendle-style fixed-rate curve, the one untested profile |
-| 23,510 | BunniHook | measured: `rpow` at Q96, 1.65×, and the protocol is dead |
-| 23,465 | GlueHook | buyback-and-burn, little arithmetic |
-| 22,906 | Alphix | not measured |
-| 17,835 | WLimitOrderHook | limit orders, storage-bound |
-
-The keyword sweep turned up nothing genuinely cryptographic. `UniswapV4KEMHook` was the closest —
-"KEM" reads as post-quantum, which would clear the bar by an order of magnitude — but it is an
-ordinary signed-quote RFQ hook using `ecrecover`, a 3,000-gas precompile that Stylus cannot beat.
-
-**TokiHook is the strongest remaining candidate and it is unmeasured.** A Pendle-style fixed-rate
-curve runs `exp` and `ln` in fixed point, the one arithmetic family not benchmarked here, and the
-one the EVM has no support for whatsoever. Measuring it needs a swap executed against it: it exposes
-no quote function to isolate, and anvil cannot fork Arbitrum because its block headers carry no blob
-fields. From the shape of the primitive — a bit-scan, which Stylus wins at 4.5×, over a polynomial in
-full-range 256-bit, which it wins at 2.8× — the ratio should land between the two, and a curve
-evaluation is a handful of them. That is an estimate, not a measurement, and it does not reach the
-bar.
+## The workload that was already in the codebase: v4-core's swap math
+
+The search above looked for a hook with unusual arithmetic. The best answer turned out to be the
+arithmetic every hook already has underneath it.
+
+`./bench-v4-math.bash` measures `SwapMath`, `TickMath`, `SqrtPriceMath` and `FullMath`. The control
+side is not a reimplementation: [`uniswap/src/V4MathBench.sol`](uniswap/src/V4MathBench.sol) calls
+those libraries straight out of v4-core. The Rust side is [`stylus/v4-math`](stylus/v4-math), a port
+tested against v4-core's own vectors — every unit test in `test/libraries/` for those five, same
+inputs, same expected values, 60 tests.
+
+The workload is `walkSwap`: `Pool.swap`'s loop without the storage. Find the next initialised tick,
+price the step up to it, cross, repeat. Replaying that loop is what OpenZeppelin's
+`AntiSandwichHook` and Uniswap's own `alf/SwapSimulator` do on every swap.
+
+| ticks crossed | Solidity | Rust | ratio | saving |
+| ---: | ---: | ---: | ---: | ---: |
+| 0 (the call itself) | 26,449 | 44,202 | — | −17,753 |
+| 1 | 30,442 | 44,844 | 6.22× | −14,402 |
+| 2 | 34,445 | 45,403 | 6.66× | −10,958 |
+| 4 | 42,451 | 46,522 | 6.90× | −4,071 |
+| 8 | 58,870 | 48,380 | 7.76× | **+10,490** |
+| 16 | 90,957 | 52,853 | 7.46× | **+38,104** |
+| 32 | 155,342 | 62,055 | 7.22× | **+93,287** |
+| 64 | 286,027 | 80,698 | 7.11× | **+205,329** |
+
+**4,056 gas per tick in Solidity against 570 in Rust.** The saving column is end to end with the
+cached init gas already in it, so the crossover is where it changes sign: **a replay that crosses six
+or more ticks is a net win**, and a deep one saves more than the whole baseline swap costs.
+
+The primitives, at 100 iterations so the call overhead cancels:
+
+| | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| `computeSwapStep` | 1,790 | 394 | **4.55×** |
+| `getSqrtPriceAtTick` | 882 | 193 | **4.57×** |
+| `getTickAtSqrtPrice` | 1,972 | 652 | **3.02×** |
+| `mulDiv`, max inputs | 2,063 | 1,703 | 1.21× |
+
+This is the widest margin in this document on arithmetic that is not contrived, and the reason is
+worth stating: this code is *bit-twiddling*, not big-number arithmetic. `getSqrtPriceAtTick` is
+nineteen shifts and a conditional multiply; the log in `getTickAtSqrtPrice` is fourteen squarings and
+a shift. Solidity pays a 5-gas opcode for each one and can express none of them more cheaply. Rust
+compiles them to what they are.
+
+### The mistake in the first run, because it is the more useful result
+
+The first measurement had Rust **losing** at `getSqrtPriceAtTick`, 0.28×. The cause was not the
+language. The nineteen Q128.128 factors were `&str` constants parsed with `from_str_radix` inside the
+loop, and `getTickAtSqrtPrice` parsed three decimal constants per call. Hoisting them to real `const`
+values with `uint!` moved the ratio from **0.28× to 4.57×** — a sixteenfold change in the Rust, with
+the algorithm untouched.
+
+Nothing warns you. The code reads fine, the tests pass, `cargo stylus check` passes. In Solidity a
+literal is a literal and there is no way to write this bug; in Rust a `U256` has to be built from
+something, and building it from text is both the most readable option and roughly a hundred times the
+cost of the arithmetic it feeds. This is the same class of trap as the `opt-level` one below: a
+default that silently costs about an order of magnitude on the only thing Stylus is bought for.
 
 ## What this means for the project
 
@@ -1331,6 +996,8 @@ write it back. That is the exact shape of hook where Stylus has nothing to offer
 Stylus pays off when a hook has to *think* on every swap — past the crossover measured above, which
 is ~371 rounds of small-word arithmetic or 89 `mulDiv`s. In practice:
 
+- **replaying v4's own swap math**, which is the clearest case measured here: 7.1× per tick, and any
+  hook that simulates a swap before allowing it does exactly this
 - on-chain math: TWAP and volatility oracles, curve solvers, Newton iterations
 - dynamic fees computed from a model rather than looked up
 - anything scanning or sorting a batch, where the loop dominates
@@ -1338,6 +1005,11 @@ is ~371 rounds of small-word arithmetic or 89 `mulDiv`s. In practice:
 
 Those are the hooks worth writing in Rust, and they are what
 [`stylus/base-hook`](stylus/base-hook) exists to make writable end-to-end.
+
+Two traps account for most of the distance between a Stylus hook that loses and one that wins, and
+neither announces itself: `opt-level` capped at `"s"` by a WASM section ArbOS rejects, and constants
+built from strings at runtime. Each was worth roughly an order of magnitude on arithmetic, both
+compile and both pass `cargo stylus check`.
 
 ## A caveat on the numbers
 
