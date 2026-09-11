@@ -21,6 +21,7 @@ use stylus_sdk::{
     storage::{StorageAddress, StorageMap, StorageU256},
 };
 use stylus_uniswap_v4::{
+    guarded_hooks,
     hooks::{selector, HookConfig, HookGuards, IHooks},
     types::{BalanceDelta, BeforeSwapDelta, ModifyLiquidityParams, PoolKey, SwapParams, U24},
     Permissions, ZERO_DELTA,
@@ -89,6 +90,7 @@ impl Counter {
     }
 }
 
+#[guarded_hooks]
 #[public]
 impl IHooks for Counter {
     fn before_swap(
@@ -98,8 +100,6 @@ impl IHooks for Counter {
         _params: SwapParams,
         _hook_data: Bytes,
     ) -> Result<(FixedBytes<4>, BeforeSwapDelta, U24), Vec<u8>> {
-        self.require_pool_manager()?;
-        self.require_valid_pool(&key)?;
         Self::bump(&mut self.before_swap_count, key.to_id());
         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
     }
@@ -112,8 +112,6 @@ impl IHooks for Counter {
         _delta: BalanceDelta,
         _hook_data: Bytes,
     ) -> Result<(FixedBytes<4>, i128), Vec<u8>> {
-        self.require_pool_manager()?;
-        self.require_valid_pool(&key)?;
         Self::bump(&mut self.after_swap_count, key.to_id());
         Ok((selector::AFTER_SWAP, 0))
     }
@@ -125,8 +123,6 @@ impl IHooks for Counter {
         _params: ModifyLiquidityParams,
         _hook_data: Bytes,
     ) -> Result<FixedBytes<4>, Vec<u8>> {
-        self.require_pool_manager()?;
-        self.require_valid_pool(&key)?;
         Self::bump(&mut self.before_add_liquidity_count, key.to_id());
         Ok(selector::BEFORE_ADD_LIQUIDITY)
     }
@@ -138,8 +134,6 @@ impl IHooks for Counter {
         _params: ModifyLiquidityParams,
         _hook_data: Bytes,
     ) -> Result<FixedBytes<4>, Vec<u8>> {
-        self.require_pool_manager()?;
-        self.require_valid_pool(&key)?;
         Self::bump(&mut self.before_remove_liquidity_count, key.to_id());
         Ok(selector::BEFORE_REMOVE_LIQUIDITY)
     }

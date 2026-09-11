@@ -5,33 +5,46 @@
 //! only the callbacks it enables — every other callback keeps its default body, which reverts with
 //! `HookNotImplemented`, exactly as the Solidity `BaseHook` does.
 //!
-//! # Why the guards are called by hand, and not by a base layer
+//! # How the guards are enforced, given that Rust has no abstract types
 //!
-//! `BaseHook.sol` makes its entry points `external onlyPoolManager` and delegates to an internal
-//! `_beforeSwap` that the hook overrides, so a hook author cannot write a callback without the
-//! guard. Here, [`IHooks`] *is* the entry point: every callback has to open with
-//! `self.require_pool_manager()?`, and one written without it would be callable by anyone. Every
-//! hook in this repository does it, and their tests pin it, but nothing makes them.
+//! `BaseHook.sol` is an abstract contract: it owns the `external onlyPoolManager` entry points and
+//! the hook overrides an internal `_beforeSwap`, so the guard cannot be forgotten. Rust has no
+//! abstract types, and its three substitutes do not all work here.
 //!
-//! Two ways to recover Solidity's structure were tried and both failed, for reasons worth recording:
+//! * **A trait with default bodies** cannot hold the guard. The guard needs the host, `HostAccess`
+//!   carries an associated `Host` type, and a `where Self: HookGuards` bound on a trait method makes
+//!   the trait non-dyn-compatible — which `#[implements]` requires. The library compiles and every
+//!   hook then fails with `the trait IHooks is not dyn compatible`.
 //!
-//! 1. **Put the guard in [`IHooks`]'s default bodies.** The guard needs the host, `HostAccess`
-//!    carries an associated `Host` type, and a `where Self: HookGuards` bound on a trait method
-//!    makes the trait non-dyn-compatible — which `#[implements]` requires. It compiles in the
-//!    library and fails in every hook with `the trait IHooks is not dyn compatible`.
+//! * **A declarative macro** writing the whole `#[public] impl` works, but it has to emit all ten
+//!   entry points: measured at about 30 % of a contract's size, enough to push two of this
+//!   repository's hooks over a Stylus code fragment and so out of reach of address mining. Emitting
+//!   only the declared callbacks needs a token-munching macro, which trips a hygiene bug in
+//!   `stylus-proc` — `#[public]` binds `result` and references it re-spanned to the method's output
+//!   span, so a method arriving through a `$($out:tt)*` capture fails with
+//!   `cannot find value result`.
 //!
-//! 2. **Generate a guarded `#[public] impl IHooks` from a macro**, with the hook implementing a
-//!    separate `HookCallbacks` trait — the exact counterpart of Solidity's internal `_beforeSwap`
-//!    family. This *works*, and was measured: emitting all ten entry points costs about 30 % of a
-//!    contract's size (native-compute 24,253 → 31,713 bytes, native-stableswap 18,827 → 25,484),
-//!    which pushed two contracts over a Stylus code fragment and so out of reach of address mining.
-//!    Emitting only the declared callbacks fixes that and needs a token-munching macro, and that
-//!    hits a hygiene bug in `stylus-proc`: `#[public]` binds `result` and then references it
-//!    re-spanned to the method's output span (`macros/public/types.rs:656` and `:695`), so a method
-//!    routed through a `$($out:tt)*` capture fails to compile with `cannot find value result`.
+//! * **A procedural macro** has neither problem, and that is what
+//!   [`guarded_hooks`](stylus_uniswap_v4_macros::guarded_hooks) is. It rewrites the methods the hook
+//!   already wrote, inserting [`HookGuards::require_pool_manager`] and, where the method takes a
+//!   `PoolKey`, [`HookGuards::require_valid_pool`]. Attributes apply outside in, so it runs before
+//!   `#[public]`, which then sees ordinary hand-written code. It adds nothing for callbacks a hook
+//!   does not implement, because it only touches what is there: the four hooks in this repository
+//!   came out within 90 bytes of their hand-guarded size, three of them smaller.
 //!
-//! So the manual call stays until one of those is lifted. It is the one place this crate is weaker
-//! than the Solidity it replaces.
+//! ```ignore
+//! #[guarded_hooks]
+//! #[public]
+//! impl IHooks for MyHook {
+//!     fn before_swap(&mut self, _sender: Address, key: PoolKey, ..) -> .. {
+//!         // the caller is the pool manager and `key` names this hook: both already checked
+//!         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
+//!     }
+//! }
+//! ```
+//!
+//! Put it only on the `impl IHooks` block. A hook's own entry points — an order book, a claim — must
+//! *not* require the pool manager, and the attribute would lock them out.
 
 use alloc::vec::Vec;
 

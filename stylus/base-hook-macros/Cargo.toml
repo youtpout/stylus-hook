@@ -1,0 +1,17 @@
+[package]
+name = "stylus-uniswap-v4-macros"
+description = "The attribute that gives a Stylus v4 hook BaseHook.sol's guarantees"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }

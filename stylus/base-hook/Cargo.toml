@@ -9,6 +9,7 @@ repository.workspace = true
 keywords.workspace = true
 
 [dependencies]
+stylus-uniswap-v4-macros = { path = "../base-hook-macros", version = "0.2.0" }
 alloy-primitives.workspace = true
 alloy-sol-types.workspace = true
 stylus-sdk.workspace = true

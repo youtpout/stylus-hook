@@ -3811,6 +3811,16 @@ dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
  "stylus-sdk",
+ "stylus-uniswap-v4-macros",
+]
+
+[[package]]
+name = "stylus-uniswap-v4-macros"
+version = "0.2.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

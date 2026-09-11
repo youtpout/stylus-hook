@@ -61,6 +61,7 @@ use stylus_sdk::{
     storage::{StorageMap, StorageU256, StorageU8},
 };
 use stylus_uniswap_v4::{
+    guarded_hooks,
     hooks::{selector, HookConfig, HookGuards, IHooks, IUnlockCallback},
     types::{amount0, amount1, BeforeSwapDelta, ModifyLiquidityParams, PoolKey, SwapParams, U24},
     Permissions, PoolManagerCalls, ZERO_DELTA,
@@ -786,6 +787,7 @@ impl IUnlockCallback for TwammHook {
     }
 }
 
+#[guarded_hooks]
 #[public]
 impl IHooks for TwammHook {
     fn before_initialize(
@@ -794,8 +796,6 @@ impl IHooks for TwammHook {
         key: PoolKey,
         _sqrt_price_x96: U160,
     ) -> Result<FixedBytes<4>, Vec<u8>> {
-        self.require_pool_manager()?;
-        self.require_valid_pool(&key)?;
         let now = U256::from(self.vm().block_timestamp());
         self.pools
             .setter(key.to_id())
@@ -811,8 +811,6 @@ impl IHooks for TwammHook {
         _params: ModifyLiquidityParams,
         _hook_data: Bytes,
     ) -> Result<FixedBytes<4>, Vec<u8>> {
-        self.require_pool_manager()?;
-        self.require_valid_pool(&key)?;
         self.execute_virtual_orders_inner(&key, true)?;
         Ok(selector::BEFORE_ADD_LIQUIDITY)
     }
@@ -824,8 +822,6 @@ impl IHooks for TwammHook {
         _params: SwapParams,
         _hook_data: Bytes,
     ) -> Result<(FixedBytes<4>, BeforeSwapDelta, U24), Vec<u8>> {
-        self.require_pool_manager()?;
-        self.require_valid_pool(&key)?;
         self.execute_virtual_orders_inner(&key, true)?;
         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
     }

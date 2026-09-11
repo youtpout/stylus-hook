@@ -167,6 +167,13 @@ repository was measuring size-optimised code until that was found, and every rat
 when it was fixed — in proportion to how arithmetic-bound the workload is, and not at all for the
 storage-bound ones.
 
+`BaseHook.sol` is an abstract contract, so its `onlyPoolManager` guard cannot be forgotten. Rust has
+no abstract types, and the trait-with-defaults and declarative-macro routes both dead-end — on
+`#[implements]`'s dyn-compatibility requirement and on a hygiene bug in `stylus-proc` respectively,
+both written up in [`hooks.rs`](stylus/base-hook/src/hooks.rs). The route that works is a procedural
+macro: [`#[guarded_hooks]`](stylus/base-hook-macros/src/lib.rs) rewrites the callbacks a hook already
+wrote to open with the guards, for no measurable contract size.
+
 The catch is that most hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
 gas of Solidity arithmetic to be worth it, and nothing shipping gets close: OpenZeppelin's
 `AntiSandwichHook` has 21,000, a StableSwap curve 8,600, the counter and airdrop hooks essentially

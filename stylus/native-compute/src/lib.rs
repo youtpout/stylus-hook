@@ -20,6 +20,7 @@ use stylus_sdk::{
     storage::{StorageAddress, StorageMap, StorageU256, StorageU64, StorageU8},
 };
 use stylus_uniswap_v4::{
+    guarded_hooks,
     hooks::{selector, HookConfig, HookGuards, IHooks},
     types::{BeforeSwapDelta, PoolKey, SwapParams, U24},
     Permissions, ZERO_DELTA,
@@ -232,6 +233,7 @@ impl ComputeHook {
     }
 }
 
+#[guarded_hooks]
 #[public]
 impl IHooks for ComputeHook {
     fn before_swap(
@@ -241,8 +243,6 @@ impl IHooks for ComputeHook {
         _params: SwapParams,
         _hook_data: Bytes,
     ) -> Result<(FixedBytes<4>, BeforeSwapDelta, U24), Vec<u8>> {
-        self.require_pool_manager()?;
-        self.require_valid_pool(&key)?;
         let rounds = self.rounds.get();
         // `uint64(...)` on the Solidity side: keep the low 64 bits, do not panic on overflow
         let result = match self.mode.get().to::<u8>() {

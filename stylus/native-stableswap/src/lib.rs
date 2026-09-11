@@ -24,6 +24,7 @@ use alloy_primitives::{Address, FixedBytes, U256};
 use alloy_sol_types::{sol, SolError};
 use stylus_sdk::{abi::Bytes, prelude::*, storage::StorageU256};
 use stylus_uniswap_v4::{
+    guarded_hooks,
     hooks::{selector, HookConfig, HookGuards, IHooks},
     types::{BeforeSwapDelta, PoolKey, SwapParams, U24},
     Permissions, ZERO_DELTA,
@@ -175,6 +176,7 @@ impl StableSwapHook {
     }
 }
 
+#[guarded_hooks]
 #[public]
 impl IHooks for StableSwapHook {
     /// Prices the swap on the StableSwap curve and moves the reserves along it.
@@ -189,9 +191,6 @@ impl IHooks for StableSwapHook {
         params: SwapParams,
         _hook_data: Bytes,
     ) -> Result<(FixedBytes<4>, BeforeSwapDelta, U24), Vec<u8>> {
-        self.require_pool_manager()?;
-        self.require_valid_pool(&key)?;
-
         let specified = params.amountSpecified;
         let amount_in = if specified.is_negative() {
             U256::from_limbs((-specified).into_raw().into_limbs())

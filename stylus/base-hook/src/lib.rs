@@ -40,6 +40,7 @@ pub mod types;
 pub use hooks::{selector, HookConfig, HookGuards, IHooks, IUnlockCallback, NO_DELTA};
 pub use permissions::Permissions;
 pub use pool_manager::PoolManagerCalls;
+pub use stylus_uniswap_v4_macros::guarded_hooks;
 pub use types::{
     amount0, amount1, lp_fee, specified_delta, to_balance_delta, to_before_swap_delta,
     unspecified_delta, BalanceDelta, BeforeSwapDelta, Currency, ModifyLiquidityParams, PoolKey,
