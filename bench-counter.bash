@@ -20,6 +20,7 @@ RPC=${RPC:-http://127.0.0.1:8547}
 KEY=0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659
 ARB_OWNER=0x0000000000000000000000000000000000000070
 ARB_WASM=0x0000000000000000000000000000000000000071
+EOA=0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E
 LIQUIDITY=1000000000000000000000
 SWAP_AMOUNT=1000000000000000000
 ROUNDS=${ROUNDS:-3}
@@ -113,21 +114,34 @@ for round in $(seq 1 "$ROUNDS"); do
   printf '%-8s%s\n' "$round" "$row"
 done
 
-log "results (warm, gas per swap — two hook calls each: beforeSwap and afterSwap)"
+UNCACHED_NATIVE=${LAST[2]}
+
+log "caching the Stylus program, and swapping again"
+# Every other benchmark here reports the cached figure, because that is the state any hook with
+# users would be in: caching is a one-off bid, and an uncached program pays the full WASM load on
+# every call forever. Measured rather than projected -- the dev node has no CacheManager, so the
+# chain owner appoints itself one. See `cache_stylus_program` in bench-lib.bash.
+cached=$(cache_stylus_program "$NATIVE_HOOK" "$EOA")
+echo "native hook cached: $cached"
+for i in 0 1 2; do
+  LAST[$i]=$(cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$i" "$SWAP_AMOUNT" true \
+    --rpc-url "$RPC" --private-key $KEY | awk '/^gasUsed/{print $2}')
+done
+
+log "results (gas per swap — two hook calls each: beforeSwap and afterSwap)"
 base=${LAST[0]}; sol=${LAST[1]}; native=${LAST[2]}
 printf 'baseline swap, no hook                  %10s\n' "$base"
 printf 'Counter.sol, one Solidity contract      %10s  (+%s)\n' "$sol" "$((sol - base))"
-printf 'native-counter, no Solidity at all      %10s  (+%s)\n' "$native" "$((native - base))"
+printf 'native-counter, uncached                %10s  (+%s)\n' \
+  "$UNCACHED_NATIVE" "$((UNCACHED_NATIVE - base))"
+printf 'native-counter, cached                  %10s  (+%s)\n' "$native" "$((native - base))"
 echo
-printf 'per-call Stylus program init, uncached / cached\n'
-printf '  native-counter  (%s bytes of asm)  %10s / %s\n' \
-  "$(cast call $ARB_WASM 'codehashAsmSize(bytes32)(uint32)' "$(cast codehash "$NATIVE_HOOK" --rpc-url "$RPC")" --rpc-url "$RPC" | awk '{print $1}')" \
-  "$NATIVE_INIT" "$NATIVE_INIT_CACHED"
-printf 'native costs, over Solidity             %10s\n' "$((native - sol))"
-printf '  Stylus program init, uncached         %10s\n' "$NATIVE_INIT"
-printf '  the same if the contract is cached    %10s\n' "$NATIVE_INIT_CACHED"
-printf 'projected native cost when cached       %10s  (+%s)\n' \
-  "$((native - NATIVE_INIT + NATIVE_INIT_CACHED))" "$((native - NATIVE_INIT + NATIVE_INIT_CACHED - base))"
+printf 'the native hook costs, over Solidity    %10s\n' "$((native - sol))"
 echo
-echo "note: this dev node has no CacheManager, so cached figures come from"
-echo "      ArbWasm.programInitGas rather than a measurement."
+printf 'per-call Stylus program init, %s bytes of asm\n' \
+  "$(cast call $ARB_WASM 'codehashAsmSize(bytes32)(uint32)' "$(cast codehash "$NATIVE_HOOK" --rpc-url "$RPC")" --rpc-url "$RPC" | awk '{print $1}')"
+printf '  uncached                              %10s\n' "$NATIVE_INIT"
+printf '  cached, which is what is measured     %10s\n' "$NATIVE_INIT_CACHED"
+echo
+echo "A counter is the shape of hook Stylus is worst at: it writes a storage slot per callback and"
+echo "computes nothing, and Stylus makes computation cheap, not storage. This is the floor."

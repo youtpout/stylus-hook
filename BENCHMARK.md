@@ -24,23 +24,27 @@ twice — `beforeSwap` and `afterSwap` — so every figure is two hook calls.
 
 | | gas per swap | hook costs |
 | --- | ---: | ---: |
-| no hook | 115,129 | — |
-| `Counter.sol`, one Solidity contract | 134,067 | +18,938 |
-| `native-counter`, no Solidity in the hook | 199,595 | +84,466 |
+| no hook | 115,065 | — |
+| `Counter.sol`, one Solidity contract | 134,003 | +18,938 |
+| `native-counter`, uncached | 199,595 | +84,530 |
+| **`native-counter`, cached** | **168,941** | **+53,876** |
 
-**The native hook costs 65,528 gas more per swap**, and that is the conclusion of this whole document
-stated at its worst: this hook writes a storage slot per callback and computes nothing, so there is
-nothing for Stylus to win back. Two things make up the gap — `ArbWasm` prices `programInitGas` off
-compiled size, and the hook carries the whole `IHooks` router and the ABI decoders for `PoolKey` and
-`SwapParams`:
+**The native hook costs 34,938 gas more per swap than the Solidity one**, and that is this document's
+conclusion stated at its worst: the hook writes a storage slot per callback and computes nothing, so
+there is nothing for Stylus to win back. Every figure below is read against this one.
+
+The gap between the two native rows is the whole reason the rest of this document reports cached
+figures. `ArbWasm` prices `programInitGas` off compiled size, the hook is entered twice per swap, and
+caching takes that from 17,482 to 2,187 per entry:
 
 | | asm size | init gas, uncached / cached |
 | --- | ---: | ---: |
 | `native-counter` | 857,088 | 17,482 / 2,187 |
 
-Caching removes most of that, and caching is what any hook with users would have: it is a one-off
-bid, and an uncached program pays the full WASM load on every call forever. Every figure below is
-read against this one.
+2 × (17,482 − 2,187) = 30,590, against the 30,654 the swap actually dropped by. Caching is a one-off
+bid and an uncached program pays the full WASM load on every call forever, so the cached row is the
+state any hook with users would be in — and on a dev node with no `CacheManager`, the chain owner
+appoints itself one so the figure is measured rather than quoted out of `programInitGas`.
 
 ## Where Rust starts winning
 

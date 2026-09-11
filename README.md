@@ -103,13 +103,15 @@ runs both EVM bytecode and WASM — deploys both implementations, and reads `gas
 
 | hook | gas per swap | costs |
 | --- | ---: | ---: |
-| none | 115,129 | — |
-| `Counter.sol`, one Solidity contract | 134,067 | +18,938 |
-| `native-counter`, no Solidity at all | 199,595 | +84,466 |
+| none | 115,065 | — |
+| `Counter.sol`, one Solidity contract | 134,003 | +18,938 |
+| `native-counter`, cached | 168,941 | +53,876 |
 
-Stylus costs 4.4× what Solidity does here, and that is the workload's fault rather than the port's:
+Stylus costs 2.8× what Solidity does here, and that is the workload's fault rather than the port's:
 the hook writes a storage slot per callback and computes nothing, and Stylus makes compute cheap, not
-storage. This is the floor, and it is here so the wins further down are read against it.
+storage. This is the floor, and it is here so the wins further down are read against it. Uncached the
+same swap costs 199,595 — the hook is entered twice and pays the WASM load each time, which is why
+every figure in this repository is the cached one.
 
 `./bench-compute.bash` shows the other side of it, running the same arithmetic in both languages and
 sweeping how much of it there is. The interesting column is `mulDiv`, because that is what Uniswap's
