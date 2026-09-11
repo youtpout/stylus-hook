@@ -204,6 +204,33 @@ That result also produced the second trap worth knowing. The first run had Rust 
 written; in Rust, building a `U256` from text is the most readable option and about a hundred times
 the cost of the arithmetic it feeds.
 
+Everything above is a hook Solidity could write more expensively. The last one it cannot write at
+all. [`stylus/native-crypto`](stylus/native-crypto/src/keccak.rs) is Keccak-f[1600], SHAKE256 and
+ML-DSA's number-theoretic transform — the two primitives a post-quantum signature check spends its
+gas on. Both sides are pinned to NIST's SHAKE256 vectors and XKCP's permutation vector before
+anything is timed, and [the Solidity control](uniswap/src/CryptoBench.sol) is unrolled inline
+assembly, not the readable version that would have made a strawman of it.
+
+| | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| one 32-byte hash, through the built-in | 184 | 16 | 11.5× |
+| one Keccak-f[1600] permutation, by hand | 101,662 | **158** | **643×** |
+| SHAKE256, absorb 200 B, squeeze 1088 B | 1,250,263 | **2,559** | **489×** |
+| one forward NTT, 256 coefficients | 244,873 | **2,128** | **115×** |
+
+The first row is free money for any hook that hashes: the Stylus host's keccak is 11.5× cheaper than
+the EVM opcode. The second is the one that matters. `keccak256` of 32 bytes costs 36 gas of opcode
+and performs exactly one permutation internally — but it is Keccak-256 with the `0x01` pad compiled
+in, and SHAKE pads with `0x1f`. So SHAKE cannot come from any built-in, in either language, and the
+permutation has to be written out. **The EVM can do Keccak, but only through the one door it
+provides, and SHAKE is not behind that door.**
+
+Projected onto one ML-DSA-44 verification — about 90 permutations and 9 transforms — that is
+**11,353,437 gas in Solidity against 33,372 in Rust**. A swap on Arbitrum costs about 115,000 gas
+with no hook. Solidity would spend ninety-nine swaps' worth to check one signature; Rust spends less
+than a third of one. A hook that only accepts post-quantum-signed orders is not expensive in
+Solidity, it is impossible, and in Rust it is unremarkable.
+
 `BaseHook.sol` is an abstract contract, so its `onlyPoolManager` guard cannot be forgotten. Rust has
 no abstract types, so [`#[guarded_hooks]`](stylus/base-hook-macros/src/lib.rs) does the same job with
 a procedural macro: it inserts the guards into the callbacks a hook writes, and costs nothing.

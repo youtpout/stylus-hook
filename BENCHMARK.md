@@ -988,6 +988,80 @@ something, and building it from text is both the most readable option and roughl
 cost of the arithmetic it feeds. This is the same class of trap as the `opt-level` one below: a
 default that silently costs about an order of magnitude on the only thing Stylus is bought for.
 
+## The one Solidity cannot do at all: a post-quantum signature
+
+Every measurement above asks how much cheaper Stylus is. This one asks whether Solidity can do the
+thing, and the answer is no -- by two orders of magnitude, not by a margin.
+
+`./bench-crypto.bash` measures the two primitives an ML-DSA (Dilithium) verification spends its gas
+on. Both sides are pinned to the standard before anything is timed: NIST's SHAKE256 vectors, XKCP's
+vector for the permutation on a zero state, and the same transform output.
+
+### Why the built-in hash does not help
+
+Stylus has `native_keccak256` and the EVM has the `KECCAK256` opcode. Both are Keccak-256 with the
+`0x01` pad compiled in. SHAKE pads with `0x1f` and squeezes an arbitrary length, so neither built-in
+can produce it, and anything built on SHAKE -- every ML-DSA, ML-KEM and SLH-DSA operation -- has to
+run Keccak-f[1600] itself.
+
+That is the whole distance between these two columns:
+
+| | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| one 32-byte hash, through the built-in | 184 | 16 | 11.5× |
+| one Keccak-f[1600] permutation, by hand | **101,662** | **158** | **643×** |
+
+The first row is worth its own note: the Stylus host's keccak is **11.5× cheaper than the EVM
+opcode**, which is free money for any hook that hashes. The second row is the one that decides
+things. A `keccak256` of 32 bytes costs 36 gas of opcode and performs exactly one permutation
+internally; the same permutation written out costs 101,662. The EVM can do Keccak, but only through
+the single door it provides, and SHAKE is not behind that door.
+
+### SHAKE256 and the transform
+
+| | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| SHAKE256, absorb 32 B, squeeze 32 B | 140,455 | 508 | 276× |
+| SHAKE256, absorb 32 B, squeeze 168 B | 276,525 | 727 | 380× |
+| SHAKE256, absorb 200 B, squeeze 1088 B | 1,250,263 | 2,559 | **489×** |
+| one forward NTT, 256 coefficients | 244,873 | 2,128 | **115×** |
+| the same NTT, in the Montgomery domain | — | 1,955 | 125× |
+
+The transform is the word-size problem rather than the missing-primitive one. ML-DSA's modulus is
+`8380417`, twenty-three bits wide. The EVM has one word and it is 256 bits, so every butterfly pays a
+full `MULMOD`; in Rust it is a `u32` multiply into a `u64`. Montgomery has no Solidity counterpart at
+all, because `MULMOD` already reduces for free -- it is measured only to say how much further Rust
+goes once it stops imitating the EVM.
+
+### What that projects to
+
+ML-DSA-44 verification runs roughly 90 permutations -- nearly all of them in `ExpandA`, which
+rejection-samples a 4×4 matrix of polynomials out of SHAKE128 -- and about 9 transforms.
+
+| | Solidity | Rust |
+| --- | ---: | ---: |
+| permutations | 9,149,580 | 14,220 |
+| transforms | 2,203,857 | 19,152 |
+| **total** | **11,353,437** | **33,372** |
+
+A swap on Arbitrum costs about 115,000 gas with no hook at all. So Solidity would spend **99 swaps'
+worth of gas** to check one signature, and a third of an Ethereum block; Rust spends less than a
+third of a swap. That is the difference between a hook that cannot exist and one that is unremarkable.
+
+### Two things this does not say
+
+**The contract size limit is not the barrier here, and I said it would be before measuring.** The
+Solidity contract is 9,297 bytes and the Rust one 11,629 compressed; both fit under 24,576 with room
+to spare. For ML-DSA the gas is the whole story, and it is about a hundred times more barrier than
+needed.
+
+**The Solidity side could still be faster.** Its permutation and butterfly are unrolled inline
+assembly, because the readable versions spent most of their gas on bounds-checked array access --
+667,204 against 101,662 for the permutation, 462,305 against 244,873 for the transform, and those
+rows are in the script's output so the choice is visible rather than asserted. A maximally tuned
+implementation might reach half the figure above again. It would change 643× to roughly 350×, and
+change nothing about the conclusion.
+
 ## What this means for the project
 
 A bookkeeping hook is the wrong thing to port. Read a counter, add to it,
@@ -996,8 +1070,10 @@ write it back. That is the exact shape of hook where Stylus has nothing to offer
 Stylus pays off when a hook has to *think* on every swap — past the crossover measured above, which
 is ~371 rounds of small-word arithmetic or 89 `mulDiv`s. In practice:
 
-- **replaying v4's own swap math**, which is the clearest case measured here: 7.1× per tick, and any
-  hook that simulates a swap before allowing it does exactly this
+- **small-word cryptography**, which is the only place measured here where Solidity does not merely
+  lose but cannot play: 643× on a Keccak permutation, 115× on a 23-bit NTT
+- **replaying v4's own swap math**, which is the clearest case among things Solidity *can* do: 7.1×
+  per tick, and any hook that simulates a swap before allowing it does exactly this
 - on-chain math: TWAP and volatility oracles, curve solvers, Newton iterations
 - dynamic fees computed from a model rather than looked up
 - anything scanning or sorting a batch, where the loop dominates

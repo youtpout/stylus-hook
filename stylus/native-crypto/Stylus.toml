@@ -1,0 +1,15 @@
+[contract]
+
+# `--llvm-memory-copy-fill-lowering` is what makes `opt-level = 3` usable at all.
+#
+# Without it, rustc at opt-level 2 or 3 emits `memory.copy`, which brings a `DataCount` section with
+# it, and ArbOS refuses to activate the contract: "unsupported section type DataCountSection". So a
+# Stylus contract is silently capped at `opt-level = "s"` or `"z"` — compiled for size, on a platform
+# that charges for execution. Lowering those bulk-memory ops back to loops drops the section and
+# unlocks the speed levels: on this contract, `opt-level = 3` halves the gas for 200 more bytes.
+#
+# Binaryen's -Oz is replayed identically during `cargo stylus verify`, so the deployed bytes stay
+# reproducible.
+[wasm-opt]
+version = "131"
+flags = ["-Oz", "--llvm-memory-copy-fill-lowering", "--enable-bulk-memory-opt", "--enable-sign-ext", "--enable-mutable-globals", "--enable-nontrapping-float-to-int"]
