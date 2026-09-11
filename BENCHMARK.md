@@ -667,6 +667,44 @@ expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncache
 cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
 half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
 
+### Is there a Solidity hook that is genuinely expensive? Yes, and it is a trap
+
+Measured by running each project's own test suite under `--gas-report`, rather than estimated.
+
+| hook | per swap | how it was obtained |
+| --- | ---: | --- |
+| [`robertleifke/forex-swap`][fx] | **4,266,005 avg, 11,283,644 max** | its own `ForexSwap.t.sol` |
+| [`Gnome101/Pm-AMM-Hook`][pm] | ~401,100 of arithmetic | 100 bisection steps × measured `cdf`+`pdf` |
+| [`akshatmittal/v4-twamm-hook`][tw] | 339,609 (one span) | `bench-twamm.bash` |
+| `AntiSandwichHook` (OpenZeppelin) | 168,429 | `bench-antisandwich.bash` |
+| baseline swap, no hook | 115,065 | every benchmark here |
+
+[fx]: https://github.com/robertleifke/forex-swap
+[pm]: https://github.com/Gnome101/Pm-AMM-Hook
+[tw]: https://github.com/akshatmittal/v4-twamm-hook
+
+`forex-swap` is the most expensive v4 hook I have found by an order of magnitude: a single swap eats
+4.3 million gas on average and up to 11.3 million, which is a third of an Ethereum block. Its own
+repository carries a runtime-baseline file with a guardrail that says *"stop and isolate pathological
+path"*, which is a fair description.
+
+**And it is exactly the wrong thing to port.** Its `Gaussian.cdf` computes the CDF by *bisecting on
+its own inverse CDF*, calling `ppf` `CDF_STEPS` times, each of which calls `_ppfRaw` three times.
+Measured, that costs **1,280,509 gas for one CDF evaluation**. `solstat`'s `erfc`-based CDF, which is
+the same function to the same precision, costs **3,165** — the algorithm choice is a **405× penalty**,
+and three CDF evaluations account for about 90 % of a swap.
+
+So the honest reading: yes, expensive Solidity hooks exist. No, this one is not an argument for
+Stylus, because rewriting its CDF in Solidity would recover roughly 4 million of the 4.3 million and
+a Stylus port would then be worth the 1.42×–2.47× measured above. Benchmarking against it would
+repeat the mistake this document already made once with TWAMM: **the gain would be the algorithm
+wearing a language's clothes.**
+
+The pm-AMM is the one that survives the test, because its 401,100 gas is a *lazy* implementation of
+arithmetic that is irreducible — fixing the laziness (Newton instead of 100-step bisection) still
+leaves 27,659 gas of Gaussian solve that no rewriting removes, and that is the figure the benchmark
+uses.
+
 ### Where to look next: the two filters that rule out most cryptography
 
 The obvious next thought is that a hook doing cryptography — a ZK verifier, a hash, a signature check
