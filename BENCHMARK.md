@@ -667,6 +667,71 @@ expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncache
 cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
 half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
 
+### Where to look next: the two filters that rule out most cryptography
+
+The obvious next thought is that a hook doing cryptography — a ZK verifier, a hash, a signature check
+— must be the ideal Stylus workload, because that is expensive in Solidity. Two filters cut most of
+that down, and both are measured rather than assumed.
+
+**Filter one: precompiles.** A precompile is native code; Stylus can call it but never beat it.
+Checked against Arbitrum One by return length:
+
+| | on Arbitrum One | consequence |
+| --- | --- | --- |
+| `ecrecover`, SHA-256, RIPEMD, MODEXP, BLAKE2F | present | out |
+| BN254 add / mul / pairing (`0x06`–`0x08`) | **present** | Groth16 and PLONK over BN254: out |
+| BLS12-381, EIP-2537 (`0x0b`–`0x11`) | **present** | BLS signature verification: out |
+| KZG point evaluation (`0x0a`) | absent | but it is BLS pairings, which are not |
+| **P-256 / secp256r1, RIP-7212 (`0x100`)** | **absent** | open |
+
+That BLS12-381 is live is worth knowing on its own: aggregate-signature hooks are a popular idea and
+the EVM already does them natively here.
+
+**Filter two: `MULMOD`.** The EVM has modular multiplication as a single opcode at 8 gas. WASM has
+nothing of the sort. Measured, gas per modular multiplication:
+
+| field | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| BN254 scalar (~254-bit), `ruint::mul_mod` | 88 | 94 | **0.93×** |
+| BN254 scalar (~254-bit), Montgomery (CIOS) | 88 | **62** | **1.42×** |
+| Goldilocks (64-bit) | 89 | **19** | **4.50×** |
+
+Two things fall out. The naive answer — a 512-bit product and a division — *loses to the opcode*, so
+how the field is implemented decides the result, not the language. And Solidity's cost is the same in
+both fields, 88 against 89, because the EVM pays for a 256-bit word whether the field needs one or
+not; Rust goes from 62 to 19.
+
+So the thresholds, against the 7,916 gas a cached Stylus hook carries:
+
+| field | saving per op | ops per swap to break even |
+| --- | ---: | ---: |
+| BN254 in Montgomery form | 26 | **304** |
+| Goldilocks / BabyBear | 70 | **113** |
+
+Both are low. One MiMC permutation is on the order of 660 field multiplications; a Poseidon2
+permutation over Goldilocks is 8 full and 22 partial rounds; a P-256 verification is a few thousand.
+Anything in that territory clears the bar several times over.
+
+**And the primitives are already written.** `openzeppelin-crypto` 0.3.0, OpenZeppelin's Stylus crypto
+crate, ships a Montgomery prime field plus Poseidon2 instanced over BN256, BLS12, Pallas, Vesta and —
+the interesting ones — **Goldilocks and BabyBear**; twisted-Edwards curves including curve25519,
+Jubjub, Baby Jubjub and Bandersnatch; Pedersen hashing; and a full **Ed25519** implementation with
+signature verification. None of those has an EVM precompile.
+
+Ranked by what the measurements above imply, not by anything measured end to end yet:
+
+1. **Ed25519 verification.** No precompile on any EVM, so Solidity implementations run to hundreds of
+   thousands of gas. `openzeppelin_crypto::eddsa` is already there.
+2. **Poseidon2 or a STARK verifier over Goldilocks or BabyBear.** The 4.50× field, and verifiers do
+   field operations by the hundred thousand.
+3. **A Tornado-style privacy hook.** `ChinmayGopal931/UniStorm` is one, and its
+   `MerkleTreeWithHistory` runs `MiMCSponge` on chain — thousands of BN254 multiplications per
+   deposit, in the 1.42× field.
+4. **P-256 / WebAuthn.** Not precompiled on Arbitrum, a few thousand multiplications per check.
+
+What is *not* worth porting, and would have looked like the best idea: a Groth16 or PLONK verifier
+over BN254. The pairing is a precompile and the field layer only gains 1.42×.
+
 ### The flag that changes every number in this document
 
 Every benchmark here was, for months, measuring code compiled for size rather than speed — and not

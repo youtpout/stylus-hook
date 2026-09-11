@@ -36,6 +36,7 @@
 extern crate alloc;
 
 pub mod gaussian;
+pub mod montgomery;
 
 use alloc::vec::Vec;
 
@@ -80,6 +81,58 @@ impl PmAmmMath {
             i += U256::from(1);
         }
         acc
+    }
+
+    /// `n` modular multiplications in a ~254-bit prime field — BN254's scalar field, the one
+    /// Poseidon and every BN254 SNARK verifier work in.
+    ///
+    /// The EVM has `MULMOD` as one opcode at 8 gas. WASM has nothing of the sort, so this is
+    /// `ruint`'s `mul_mod`: a 512-bit product followed by a reduction. This is the dial that says
+    /// whether porting field arithmetic to Stylus is worth anything.
+    pub fn mulmod_loop(&self, n: U256, a: U256, b: U256, m: U256) -> U256 {
+        let mut acc = U256::ZERO;
+        let mut i = U256::ZERO;
+        while i < n {
+            acc = acc.wrapping_add(a).mul_mod(b, m);
+            i += U256::from(1);
+        }
+        acc
+    }
+
+    /// The same, in the 64-bit Goldilocks field `2^64 - 2^32 + 1` that Plonky2, Plonky3 and Risc0
+    /// verify over.
+    ///
+    /// A `u64` multiply is one WASM instruction and the product fits a `u128`, so the whole field
+    /// operation is native. Solidity cannot reach a 64-bit multiply at all.
+    pub fn goldilocks_loop(&self, n: U256, a: U256, b: U256) -> U256 {
+        const P: u64 = 0xFFFF_FFFF_0000_0001;
+        let mut acc = a.as_limbs()[0];
+        let bb = b.as_limbs()[0];
+        let mut i = U256::ZERO;
+        while i < n {
+            let x = ((acc as u128 + bb as u128) % P as u128) as u64;
+            acc = ((x as u128 * bb as u128) % P as u128) as u64;
+            i += U256::from(1);
+        }
+        U256::from(acc)
+    }
+
+    /// `n` Montgomery multiplications in BN254's scalar field — how a cryptography library actually
+    /// multiplies, with no division anywhere.
+    ///
+    /// Compared against Solidity's `MULMOD` opcode, this is the measurement that decides whether any
+    /// 256-bit prime field is worth porting: Poseidon over BN254, P-256 signature verification, a
+    /// SNARK verifier's field layer.
+    pub fn montmul_loop(&self, n: U256, a: U256, b: U256) -> U256 {
+        let aa = a.into_limbs();
+        let bb = b.into_limbs();
+        let mut acc = aa;
+        let mut i = U256::ZERO;
+        while i < n {
+            acc = montgomery::mont_mul(&acc, &bb);
+            i += U256::from(1);
+        }
+        U256::from_limbs(acc)
     }
 
     // --- the primitives, priced one at a time ---------------------------------------------------

@@ -59,6 +59,33 @@ contract PmAmmMath {
         }
     }
 
+    /// @notice `n` modular multiplications in a ~254-bit prime field — BN254's scalar field, the one
+    ///         Poseidon and every BN254 SNARK verifier work in.
+    /// @dev The EVM has `MULMOD` as a single opcode at 8 gas. There is no equivalent in WASM: a
+    ///      256-bit modular multiply there means a 512-bit product and a reduction, by hand. This is
+    ///      the dial that says whether porting field arithmetic to Stylus is worth anything.
+    function mulmodLoop(uint256 n, uint256 a, uint256 b, uint256 m) external pure returns (uint256 acc) {
+        unchecked {
+            for (uint256 i = 0; i < n; ++i) {
+                acc = mulmod(acc + a, b, m);
+            }
+        }
+    }
+
+    /// @notice The same, in the 64-bit Goldilocks field `2^64 - 2^32 + 1` that Plonky2, Plonky3 and
+    ///         Risc0 verify over.
+    /// @dev Here the EVM still pays for a 256-bit word it cannot use, and Solidity cannot reach a
+    ///      64-bit multiply at all — it has to widen. A `u64` is one WASM register.
+    function goldilocksLoop(uint256 n, uint256 a, uint256 b) external pure returns (uint256 acc) {
+        uint256 P = 0xFFFFFFFF00000001;
+        unchecked {
+            acc = a;
+            for (uint256 i = 0; i < n; ++i) {
+                acc = mulmod(acc + b, b, P);
+            }
+        }
+    }
+
     // --- the primitives, priced one at a time ---------------------------------------------------
 
     function expWad(int256 x) external pure returns (int256) {
