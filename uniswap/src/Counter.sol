@@ -12,8 +12,9 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 /// @title Counter
-/// @notice Pure-Solidity reference hook. `CounterProxy` is the equivalent whose state and logic
-///         live in an Arbitrum Stylus (Rust/WASM) contract, so the two can be gas-compared.
+/// @notice Pure-Solidity reference hook. `stylus/native-counter` is the equivalent whose state and
+///         logic live entirely in an Arbitrum Stylus (Rust/WASM) contract, so the two can be
+///         gas-compared.
 contract Counter is BaseHook {
     // NOTE: ---------------------------------------------------------
     // state variables should typically be unique to a pool

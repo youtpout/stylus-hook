@@ -19,15 +19,13 @@ import {V4PositionManagerDeployer} from "hookmate/artifacts/V4PositionManager.so
 import {V4RouterDeployer} from "hookmate/artifacts/V4Router.sol";
 
 import {Counter} from "../../src/Counter.sol";
-import {CounterProxy} from "../../src/CounterProxy.sol";
-import {ICounter} from "../../src/ICounter.sol";
 import {NativeHookFixture} from "./NativeHookFixture.sol";
 import {StylusDeployer} from "./vendor/StylusDeployer.sol";
 
-/// @notice The Solidity half of the counter benchmark: a v4 deployment, the pure-Solidity `Counter`
-///         and the `CounterProxy` that forwards to Stylus.
+/// @notice The Solidity half of the counter benchmark: a v4 deployment and the pure-Solidity
+///         `Counter` it compares against.
 ///
-/// The third variant — the hook that *is* a Stylus contract — cannot be deployed from here: it
+/// The other variant — the hook that *is* a Stylus contract — cannot be deployed from here: it
 /// needs a CREATE2 salt mined against its WASM init code, and forge cannot call it afterwards
 /// either. `bench-counter.bash` does that part.
 contract DeployCounterBenchScript is Script {
@@ -39,9 +37,8 @@ contract DeployCounterBenchScript is Script {
     IUniswapV4Router04 internal router;
 
     Counter internal solidityHook;
-    CounterProxy internal proxyHook;
 
-    function _deployCounterHooks(ICounter stylusCounter) private {
+    function _deployCounterHooks() private {
         uint160 flags = uint160(
             Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
                 | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
@@ -52,19 +49,9 @@ contract DeployCounterBenchScript is Script {
             HookMiner.find(create2Deployer, flags, type(Counter).creationCode, abi.encode(poolManager));
         solidityHook = new Counter{salt: soliditySalt}(poolManager);
         require(address(solidityHook) == solidityAddress, "solidity counter address mismatch");
-
-        (address proxyAddress, bytes32 proxySalt) = HookMiner.find(
-            create2Deployer, flags, type(CounterProxy).creationCode, abi.encode(poolManager, stylusCounter)
-        );
-        proxyHook = new CounterProxy{salt: proxySalt}(poolManager, stylusCounter);
-        require(address(proxyHook) == proxyAddress, "counter proxy address mismatch");
-        // `stylusCounter.setHook` is a plain transaction: forge cannot call a Stylus contract.
     }
 
     function run() public {
-        ICounter stylusCounter = ICounter(vm.envAddress("STYLUS_COUNTER"));
-        require(address(stylusCounter).code.length > 0, "STYLUS_COUNTER has no code");
-
         vm.startBroadcast();
 
         StylusDeployer stylusDeployer = new StylusDeployer();
@@ -76,7 +63,7 @@ contract DeployCounterBenchScript is Script {
         );
         router = IUniswapV4Router04(payable(V4RouterDeployer.deploy(address(poolManager), address(permit2))));
 
-        _deployCounterHooks(stylusCounter);
+        _deployCounterHooks();
 
         MockERC20 tokenA = new MockERC20("Bench A", "BA", 18);
         MockERC20 tokenB = new MockERC20("Bench B", "BB", 18);
@@ -98,7 +85,5 @@ contract DeployCounterBenchScript is Script {
         console.log("currency1        :", address(token1));
         console.log("fixture          :", address(fixture));
         console.log("Counter (sol)    :", address(solidityHook));
-        console.log("CounterProxy     :", address(proxyHook));
-        console.log("Stylus counter   :", address(stylusCounter));
     }
 }

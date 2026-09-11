@@ -235,63 +235,6 @@ impl V4Math {
         Ok((U160::from(sqrt_price), total_in, total_out, total_fee))
     }
 
-    /// Split an exact-input swap across `prices.len()` pools, by greedy marginal allocation.
-    ///
-    /// This is what a router does off-chain today, and the reason it is done off-chain is that
-    /// evaluating the alternatives costs more than the swap. Each round walks every pool once to
-    /// price one more chunk, and gives the chunk to whichever pool returns the most for it -- so the
-    /// cost is `rounds x pools` swap replays, which is the quantity this measures.
-    ///
-    /// Returns the total output and the amount allocated to each pool.
-    #[allow(clippy::too_many_arguments)]
-    pub fn route_exact_in(
-        &self,
-        start_prices: Vec<U160>,
-        liquidities: Vec<U128>,
-        tick_spacing: I24,
-        amount_in: U256,
-        fee_pips: U24,
-        rounds: U256,
-        max_steps: U256,
-    ) -> Result<(U256, Vec<U256>), Vec<u8>> {
-        let n = start_prices.len();
-        if n == 0 || liquidities.len() != n || rounds.is_zero() {
-            return Ok((U256::ZERO, Vec::new()));
-        }
-
-        let chunk = amount_in / rounds;
-        let mut allocated = alloc::vec![U256::ZERO; n];
-        let mut current_out = alloc::vec![U256::ZERO; n];
-
-        let mut r = U256::ZERO;
-        while r < rounds {
-            let (mut best_pool, mut best_gain, mut best_out) = (0usize, U256::ZERO, U256::ZERO);
-            for (p, allocation) in allocated.iter().enumerate() {
-                // Exact input is negative in v4's convention, and the limit is the far end of the
-                // range so only the amount binds.
-                let amount = -I256::try_from(*allocation + chunk).unwrap_or(I256::ZERO);
-                let (_, _, out, _) = self.walk_swap(
-                    start_prices[p],
-                    U160::from(tick_math::MIN_SQRT_PRICE + 1),
-                    tick_spacing,
-                    liquidities[p],
-                    amount,
-                    fee_pips,
-                    max_steps,
-                )?;
-                let gain = out.saturating_sub(current_out[p]);
-                if gain > best_gain {
-                    (best_pool, best_gain, best_out) = (p, gain, out);
-                }
-            }
-            allocated[best_pool] += chunk;
-            current_out[best_pool] = best_out;
-            r += U256::from(1);
-        }
-
-        Ok((current_out.iter().copied().sum(), allocated))
-    }
-
     // --- dials, to attribute the result to its parts --------------------------------------------
 
     /// `n` swap steps at a fixed price and target, so the loop overhead is the same on both sides.
@@ -425,49 +368,6 @@ mod tests {
             .unwrap();
         assert_eq!(amount_out, U256::from(1_000_000_000_000_000u64));
         assert!(out_price < price);
-    }
-
-    /// The same split `uniswap/test/V4MathBench.t.sol` asserts, computed there by v4-core's own
-    /// libraries. The greedy allocation is deterministic, so any disagreement between the two
-    /// routers shows up as a different split rather than as a rounding difference.
-    #[test]
-    fn the_route_matches_the_solidity_twin() {
-        let vm = TestVM::default();
-        let c = V4Math::from(&vm);
-        let eth = |n: u64| U256::from(n) * U256::from(1_000_000_000_000_000_000u64);
-
-        let prices = alloc::vec![
-            U160::from(d("79228162514264337593543950336")),
-            U160::from(d("79623317895830914510639640423")),
-            U160::from(d("78831026366734652303669917531")),
-        ];
-        let liquidities = alloc::vec![
-            U128::from(1_000u64) * U128::from(1_000_000_000_000_000_000u64),
-            U128::from(2_000u64) * U128::from(1_000_000_000_000_000_000u64),
-            U128::from(500u64) * U128::from(1_000_000_000_000_000_000u64),
-        ];
-
-        let (total, split) = c
-            .route_exact_in(
-                prices,
-                liquidities,
-                I24::unchecked_from(60),
-                eth(100),
-                U24::from(3000),
-                U256::from(8),
-                U256::from(8),
-            )
-            .unwrap();
-
-        assert_eq!(total, U256::from(87287557262511096767u128));
-        assert_eq!(
-            split,
-            alloc::vec![
-                eth(25),
-                eth(62) + eth(1) / U256::from(2),
-                eth(12) + eth(1) / U256::from(2)
-            ]
-        );
     }
 
     /// The step count has to be the only thing that changes, or the benchmark's dial is not a dial.

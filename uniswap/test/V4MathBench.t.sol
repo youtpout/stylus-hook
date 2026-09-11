@@ -61,26 +61,4 @@ contract V4MathBenchTest is Test {
         assertLt(outPrice, price, "exact output goes further for the same number");
     }
 
-    /// The greedy split across three pools of different depth and price. `stylus/native-v4-math`
-    /// asserts this same table; the allocation is deterministic, so any disagreement between the two
-    /// routers shows up as a different split rather than as a rounding difference.
-    function test_routeExactIn_splitsByDepth() public view {
-        uint160[] memory prices = new uint160[](3);
-        prices[0] = 79228162514264337593543950336; // 1:1
-        prices[1] = 79623317895830914510639640423; // 101:100
-        prices[2] = 78831026366734652303669917531; // 99:100
-
-        uint128[] memory liquidities = new uint128[](3);
-        liquidities[0] = 1000e18;
-        liquidities[1] = 2000e18;
-        liquidities[2] = 500e18;
-
-        (uint256 totalOut, uint256[] memory allocated) =
-            bench.routeExactIn(prices, liquidities, 60, 100e18, 3000, 8, 8);
-
-        assertEq(totalOut, 87287557262511096767, "total out");
-        assertEq(allocated[0], 25e18, "pool 0");
-        assertEq(allocated[1], 62.5e18, "pool 1 is deepest and takes the most");
-        assertEq(allocated[2], 12.5e18, "pool 2 is shallowest and takes the least");
-    }
 }

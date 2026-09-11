@@ -30,15 +30,7 @@ ok  beforeRemoveLiquidity reached the Rust hook
 ok  beforeDonate reverts with HookNotImplemented
 ```
 
-The repository also keeps the earlier **split design**, where a stateless Solidity shell owns the
-address and forwards callbacks to Stylus:
-
-| Piece | Language | Role |
-| --- | --- | --- |
-| `CounterProxy` | Solidity | CREATE2-mined address carrying the permission flags; forwards every callback |
-| `stylus/counter` | Rust → WASM | all of the hook's storage and logic |
-
-and the pure-Solidity equivalent `Counter.sol`, so the three approaches can be compared
+`Counter.sol` is the same hook written in pure Solidity, so the two can be compared
 behaviour-for-behaviour and gas-for-gas.
 
 ## Layout
@@ -57,7 +49,6 @@ stylus/           Cargo workspace of the Rust side
   native-compute/       arithmetic sweeps, for the crossover
   native-stableswap/    a StableSwap curve
   hook-miner/           mines the CREATE2 salt for a hook address
-  counter/              callback counters behind CounterProxy.sol
 ```
 
 ## Versions
@@ -114,13 +105,11 @@ runs both EVM bytecode and WASM — deploys both implementations, and reads `gas
 | --- | ---: | ---: |
 | none | 115,129 | — |
 | `Counter.sol`, one Solidity contract | 134,067 | +18,938 |
-| `CounterProxy.sol` → Stylus | 196,034 | +80,905 |
 | `native-counter`, no Solidity at all | 199,595 | +84,466 |
 
 Stylus costs 4.4× what Solidity does here, and that is the workload's fault rather than the port's:
 the hook writes a storage slot per callback and computes nothing, and Stylus makes compute cheap, not
-storage. It is also the comparison that justifies dropping the Solidity shell — worth about 3,400 gas
-once the program is cached, though the shell wins by 3,561 while it is not.
+storage. This is the floor, and it is here so the wins further down are read against it.
 
 `./bench-compute.bash` shows the other side of it, running the same arithmetic in both languages and
 sweeping how much of it there is. The interesting column is `mulDiv`, because that is what Uniswap's
@@ -259,24 +248,6 @@ cargo run -p stylus-hook-miner -- \
 
 It prints the mined address, the salt and the `cargo stylus deploy --deployer-salt ...` command to
 run. The address is fixed by the init code, so rebuilding the contract changes the salt.
-
-## Deploy the split design (Arbitrum Sepolia)
-
-Kept for comparison: a Solidity shell owns the mined address and forwards to Stylus. Uniswap v4 and
-Stylus are both live on Arbitrum Sepolia, so no local node is needed.
-
-```bash
-cd stylus
-cargo stylus deploy --contract stylus-counter-hook \
-  --endpoint https://sepolia-rollup.arbitrum.io/rpc --private-key $PRIVATE_KEY
-```
-
-Then mine the hook address, deploy the shell and bind it to the Stylus contract:
-
-```bash
-cd uniswap && STYLUS_COUNTER=0x... forge script script/02_DeployStylusCounterHook.s.sol \
-  --rpc-url arbitrum_sepolia --broadcast
-```
 
 ## Licensing
 

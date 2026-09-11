@@ -135,38 +135,6 @@ for n in 1 2 4 8 16 32 64; do
     "$(python3 -c "print(f'{($s-$s0)/($r-$r0):.2f}x' if $r>$r0 else 'n/a')")" "$((s - r))"
 done
 
-log "routing: how much search a swap's gas budget buys"
-# Splitting a swap across pools is computed off-chain today and handed to the chain on trust. Each
-# round of the greedy walks every pool once to price one more chunk, so the work is `rounds x pools`
-# replays -- and how many rounds you can afford is how good the split gets.
-#
-# 100 ETH across three pools at 1:1, 101:100 and 99:100 with depths 1000e18, 2000e18 and 500e18.
-# `maxSteps` is 16 because that is where the walks stop growing for this trade; capping lower
-# truncates them and measures a cheaper, wrong swap.
-P101=79623317895830914510639640423
-P99=78831026366734652303669917531
-PRICES="[$P11,$P101,$P99]"
-LIQ="[1000000000000000000000,2000000000000000000000,500000000000000000000]"
-AMT=100000000000000000000
-ROUTE='routeExactIn(uint160[],uint128[],int24,uint256,uint24,uint256,uint256)'
-ROUTE_OUT='routeExactIn(uint160[],uint128[],int24,uint256,uint24,uint256,uint256)(uint256,uint256[])'
-
-# What one pool alone returns, as the baseline the split has to beat.
-single=$(call "$SOL" "$ROUTE_OUT" "$PRICES" "$LIQ" 60 $AMT 3000 1 16 | awk '{print $1}')
-printf '%-22s %11s %11s %7s %11s %12s\n' "replays" solidity rust ratio "saving" "output gain"
-for n in 1 2 4 8 16; do
-  s=$(est "$SOL" "$ROUTE" "$PRICES" "$LIQ" 60 $AMT 3000 "$n" 16)
-  r=$(est "$RUST" "$ROUTE" "$PRICES" "$LIQ" 60 $AMT 3000 "$n" 16)
-  out=$(call "$RUST" "$ROUTE_OUT" "$PRICES" "$LIQ" 60 $AMT 3000 "$n" 16 | awk '{print $1}')
-  printf '%-22s %11s %11s %7s %11s %12s\n' "$((n * 3)) ($n x 3 pools)" "$s" "$r" \
-    "$(python3 -c "print(f'{$s/$r:.2f}x')")" "$((s - r))" \
-    "$(python3 -c "print('+%d bps' % (($out - $single) * 10000 // $single))")"
-done
-echo
-echo "  The gain dwarfs the gas on an L2 either way, so this is not about whether to search -- it is"
-echo "  about how deep. A swap with no hook costs about 115,000 gas; read both columns against that"
-echo "  to see how many rounds each language fits inside one swap's budget."
-
 log "the primitives, one at a time"
 SB=$(est "$SOL" 'baseline(uint256)' 0); RB=$(est "$RUST" 'baseline(uint256)' 0)
 printf '%-34s %12s %12s %8s\n' "" solidity rust ratio

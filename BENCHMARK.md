@@ -17,39 +17,30 @@ L2 execution gas the comparison is about.
 
 # What the hooks cost per swap
 
-## The counter, three ways
+## The counter: the floor
 
-`./bench-counter.bash` asks whether dropping the Solidity shell recovers what it costs. Same hook,
-three implementations, one swap per transaction. A swap hits this hook twice — `beforeSwap` and
-`afterSwap` — so every figure is two hook calls.
+`./bench-counter.bash` runs the same hook two ways, one swap per transaction. A swap hits this hook
+twice — `beforeSwap` and `afterSwap` — so every figure is two hook calls.
 
 | | gas per swap | hook costs |
 | --- | ---: | ---: |
 | no hook | 115,129 | — |
 | `Counter.sol`, one Solidity contract | 134,067 | +18,938 |
-| `CounterProxy.sol` → Stylus | 196,034 | +80,905 |
 | `native-counter`, no Solidity in the hook | 199,595 | +84,466 |
 
-**Uncached, going fully native costs 3,561 gas.** The shell wins, and the reason is compiled size:
-`ArbWasm` prices `programInitGas` off it, the native hook carries the whole `IHooks` router and the
-ABI decoders for `PoolKey` and `SwapParams`, and it is entered twice per swap.
+**The native hook costs 65,528 gas more per swap**, and that is the conclusion of this whole document
+stated at its worst: this hook writes a storage slot per callback and computes nothing, so there is
+nothing for Stylus to win back. Two things make up the gap — `ArbWasm` prices `programInitGas` off
+compiled size, and the hook carries the whole `IHooks` router and the ABI decoders for `PoolKey` and
+`SwapParams`:
 
 | | asm size | init gas, uncached / cached |
 | --- | ---: | ---: |
 | `native-counter` | 857,088 | 17,482 / 2,187 |
-| the contract behind `CounterProxy` | 676,864 | 13,259 / 1,462 |
 
-**Cached, the sign flips: native wins by 3,435.** Caching removes most of the init gas from both, and
-what is left is the shell's own overhead — an extra contract and an extra call. Since caching is a
-one-off bid and any hook with users would be cached, that is the figure that counts.
-
-So the shell is not pure overhead: it doubles as a calldata decoder, doing in the EVM — cheaply —
-what the native hook does in WASM. Removing it is still the right call, for one less contract and one
-less trust assumption, and on gas it is worth about 3,400 warm.
-
-Against pure Solidity the native hook costs 65,528 gas more per swap either way. That is the
-conclusion of this whole document in one line: this hook writes a storage slot per callback and
-computes nothing, so there is nothing for Stylus to win back.
+Caching removes most of that, and caching is what any hook with users would have: it is a one-off
+bid, and an uncached program pays the full WASM load on every call forever. Every figure below is
+read against this one.
 
 ## Where Rust starts winning
 
@@ -987,41 +978,6 @@ literal is a literal and there is no way to write this bug; in Rust a `U256` has
 something, and building it from text is both the most readable option and roughly a hundred times the
 cost of the arithmetic it feeds. This is the same class of trap as the `opt-level` one below: a
 default that silently costs about an order of magnitude on the only thing Stylus is bought for.
-
-### Routing: how much search a swap's gas budget buys
-
-`walkSwap` priced one replay. A router needs many: splitting a swap across pools means evaluating the
-alternatives, and each evaluation is a replay. `routeExactIn` does the greedy — each round prices one
-more chunk into every pool and gives it to whichever returns the most — so the work is
-`rounds × pools` replays.
-
-100 ETH across three pools at 1:1, 101:100 and 99:100, with depths 1000e18, 2000e18 and 500e18.
-`maxSteps` is 16, which is where the walks stop growing for this trade; capping lower truncates them
-and measures a cheaper, wrong swap.
-
-| replays | Solidity | Rust | ratio | output gain |
-| --- | ---: | ---: | ---: | ---: |
-| 3 (1 round) | 234,988 | 76,441 | 3.07× | +0 bps |
-| 6 (2 rounds) | 410,014 | 102,145 | 4.01× | +9 bps |
-| 12 (4 rounds) | 688,184 | 144,823 | 4.75× | +126 bps |
-| 24 (8 rounds) | 989,082 | 194,029 | 5.10× | **+155 bps** |
-| 48 (16 rounds) | 1,562,029 | 286,105 | 5.46× | +155 bps |
-
-The ratio climbs as the fixed cost of the call amortises, toward the 7.1× per-tick figure above.
-
-**What the output column is for.** Without it this table measures an expensive thing without checking
-the thing is worth doing. It is: the greedy converges at 8 rounds and takes the trade from 95.89 ETH
-out to 97.38 — **155 basis points**, about 1.5 ETH. At 10 ETH the gain is zero, because the best
-single pool is already optimal; at 1000 ETH it is 1,591 bps. Splitting pays on size and not
-otherwise, which is what a router should show.
-
-**And what it rules out.** 1.5 ETH dwarfs a megabyte of gas on an L2 in either language, so this is
-**not** a case where Solidity cannot do the thing — contrary to what I wrote in the script's first
-draft. Both columns are affordable in dollar terms for a trade this size. What the language changes
-is how deep a search fits in a sensible budget: a swap with no hook costs about 115,000 gas, so
-reaching the full +155 bps costs **8.6 swaps' worth in Solidity and 1.7 in Rust**. That is a 5×
-result on something already possible, not an impossible-to-possible one, and it belongs in a
-different category from the Keccak numbers below.
 
 ## The one Solidity cannot do at all: a post-quantum signature
 

@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Does dropping the Solidity shell actually recover the performance it costs?
+# What a hook with no Solidity in it costs, against the same hook in Solidity.
 #
 #   ./bench-counter.bash
 #
-# Runs the same counter hook three ways on a chain that can execute both EVM bytecode and WASM:
+# Runs the same counter hook two ways on a chain that can execute both EVM bytecode and WASM:
 #
-#   Counter.sol       one Solidity contract
-#   CounterProxy.sol  a Solidity shell forwarding to a Stylus contract
-#   native-counter    a Stylus contract that IS the hook, no Solidity anywhere
+#   Counter.sol     one Solidity contract
+#   native-counter  a Stylus contract that IS the hook, no Solidity anywhere
+#
+# A counter is the shape of hook Stylus is worst at -- it reads a number, adds to it and writes it
+# back, which is all storage and no arithmetic. That is the point: this is the floor.
 #
 # One swap per transaction, so the cost of each comes off the receipt.
 set -euo pipefail
@@ -46,14 +48,8 @@ CREATE2_DEPLOYER=$(cast send --rpc-url "$RPC" --private-key $KEY --create \
   0x604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3 \
   | awk '/^contractAddress/{print $2}')
 
-log "deploying the Stylus contract behind CounterProxy"
-STYLUS_COUNTER=$( (cd "$ROOT/stylus" && cargo stylus deploy --contract stylus-counter-hook --no-verify \
-  -e "$RPC" --private-key $KEY) 2>&1 | grep -aoE 'deployed code at address[^0]*0x[0-9a-fA-F]{40}' \
-  | grep -oE '0x[0-9a-fA-F]{40}' | tail -1)
-echo "stylus counter: $STYLUS_COUNTER"
-
-log "deploying v4 and the two Solidity-fronted hooks"
-(cd "$ROOT/uniswap" && CREATE2_DEPLOYER="$CREATE2_DEPLOYER" STYLUS_COUNTER="$STYLUS_COUNTER" \
+log "deploying v4 and the Solidity hook"
+(cd "$ROOT/uniswap" && CREATE2_DEPLOYER="$CREATE2_DEPLOYER" \
   forge script script/bench/DeployCounterBench.s.sol:DeployCounterBenchScript \
     --rpc-url "$RPC" --private-key $KEY --create2-deployer "$CREATE2_DEPLOYER" \
     --gas-estimate-multiplier 200 --broadcast --slow) >"$WORK/deploy.log" 2>&1 \
@@ -71,10 +67,7 @@ CURRENCY0=$(addr_of "currency0")
 CURRENCY1=$(addr_of "currency1")
 FIXTURE=$(addr_of "fixture")
 SOLIDITY_HOOK=$(addr_of "Counter (sol)")
-PROXY_HOOK=$(addr_of "CounterProxy")
 grep -E "^  [a-zA-Z].*0x" "$WORK/deploy.log" | sed 's/^  //'
-
-cast send "$STYLUS_COUNTER" "setHook(address)" "$PROXY_HOOK" --rpc-url "$RPC" --private-key $KEY >/dev/null
 
 log "mining and deploying the hook that has no Solidity at all"
 (cd "$ROOT/stylus" && cargo stylus get-initcode --contract stylus-native-counter) 2>/dev/null \
@@ -95,9 +88,6 @@ echo "native hook: $NATIVE_HOOK"
 
 read -r NATIVE_INIT NATIVE_INIT_CACHED <<<"$(cast call $ARB_WASM 'programInitGas(address)(uint64,uint64)' \
   "$NATIVE_HOOK" --rpc-url "$RPC" | awk '{print $1}' | tr '\n' ' ')"
-read -r PROXIED_INIT PROXIED_INIT_CACHED <<<"$(cast call $ARB_WASM 'programInitGas(address)(uint64,uint64)' \
-  "$STYLUS_COUNTER" --rpc-url "$RPC" | awk '{print $1}' | tr '\n' ' ')"
-
 log "opening one pool per variant"
 open_pool() {
   cast send "$FIXTURE" "open(address,address,address,uint128)" \
@@ -106,16 +96,15 @@ open_pool() {
 }
 G_NONE=$(open_pool 0x0000000000000000000000000000000000000000)
 G_SOL=$(open_pool "$SOLIDITY_HOOK")
-G_PROXY=$(open_pool "$PROXY_HOOK")
 G_NATIVE=$(open_pool "$NATIVE_HOOK")
-printf 'add liquidity: none=%s solidity=%s split=%s native=%s\n' "$G_NONE" "$G_SOL" "$G_PROXY" "$G_NATIVE"
+printf 'add liquidity: none=%s solidity=%s native=%s\n' "$G_NONE" "$G_SOL" "$G_NATIVE"
 
 log "swapping ($ROUNDS rounds; the first is cold)"
-printf '%-8s %12s %12s %12s %12s\n' round "no hook" "solidity" "split" "native"
+printf '%-8s %12s %12s %12s\n' round "no hook" "solidity" "native"
 declare -a LAST
 for round in $(seq 1 "$ROUNDS"); do
   row=""
-  for i in 0 1 2 3; do
+  for i in 0 1 2; do
     g=$(cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$i" "$SWAP_AMOUNT" true \
       --rpc-url "$RPC" --private-key $KEY | awk '/^gasUsed/{print $2}')
     LAST[$i]=$g
@@ -125,22 +114,16 @@ for round in $(seq 1 "$ROUNDS"); do
 done
 
 log "results (warm, gas per swap — two hook calls each: beforeSwap and afterSwap)"
-base=${LAST[0]}; sol=${LAST[1]}; split=${LAST[2]}; native=${LAST[3]}
+base=${LAST[0]}; sol=${LAST[1]}; native=${LAST[2]}
 printf 'baseline swap, no hook                  %10s\n' "$base"
 printf 'Counter.sol, one Solidity contract      %10s  (+%s)\n' "$sol" "$((sol - base))"
-printf 'CounterProxy.sol -> Stylus              %10s  (+%s)\n' "$split" "$((split - base))"
 printf 'native-counter, no Solidity at all      %10s  (+%s)\n' "$native" "$((native - base))"
-echo
-printf 'dropping the Solidity shell saves       %10s\n' "$((split - native))"
 echo
 printf 'per-call Stylus program init, uncached / cached\n'
 printf '  native-counter  (%s bytes of asm)  %10s / %s\n' \
   "$(cast call $ARB_WASM 'codehashAsmSize(bytes32)(uint32)' "$(cast codehash "$NATIVE_HOOK" --rpc-url "$RPC")" --rpc-url "$RPC" | awk '{print $1}')" \
   "$NATIVE_INIT" "$NATIVE_INIT_CACHED"
-printf '  behind CounterProxy (%s bytes)     %10s / %s\n' \
-  "$(cast call $ARB_WASM 'codehashAsmSize(bytes32)(uint32)' "$(cast codehash "$STYLUS_COUNTER" --rpc-url "$RPC")" --rpc-url "$RPC" | awk '{print $1}')" \
-  "$PROXIED_INIT" "$PROXIED_INIT_CACHED"
-printf 'native still costs, over Solidity       %10s\n' "$((native - sol))"
+printf 'native costs, over Solidity             %10s\n' "$((native - sol))"
 printf '  Stylus program init, uncached         %10s\n' "$NATIVE_INIT"
 printf '  the same if the contract is cached    %10s\n' "$NATIVE_INIT_CACHED"
 printf 'projected native cost when cached       %10s  (+%s)\n' \
