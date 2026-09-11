@@ -988,6 +988,41 @@ something, and building it from text is both the most readable option and roughl
 cost of the arithmetic it feeds. This is the same class of trap as the `opt-level` one below: a
 default that silently costs about an order of magnitude on the only thing Stylus is bought for.
 
+### Routing: how much search a swap's gas budget buys
+
+`walkSwap` priced one replay. A router needs many: splitting a swap across pools means evaluating the
+alternatives, and each evaluation is a replay. `routeExactIn` does the greedy — each round prices one
+more chunk into every pool and gives it to whichever returns the most — so the work is
+`rounds × pools` replays.
+
+100 ETH across three pools at 1:1, 101:100 and 99:100, with depths 1000e18, 2000e18 and 500e18.
+`maxSteps` is 16, which is where the walks stop growing for this trade; capping lower truncates them
+and measures a cheaper, wrong swap.
+
+| replays | Solidity | Rust | ratio | output gain |
+| --- | ---: | ---: | ---: | ---: |
+| 3 (1 round) | 234,988 | 76,441 | 3.07× | +0 bps |
+| 6 (2 rounds) | 410,014 | 102,145 | 4.01× | +9 bps |
+| 12 (4 rounds) | 688,184 | 144,823 | 4.75× | +126 bps |
+| 24 (8 rounds) | 989,082 | 194,029 | 5.10× | **+155 bps** |
+| 48 (16 rounds) | 1,562,029 | 286,105 | 5.46× | +155 bps |
+
+The ratio climbs as the fixed cost of the call amortises, toward the 7.1× per-tick figure above.
+
+**What the output column is for.** Without it this table measures an expensive thing without checking
+the thing is worth doing. It is: the greedy converges at 8 rounds and takes the trade from 95.89 ETH
+out to 97.38 — **155 basis points**, about 1.5 ETH. At 10 ETH the gain is zero, because the best
+single pool is already optimal; at 1000 ETH it is 1,591 bps. Splitting pays on size and not
+otherwise, which is what a router should show.
+
+**And what it rules out.** 1.5 ETH dwarfs a megabyte of gas on an L2 in either language, so this is
+**not** a case where Solidity cannot do the thing — contrary to what I wrote in the script's first
+draft. Both columns are affordable in dollar terms for a trade this size. What the language changes
+is how deep a search fits in a sensible budget: a swap with no hook costs about 115,000 gas, so
+reaching the full +155 bps costs **8.6 swaps' worth in Solidity and 1.7 in Rust**. That is a 5×
+result on something already possible, not an impossible-to-possible one, and it belongs in a
+different category from the Keccak numbers below.
+
 ## The one Solidity cannot do at all: a post-quantum signature
 
 Every measurement above asks how much cheaper Stylus is. This one asks whether Solidity can do the
