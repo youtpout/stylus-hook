@@ -262,16 +262,24 @@ Solidity hooks hold the pool manager in an `immutable`, which costs nothing to r
 has no equivalent, so a constructor argument can only go to storage and every callback pays a cold
 `SLOAD` — 2,100 gas — purely to check that its caller is the pool manager.
 
-There is a way out. A Rust `const` lives in the WASM code and costs nothing to read, and
-[`stylus/native-stableswap/build.rs`](stylus/native-stableswap/build.rs) bakes the address in from
-`$POOL_MANAGER` at build time:
+There is a way out, and all four Rust hooks here now take it. A Rust `const` lives in the WASM code
+and costs nothing to read, and each hook's `build.rs` bakes the address in from `$POOL_MANAGER` at
+build time:
 
 ```bash
 POOL_MANAGER=0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32 cargo stylus deploy ...
 ```
 
-Measured, the hook goes from 176,519 gas per swap to **174,417** — 2,102 saved, which is the cold
-`SLOAD` to the byte.
+Measured on StableSwap, the hook goes from 176,519 gas per swap to **174,417** — 2,102 saved, which
+is the cold `SLOAD` to the byte. On the counter, which gets two callbacks per swap and so paid a cold
+`SLOAD` and a warm one, 202,163 to **199,595** — 2,568.
+
+Two things a storage slot cannot match. A `static` is not an alternative: it compiles, and a Stylus
+program is instantiated per call, so anything written to one is silently gone by the next call —
+measured, writing 42 and reading back the initial 777. And the constant cannot be changed after
+deployment at all, because it is part of the code whose hash the mined CREATE2 address commits to; a
+different pool manager is a different hook address. Solidity's `immutable` is only guaranteed by the
+deploy transaction.
 
 A constant has a failure mode a storage slot does not: build against the wrong `$POOL_MANAGER` and
 you get a hook that compiles, deploys, mines a valid address and then silently rejects every call

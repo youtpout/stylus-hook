@@ -15,11 +15,16 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use alloy_primitives::{Address, FixedBytes, U256};
+use alloy_sol_types::{sol, SolError};
 use stylus_sdk::{
     abi::Bytes,
     prelude::*,
-    storage::{StorageAddress, StorageMap, StorageU256},
+    storage::{StorageMap, StorageU256},
 };
+// The pool manager, fixed at build time. Solidity holds it in an `immutable`, which costs nothing
+// to read; the Stylus SDK has no equivalent, so a constructor argument could only go to storage and
+// every callback would pay a cold SLOAD — 2,100 gas — just to check its caller. A `const` lives in
+// the WASM and is free. See `build.rs`.
 use stylus_uniswap_v4::{
     guarded_hooks,
     hooks::{selector, HookConfig, HookGuards, IHooks},
@@ -27,10 +32,17 @@ use stylus_uniswap_v4::{
     Permissions, ZERO_DELTA,
 };
 
+include!(concat!(env!("OUT_DIR"), "/pool_manager.rs"));
+
+sol! {
+    /// The address baked in at build time is not the one this deployment was given.
+    #[derive(Debug)]
+    error PoolManagerMismatch(address baked, address given);
+}
+
 #[storage]
 #[entrypoint]
 pub struct Counter {
-    pool_manager: StorageAddress,
     before_swap_count: StorageMap<FixedBytes<32>, StorageU256>,
     after_swap_count: StorageMap<FixedBytes<32>, StorageU256>,
     before_add_liquidity_count: StorageMap<FixedBytes<32>, StorageU256>,
@@ -39,7 +51,7 @@ pub struct Counter {
 
 impl HookConfig for Counter {
     fn pool_manager(&self) -> Address {
-        self.pool_manager.get()
+        POOL_MANAGER
     }
 
     fn permissions(&self) -> Permissions {
@@ -59,12 +71,18 @@ impl Counter {
     /// through a CREATE2 salt mined by `stylus/hook-miner`.
     #[constructor]
     pub fn constructor(&mut self, pool_manager: Address) -> Result<(), Vec<u8>> {
-        self.pool_manager.set(pool_manager);
+        if pool_manager != POOL_MANAGER {
+            return Err(PoolManagerMismatch {
+                baked: POOL_MANAGER,
+                given: pool_manager,
+            }
+            .abi_encode());
+        }
         HookGuards::validate_hook_address(self)
     }
 
     pub fn pool_manager(&self) -> Address {
-        self.pool_manager.get()
+        POOL_MANAGER
     }
 
     /// The low 14 bits this contract's address must carry for v4 to invoke the right callbacks.
@@ -153,8 +171,6 @@ mod tests {
     use alloy_primitives::{I256, U256 as Uint};
     use stylus_sdk::testing::*;
     use stylus_uniswap_v4::types::{I24, U160};
-
-    const POOL_MANAGER: Address = Address::new([0x4e; 20]);
 
     /// An address whose low 14 bits are 0x0ac0 — beforeSwap | afterSwap | beforeAddLiquidity |
     /// beforeRemoveLiquidity, exactly what this hook declares.

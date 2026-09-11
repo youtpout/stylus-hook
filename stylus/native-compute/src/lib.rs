@@ -14,11 +14,16 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use alloy_primitives::{aliases::U64, Address, FixedBytes, U256};
+use alloy_sol_types::{sol, SolError};
 use stylus_sdk::{
     abi::Bytes,
     prelude::*,
-    storage::{StorageAddress, StorageMap, StorageU256, StorageU64, StorageU8},
+    storage::{StorageMap, StorageU256, StorageU64, StorageU8},
 };
+// The pool manager, fixed at build time. Solidity holds it in an `immutable`, which costs nothing
+// to read; the Stylus SDK has no equivalent, so a constructor argument could only go to storage and
+// every callback would pay a cold SLOAD — 2,100 gas — just to check its caller. A `const` lives in
+// the WASM and is free. See `build.rs`.
 use stylus_uniswap_v4::{
     guarded_hooks,
     hooks::{selector, HookConfig, HookGuards, IHooks},
@@ -26,10 +31,17 @@ use stylus_uniswap_v4::{
     Permissions, ZERO_DELTA,
 };
 
+include!(concat!(env!("OUT_DIR"), "/pool_manager.rs"));
+
+sol! {
+    /// The address baked in at build time is not the one this deployment was given.
+    #[derive(Debug)]
+    error PoolManagerMismatch(address baked, address given);
+}
+
 #[storage]
 #[entrypoint]
 pub struct ComputeHook {
-    pool_manager: StorageAddress,
     rounds: StorageU256,
     last_result: StorageU64,
     /// 0 xorshift64, 1 `mulDiv`, 2 storage writes, 3 `rpow`, 4 integer `sqrt`.
@@ -56,7 +68,7 @@ fn mul_div(a: U256, b: U256, d: U256) -> U256 {
 
 impl HookConfig for ComputeHook {
     fn pool_manager(&self) -> Address {
-        self.pool_manager.get()
+        POOL_MANAGER
     }
 
     fn permissions(&self) -> Permissions {
@@ -69,12 +81,18 @@ impl HookConfig for ComputeHook {
 impl ComputeHook {
     #[constructor]
     pub fn constructor(&mut self, pool_manager: Address) -> Result<(), Vec<u8>> {
-        self.pool_manager.set(pool_manager);
+        if pool_manager != POOL_MANAGER {
+            return Err(PoolManagerMismatch {
+                baked: POOL_MANAGER,
+                given: pool_manager,
+            }
+            .abi_encode());
+        }
         HookGuards::validate_hook_address(self)
     }
 
     pub fn pool_manager(&self) -> Address {
-        self.pool_manager.get()
+        POOL_MANAGER
     }
 
     pub fn rounds(&self) -> U256 {
@@ -273,7 +291,7 @@ mod tests {
         let vm = TestVM::default();
         vm.set_contract_address(HOOK);
         let mut contract = ComputeHook::from(&vm);
-        contract.constructor(Address::new([0x4e; 20])).unwrap();
+        contract.constructor(POOL_MANAGER).unwrap();
 
         // zero rounds leaves the seed untouched
         assert_eq!(contract.work(U256::ZERO), 0x9E37_79B9_7F4A_7C15);
@@ -288,7 +306,7 @@ mod tests {
         let vm = TestVM::default();
         vm.set_contract_address(HOOK);
         let mut contract = ComputeHook::from(&vm);
-        contract.constructor(Address::new([0x4e; 20])).unwrap();
+        contract.constructor(POOL_MANAGER).unwrap();
 
         let expect = |hex: &str| U256::from_str_radix(hex, 16).unwrap();
         assert_eq!(
@@ -310,7 +328,7 @@ mod tests {
         let vm = TestVM::default();
         vm.set_contract_address(HOOK);
         let mut contract = ComputeHook::from(&vm);
-        contract.constructor(Address::new([0x4e; 20])).unwrap();
+        contract.constructor(POOL_MANAGER).unwrap();
 
         let d = |s: &str| U256::from_str_radix(s, 10).unwrap();
         assert_eq!(
@@ -332,7 +350,7 @@ mod tests {
         let vm = TestVM::default();
         vm.set_contract_address(HOOK);
         let mut contract = ComputeHook::from(&vm);
-        contract.constructor(Address::new([0x4e; 20])).unwrap();
+        contract.constructor(POOL_MANAGER).unwrap();
 
         let d = |s: &str| U256::from_str_radix(s, 10).unwrap();
         assert_eq!(contract.work_sqrt(U256::ZERO), U256::ZERO);
@@ -351,7 +369,7 @@ mod tests {
         let vm = TestVM::default();
         vm.set_contract_address(HOOK);
         let mut contract = ComputeHook::from(&vm);
-        contract.constructor(Address::new([0x4e; 20])).unwrap();
+        contract.constructor(POOL_MANAGER).unwrap();
         assert_eq!(
             HookConfig::permissions(&contract).flags(),
             stylus_uniswap_v4::permissions::BEFORE_SWAP_FLAG

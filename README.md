@@ -11,6 +11,9 @@ what used to force a Solidity contract into every Stylus hook.
 built on it with no Solidity anywhere, and [`stylus/hook-miner`](stylus/hook-miner) mines the
 CREATE2 salt that lands it on a flag-carrying address.
 
+📖 **[Writing a hook](stylus/base-hook/README.md)** — five steps, with the counter as the worked
+example.
+
 `./prove-native-hook.bash` is the receipt: it stands up a chain, mines the address, deploys the Rust
 hook to it and has a real `PoolManager` drive every callback the hook declares.
 
@@ -169,9 +172,7 @@ storage-bound ones.
 
 `BaseHook.sol` is an abstract contract, so its `onlyPoolManager` guard cannot be forgotten. Rust has
 no abstract types, so [`#[guarded_hooks]`](stylus/base-hook-macros/src/lib.rs) does the same job with
-a procedural macro: it inserts the guards into the callbacks a hook writes, and costs nothing —
-the four hooks here came out within 90 bytes of their hand-guarded size, three of them smaller.
-[Writing a hook](stylus/base-hook/README.md) is the guide.
+a procedural macro: it inserts the guards into the callbacks a hook writes, and costs nothing.
 
 The catch is that most hooks barely compute. A cached Stylus hook carries about 7,900 gas per call,
 so it needs roughly 12,000 gas of Solidity arithmetic to break even — 11 `rpow` calls, or 45

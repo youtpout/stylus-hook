@@ -58,6 +58,11 @@ log "deploying v4 and the Solidity compute hook"
 addr_of() { grep -m1 "^  $1" "$WORK/deploy.log" | grep -oE '0x[0-9a-fA-F]{40}' || true; }
 STYLUS_DEPLOYER=$(addr_of "stylusDeployer")
 POOL_MANAGER=$(addr_of "poolManager")
+# The Rust hook holds the pool manager as a build-time constant rather than in storage, so it costs
+# nothing to read on every callback. Its constructor still takes the address, purely to check it
+# against what was compiled in — a wrong $POOL_MANAGER then fails the deployment instead of
+# producing a hook that silently rejects every call. See stylus/native-counter/build.rs.
+export POOL_MANAGER="$POOL_MANAGER"
 CURRENCY0=$(addr_of "currency0")
 CURRENCY1=$(addr_of "currency1")
 FIXTURE=$(addr_of "fixture")

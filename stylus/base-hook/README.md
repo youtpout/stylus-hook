@@ -11,10 +11,21 @@ out of a hook's address, and the ten `IHooks` callbacks — with no Solidity any
 #[storage]
 #[entrypoint]
 pub struct Counter {
-    pool_manager: StorageAddress,
     before_swap_count: StorageMap<FixedBytes<32>, StorageU256>,
 }
 ```
+
+No field for the pool manager. Solidity keeps it in an `immutable`, which is free to read; Stylus has
+no equivalent, so a constructor argument could only go to storage and **every callback would pay a
+cold `SLOAD` — 2,100 gas — just to check its caller.** Copy
+[`build.rs`](../native-counter/build.rs) instead: it turns `$POOL_MANAGER` into a `const` that lives
+in the WASM and costs nothing.
+
+```rust
+include!(concat!(env!("OUT_DIR"), "/pool_manager.rs"));   // gives you POOL_MANAGER
+```
+
+Measured on this hook, that is 2,568 gas off every swap.
 
 ## 2. Declare the pool manager and the callbacks
 
@@ -24,7 +35,7 @@ bits of the hook's address and will never call one the address does not advertis
 ```rust
 impl HookConfig for Counter {
     fn pool_manager(&self) -> Address {
-        self.pool_manager.get()
+        POOL_MANAGER
     }
 
     fn permissions(&self) -> Permissions {
@@ -33,11 +44,16 @@ impl HookConfig for Counter {
 }
 ```
 
-## 3. Check the address in the constructor
+## 3. Check both addresses in the constructor
 
-`validate_hook_address` fails unless the deployed address carries exactly those flags. That is what
-makes a hook undeployable by a plain `cargo stylus deploy` — the address has to be mined first, which
-[step 5](#5-deploy-at-a-mined-address) covers.
+`validate_hook_address` fails unless the deployed address carries exactly the declared flags — which
+is why a plain `cargo stylus deploy` cannot deploy a hook, and [step 5](#5-deploy-at-a-mined-address)
+mines one first.
+
+The constructor also takes the pool manager, purely to compare it with the constant. Build against
+the wrong `$POOL_MANAGER` and you would otherwise get a hook that compiles, deploys, mines a valid
+address and then silently rejects every call v4 makes. Comparing costs 239 gas per swap, against 2,568
+saved.
 
 ```rust
 #[public]
@@ -45,11 +61,17 @@ makes a hook undeployable by a plain `cargo stylus deploy` — the address has t
 impl Counter {
     #[constructor]
     pub fn constructor(&mut self, pool_manager: Address) -> Result<(), Vec<u8>> {
-        self.pool_manager.set(pool_manager);
+        if pool_manager != POOL_MANAGER {
+            return Err(PoolManagerMismatch { baked: POOL_MANAGER, given: pool_manager }.abi_encode());
+        }
         HookGuards::validate_hook_address(self)
     }
 }
 ```
+
+Nothing can change the pool manager afterwards, and the guarantee is stronger than Solidity's
+`immutable`: the constant is part of the code, the code's hash is what the mined CREATE2 address
+commits to, so a different pool manager is a different hook address.
 
 ## 4. Implement the callbacks
 
@@ -86,15 +108,16 @@ impl IHooks for Counter {
 ## 5. Deploy at a mined address
 
 ```bash
+export POOL_MANAGER=0xYourPoolManager        # baked in at build time, so set it first
 cargo stylus get-initcode --contract stylus-native-counter | tail -1 > initcode.hex
 cargo run -p stylus-hook-miner -- \
   --initcode-file initcode.hex \
   --permissions before-swap,after-swap \
   --constructor-signature 'constructor(address pool_manager)' \
-  --constructor-args 0xYourPoolManager
+  --constructor-args $POOL_MANAGER
 # then deploy with the salt it prints
 cargo stylus deploy --contract stylus-native-counter --deployer-salt 0x… \
-  --constructor-args 0xYourPoolManager
+  --constructor-args $POOL_MANAGER
 ```
 
 A contract too large for one code fragment cannot use `get-initcode`; see `deploy_fragmented_hook` in
@@ -111,5 +134,6 @@ and the rest; [`native-twamm`](../native-twamm/src/lib.rs) uses them for real.
 Two, both in this repository's `Cargo.toml` and `Stylus.toml` files, and both worth copying:
 
 - `opt-level = 3` — the default `"s"` compiles for size and costs roughly 2× the gas.
+- `build.rs` for the pool manager, as above — 2,568 gas per swap.
 - `--llvm-memory-copy-fill-lowering` in the wasm-opt flags — without it, `opt-level` 2 or 3 emits a
   section ArbOS refuses to activate, and the failure only appears at deployment.
