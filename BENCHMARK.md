@@ -668,49 +668,57 @@ honest floor, and `./bench-pmamm.bash` measures it: `uniswap/src/PmAmmMath.sol` 
 Solmate's `expWad` included — and both test suites pin the same table of values, so the two agree to
 the wei on chain before anything is timed.
 
-**It loses.** Rust program cached, gas net of call overhead:
+**It wins, but only once the contract is compiled for speed — and getting there took a flag.**
 
-| | Solidity | Rust | ratio |
-| --- | ---: | ---: | ---: |
-| `expWad` | 451 | 2,569 | **0.18×** |
-| `pdf` | 1,273 | 2,748 | **0.46×** |
-| `erfc` | 4,367 | 4,082 | 1.07× |
-| `cdf` | 5,137 | 3,828 | 1.34× |
-| Newton solve, 8 iterations | 62,426 | 55,031 | **1.13×** |
+The first measurement said it lost, at `opt-level = "s"`. Trying `2` or `3` instead produced a wasm
+ArbOS flatly refuses to activate: *"unsupported section type DataCountSection"*. rustc emits
+`memory.copy` at the speed levels, that brings a `DataCount` section, and the ArbOS prover does not
+support it. **So a Stylus contract is capped at `"s"` or `"z"` by default — compiled for size, on a
+platform that charges for execution.** Adding `--llvm-memory-copy-fill-lowering` to the wasm-opt
+flags lowers those bulk-memory ops back to loops, drops the section, and unlocks the speed levels for
+about 200 extra bytes.
 
-A solve saves 7,395 gas against the 7,916 a cached Stylus hook carries: **521 gas short of break
-even.** Not close enough to argue about, and it is the most arithmetic-heavy workload any v4 hook
-has been written around.
+What that is worth, on this contract, cached and net of call overhead:
 
-#### Why — and this is the finding worth keeping
+| | Solidity | Rust `"s"` | Rust `3` | ratio at `3` |
+| --- | ---: | ---: | ---: | ---: |
+| `expWad` | 451 | 2,569 | 1,246 | 0.36× |
+| `pdf` | 1,273 | 2,748 | — | — |
+| `erfc` | 4,367 | 4,082 | — | — |
+| `cdf` | 5,137 | 3,828 | **2,082** | **2.47×** |
+| Newton solve, 8 iterations | 62,426 | 55,031 | **28,838** | **2.17×** |
+
+Bit-exactness survives the change: the two implementations still agree to the wei on 32 values and
+four solves, checked on chain at `opt-level = 3`.
+
+So a pm-AMM solve saves **33,588 gas**, against the 7,916 a cached Stylus hook carries — **+25,672
+gas per swap in Rust's favour**, and paid on every swap rather than only when intervals are crossed.
+That is the first hook workload in this document that clears the bar for a reason that survives
+scrutiny.
+
+`expWad` still loses, and that is the interesting residue: it converts into a 2^96 basis on purpose,
+for precision, so every multiply and shift in it is full-width, and full-width 256-bit arithmetic is
+where the EVM's single opcodes are hardest to beat.
+
+#### How much operand width matters
 
 The same expression, 100 times, with nothing changed but how wide the operands are:
 
-| 100 × `a*b/c` | Solidity | Rust | ratio |
-| --- | ---: | ---: | ---: |
-| operands ~2^32 (one limb) | 9,599 | 6,925 | 1.39× |
-| operands ~2^96 (two limbs) | 9,599 | 7,452 | 1.29× |
-| operands ~2^128 (four limbs) | 9,599 | 8,910 | **1.08×** |
+| 100 × `a*b/c` | Solidity | Rust `"s"` | Rust `3` | ratio at `3` |
+| --- | ---: | ---: | ---: | ---: |
+| operands ~2^32 (one limb) | 7,297 | 6,925 | 2,764 | 2.64× |
+| operands ~2^96 (two limbs) | 7,824 | 7,452 | 3,293 | 2.38× |
+| operands ~2^128 (four limbs) | 9,282 | 8,910 | 4,754 | 1.95× |
 
-**The EVM charges 5 gas for `MUL` and 5 for `DIV` whatever the operands are. A `U256` in WASM is four
-64-bit limbs, and `ruint` only pays for the ones that are non-zero.** So Stylus's arithmetic
-advantage is not a property of arithmetic — it is a property of operand width, and it disappears
-exactly where a 256-bit word is actually full.
+A `U256` in WASM is four 64-bit limbs and `ruint` only pays for the ones that are non-zero, so Rust's
+advantage narrows as the words fill up — 2.64× down to 1.95×. It does not disappear, which is what
+the `"s"` numbers had suggested. The Solidity column is not flat either, by about 27 % across the
+same range, and I have no verified explanation for that; `MUL` and `DIV` are fixed-price opcodes and
+the calldata cancels out of the differences. It is measured, repeatable, and unexplained.
 
-That retrospectively explains every number in this document:
-
-- xorshift64 won **10.6×** because it is 64-bit. One limb.
-- the TWAMM closed form won **5.9×** because it works in 1e18 scale — two limbs at most — and much of
-  its cost is loop control rather than wide multiplies.
-- `sqrt` won **4.5×** for the same reason, plus a hand-written Newton loop against a library call.
-- and `expWad` *loses* **5.7×** because it converts into a 2^96 basis on purpose, for precision, so
-  every single multiply and shift in it is full-width. Precision in fixed point means wide words, and
-  wide words are where the EVM's flat pricing wins.
-
-The rule, then: **Stylus beats Solidity on narrow-word arithmetic, 64-bit work and control flow, and
-loses on wide 256-bit arithmetic.** A v4 hook, which lives in Q96 and WAD fixed point because that is
-what v4 hands it, is close to the worst case. The `a*b/c` row in the table above was measured with
-narrow operands and should not have been read as a general result.
+The useful version of the rule is therefore weaker than "Stylus loses on wide arithmetic": **Stylus
+wins on this arithmetic at every width, by less as the words fill up, and only if the contract is
+compiled for speed — which takes a wasm-opt flag nothing warns you about.**
 
 ### Against the TWAMM that is actually in production
 

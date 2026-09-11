@@ -23,3 +23,8 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"
+
+# Compiled for speed, not size, which on Stylus takes a wasm-opt flag to be activatable at all —
+# see native-gaussian/Stylus.toml. Worth 2x the gas on this contract.
+[profile.release.package.stylus-native-gaussian]
+opt-level = 3

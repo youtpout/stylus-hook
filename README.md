@@ -149,11 +149,19 @@ where theirs settles per interval, and mine is the less finished of the two. `BE
 in more detail.
 
 The pm-AMM was the next candidate, and the one whose arithmetic genuinely cannot be removed — its
-invariant is transcendental, so every swap must run a Gaussian solve. It loses too, by 521 gas, and
-finding out why produced the one rule worth taking away: **the EVM charges 5 gas for `MUL` whatever
-the operands are, while a `U256` in WASM is four limbs and `ruint` only pays for the non-zero ones.**
-Stylus wins on narrow words, 64-bit work and control flow; it loses on full-width 256-bit
-arithmetic. A hook lives in Q96 and WAD fixed point, which is close to the worst case.
+invariant is transcendental, so every swap must run a Gaussian solve.
+[`stylus/native-gaussian`](stylus/native-gaussian/src/gaussian.rs) is a bit-exact port of
+`primitivefinance/solstat`, agreeing with it to the wei on chain. A Newton solve:
+
+| | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| Gaussian CDF | 5,137 | **2,082** | 2.47× |
+| solve, 8 iterations | 62,426 | **28,838** | 2.17× |
+
+**+25,672 gas per swap in Rust's favour**, on every swap. Getting there needed a wasm-opt flag:
+without `--llvm-memory-copy-fill-lowering`, rustc's `opt-level = 2` and `3` emit a `DataCount`
+section ArbOS refuses to activate, so a Stylus contract is capped at `"s"` — compiled for size, on a
+platform that charges for execution. That flag is worth 2× the gas here, and nothing warns you.
 
 The catch is that most hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
 gas of Solidity arithmetic to be worth it, and nothing shipping gets close: OpenZeppelin's

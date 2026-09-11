@@ -18,6 +18,12 @@
 # solves it by 100-step bisection, which is 200 Gaussian evaluations per swap. This measures the
 # honest floor instead: the same solve by Newton.
 #
+# One thing to know before reading the numbers: the Rust here is built at `opt-level = 3`, which on
+# Stylus is not the default and not free to reach. rustc emits `memory.copy` at the speed levels,
+# that brings a `DataCount` section, and ArbOS refuses to activate the contract — so
+# `native-gaussian/Stylus.toml` passes `--llvm-memory-copy-fill-lowering` to lower those back to
+# loops. It is worth about 2x the gas, and nothing warns you that you are compiling for size.
+#
 # Both sides run `primitivefinance/solstat`'s algorithm. The Rust in `stylus/native-gaussian` is a
 # bit-exact port of it, Solmate's `expWad` included, and both test suites pin the same table of
 # values — so what is measured here is the language and not a precision trade.
@@ -82,7 +88,7 @@ for x in -3000000000000000000 -1000000000000000000 -400000000000000000 0 4000000
     [ "$a" = "$b" ] || { echo "  MISMATCH ${f%%(*}($x): $a vs $b"; agree=0; }
   done
 done
-for n in 1 4 8; do
+for n in 1 4 8; do  # and the solve, since a fast wrong answer is not an answer
   a=$(cast call "$SOL_MATH" 'work(uint256)(int256)' "$n" --rpc-url "$RPC" | awk '{print $1}')
   b=$(cast call "$RUST_MATH" 'work(uint256)(int256)' "$n" --rpc-url "$RPC" | awk '{print $1}')
   [ "$a" = "$b" ] || { echo "  MISMATCH work($n): $a vs $b"; agree=0; }
