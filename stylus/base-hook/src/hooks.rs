@@ -4,6 +4,34 @@
 //! A hook implements [`HookConfig`] to declare its pool manager and permissions, then implements
 //! only the callbacks it enables — every other callback keeps its default body, which reverts with
 //! `HookNotImplemented`, exactly as the Solidity `BaseHook` does.
+//!
+//! # Why the guards are called by hand, and not by a base layer
+//!
+//! `BaseHook.sol` makes its entry points `external onlyPoolManager` and delegates to an internal
+//! `_beforeSwap` that the hook overrides, so a hook author cannot write a callback without the
+//! guard. Here, [`IHooks`] *is* the entry point: every callback has to open with
+//! `self.require_pool_manager()?`, and one written without it would be callable by anyone. Every
+//! hook in this repository does it, and their tests pin it, but nothing makes them.
+//!
+//! Two ways to recover Solidity's structure were tried and both failed, for reasons worth recording:
+//!
+//! 1. **Put the guard in [`IHooks`]'s default bodies.** The guard needs the host, `HostAccess`
+//!    carries an associated `Host` type, and a `where Self: HookGuards` bound on a trait method
+//!    makes the trait non-dyn-compatible — which `#[implements]` requires. It compiles in the
+//!    library and fails in every hook with `the trait IHooks is not dyn compatible`.
+//!
+//! 2. **Generate a guarded `#[public] impl IHooks` from a macro**, with the hook implementing a
+//!    separate `HookCallbacks` trait — the exact counterpart of Solidity's internal `_beforeSwap`
+//!    family. This *works*, and was measured: emitting all ten entry points costs about 30 % of a
+//!    contract's size (native-compute 24,253 → 31,713 bytes, native-stableswap 18,827 → 25,484),
+//!    which pushed two contracts over a Stylus code fragment and so out of reach of address mining.
+//!    Emitting only the declared callbacks fixes that and needs a token-munching macro, and that
+//!    hits a hygiene bug in `stylus-proc`: `#[public]` binds `result` and then references it
+//!    re-spanned to the method's output span (`macros/public/types.rs:656` and `:695`), so a method
+//!    routed through a `$($out:tt)*` capture fails to compile with `cannot find value result`.
+//!
+//! So the manual call stays until one of those is lifted. It is the one place this crate is weaker
+//! than the Solidity it replaces.
 
 use alloc::vec::Vec;
 
