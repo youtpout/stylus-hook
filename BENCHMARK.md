@@ -640,6 +640,27 @@ arithmetic that is irreducible — fixing the laziness (Newton instead of 100-st
 leaves 27,659 gas of Gaussian solve that no rewriting removes, and that is the figure the benchmark
 uses.
 
+### Uniswap's own published hooks
+
+[`Uniswap/v4-hooks-public`][pub] is where the canonical `base/BaseHook.sol` lives — the contract the
+Stylus port targets — and it collects eleven hooks. Surveyed for arithmetic:
+
+| | what it computes per swap |
+| --- | --- |
+| `stable/StablePairHook.sol` | **a dynamic fee, not a stable curve.** A price ratio against a reference, a boundary interpolation, and a `fastPow` for per-block fee decay. Well below the bar. |
+| `aggregator-hooks/*` (10 of them, two of which wrap Curve StableSwap) | nothing — the curve is an external call, `pool.get_dy(...)`. The same I/O-bound shape as EulerSwap. |
+| `alf/*` | the heaviest by far. `SwapSimulator.simulateSwapToPrice` replays v4's own tick-crossing swap loop on chain, and `NativeBookHook` and `ALFMultiplexer` walk bins and ladders per swap. |
+
+Only the last is a candidate, and it is the pattern already priced in this document: replaying
+`Pool.swap` is what `AntiSandwichHook` does, measured at **21,460 gas** of `mulDiv` and `sqrt` — above
+the bar, and the part of that hook worth porting.
+
+Worth stating plainly because it is easy to assume otherwise: **the StableSwap hook benchmarked in
+this document is not one of these.** `StableSwapHook.sol` was written here, from Curve's published
+formula, specifically to be arithmetic-heavy enough to clear the bar — and it still lost.
+
+[pub]: https://github.com/Uniswap/v4-hooks-public
+
 ### Where to look next: the two filters that rule out most cryptography
 
 The obvious next thought is that a hook doing cryptography — a ZK verifier, a hash, a signature check
