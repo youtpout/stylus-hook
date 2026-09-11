@@ -1,0 +1,15 @@
+[package]
+name = "stylus-v4-math"
+description = "Uniswap v4-core's swap math in Rust, ported function for function and tested against v4-core's own vectors"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+alloy-primitives.workspace = true
+
+[lib]
+crate-type = ["lib"]
