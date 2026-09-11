@@ -3717,6 +3717,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "stylus-native-gaussian"
+version = "0.2.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "stylus-sdk",
+]
+
+[[package]]
 name = "stylus-native-stableswap"
 version = "0.2.0"
 dependencies = [

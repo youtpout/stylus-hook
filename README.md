@@ -148,6 +148,13 @@ It is not a clean language comparison: the two implementations differ, mine sett
 where theirs settles per interval, and mine is the less finished of the two. `BENCHMARK.md` says so
 in more detail.
 
+The pm-AMM was the next candidate, and the one whose arithmetic genuinely cannot be removed — its
+invariant is transcendental, so every swap must run a Gaussian solve. It loses too, by 521 gas, and
+finding out why produced the one rule worth taking away: **the EVM charges 5 gas for `MUL` whatever
+the operands are, while a `U256` in WASM is four limbs and `ruint` only pays for the non-zero ones.**
+Stylus wins on narrow words, 64-bit work and control flow; it loses on full-width 256-bit
+arithmetic. A hook lives in Q96 and WAD fixed point, which is close to the worst case.
+
 The catch is that most hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
 gas of Solidity arithmetic to be worth it, and nothing shipping gets close: OpenZeppelin's
 `AntiSandwichHook` has 21,000, a StableSwap curve 8,600, the counter and airdrop hooks essentially

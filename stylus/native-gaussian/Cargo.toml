@@ -1,0 +1,25 @@
+[package]
+name = "stylus-native-gaussian"
+description = "solstat's Gaussian CDF/PDF in pure Rust for Arbitrum Stylus, ported bit-exactly to be benchmarked against it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+alloy-primitives.workspace = true
+alloy-sol-types.workspace = true
+stylus-sdk.workspace = true
+
+[dev-dependencies]
+stylus-sdk = { workspace = true, features = ["stylus-test"] }
+
+[features]
+export-abi = ["stylus-sdk/export-abi"]
+debug = ["stylus-sdk/debug"]
+contract-client-gen = []
+
+[lib]
+crate-type = ["lib", "cdylib"]

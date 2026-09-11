@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["base-hook", "native-counter", "native-compute", "native-stableswap", "native-twamm", "airdrop", "counter", "hook-miner"]
+members = ["base-hook", "native-counter", "native-compute", "native-stableswap", "native-twamm", "native-gaussian", "airdrop", "counter", "hook-miner"]
 # `hook-miner` is a host-side CLI, not a contract: keep it out of the default wasm build.
-default-members = ["base-hook", "native-counter", "native-compute", "native-stableswap", "native-twamm", "airdrop", "counter"]
+default-members = ["base-hook", "native-counter", "native-compute", "native-stableswap", "native-twamm", "native-gaussian", "airdrop", "counter"]
 
 [workspace.package]
 version = "0.2.0"

@@ -10,3 +10,6 @@
 [submodule "uniswap/lib/v4-twamm-hook"]
 	path = uniswap/lib/v4-twamm-hook
 	url = https://github.com/akshatmittal/v4-twamm-hook
+[submodule "uniswap/lib/solstat"]
+	path = uniswap/lib/solstat
+	url = https://github.com/primitivefinance/solstat

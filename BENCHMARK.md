@@ -649,6 +649,69 @@ expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncache
 cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
 half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
 
+### The pm-AMM, and the rule that explains every result above
+
+TWAMM stopped being the interesting case once the deployed version turned out to use plain integer
+`mulDiv`. The pm-AMM looked like a better bet, for one reason: unlike TWAMM's, its arithmetic cannot
+be removed. With `z = (y-x)/L`, Paradigm's invariant is
+
+```text
+f(y)  = (y - x)·Phi(z) + L·phi(z) - y
+f'(y) = Phi(z) - 1
+```
+
+transcendental in `y`, so a numerical solve is mandatory and every iteration needs a Gaussian CDF and
+PDF. `Gnome101/Pm-AMM-Hook`, the one v4 hook that implements one, solves it by 100-step bisection —
+200 Gaussian evaluations per swap, 401,100 gas. That is not what is measured here. Newton is the
+honest floor, and `./bench-pmamm.bash` measures it: `uniswap/src/PmAmmMath.sol` runs
+`primitivefinance/solstat`, `stylus/native-gaussian` is a bit-exact port of the same library —
+Solmate's `expWad` included — and both test suites pin the same table of values, so the two agree to
+the wei on chain before anything is timed.
+
+**It loses.** Rust program cached, gas net of call overhead:
+
+| | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| `expWad` | 451 | 2,569 | **0.18×** |
+| `pdf` | 1,273 | 2,748 | **0.46×** |
+| `erfc` | 4,367 | 4,082 | 1.07× |
+| `cdf` | 5,137 | 3,828 | 1.34× |
+| Newton solve, 8 iterations | 62,426 | 55,031 | **1.13×** |
+
+A solve saves 7,395 gas against the 7,916 a cached Stylus hook carries: **521 gas short of break
+even.** Not close enough to argue about, and it is the most arithmetic-heavy workload any v4 hook
+has been written around.
+
+#### Why — and this is the finding worth keeping
+
+The same expression, 100 times, with nothing changed but how wide the operands are:
+
+| 100 × `a*b/c` | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| operands ~2^32 (one limb) | 9,599 | 6,925 | 1.39× |
+| operands ~2^96 (two limbs) | 9,599 | 7,452 | 1.29× |
+| operands ~2^128 (four limbs) | 9,599 | 8,910 | **1.08×** |
+
+**The EVM charges 5 gas for `MUL` and 5 for `DIV` whatever the operands are. A `U256` in WASM is four
+64-bit limbs, and `ruint` only pays for the ones that are non-zero.** So Stylus's arithmetic
+advantage is not a property of arithmetic — it is a property of operand width, and it disappears
+exactly where a 256-bit word is actually full.
+
+That retrospectively explains every number in this document:
+
+- xorshift64 won **10.6×** because it is 64-bit. One limb.
+- the TWAMM closed form won **5.9×** because it works in 1e18 scale — two limbs at most — and much of
+  its cost is loop control rather than wide multiplies.
+- `sqrt` won **4.5×** for the same reason, plus a hand-written Newton loop against a library call.
+- and `expWad` *loses* **5.7×** because it converts into a 2^96 basis on purpose, for precision, so
+  every single multiply and shift in it is full-width. Precision in fixed point means wide words, and
+  wide words are where the EVM's flat pricing wins.
+
+The rule, then: **Stylus beats Solidity on narrow-word arithmetic, 64-bit work and control flow, and
+loses on wide 256-bit arithmetic.** A v4 hook, which lives in Q96 and WAD fixed point because that is
+what v4 hands it, is close to the worst case. The `a*b/c` row in the table above was measured with
+narrow operands and should not have been read as a general result.
+
 ### Against the TWAMM that is actually in production
 
 Everything above times the arithmetic on its own, called directly with no storage, no pool and no

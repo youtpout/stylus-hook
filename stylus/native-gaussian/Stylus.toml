@@ -1,0 +1,7 @@
+[contract]
+
+# Binaryen's -Oz is replayed identically during `cargo stylus verify`, so the deployed bytes stay
+# reproducible.
+[wasm-opt]
+version = "131"
+flags = ["-Oz", "--enable-bulk-memory-opt", "--enable-sign-ext", "--enable-mutable-globals", "--enable-nontrapping-float-to-int"]
