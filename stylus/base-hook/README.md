@@ -21,6 +21,12 @@ The pool manager is not a field — [`build.rs`](../native-counter/build.rs) bak
 include!(concat!(env!("OUT_DIR"), "/pool_manager.rs"));   // gives you POOL_MANAGER
 ```
 
+You pass it at build time, so every `cargo` command on the hook needs it:
+
+```bash
+POOL_MANAGER=0x46b1852A2896902CcE7C5613AD5da97497a6F0C6 cargo build -p stylus-native-counter
+```
+
 ## 2. Declare the pool manager and the callbacks
 
 `permissions()` has to match the callbacks you implement, because v4 reads them out of the low 14
