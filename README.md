@@ -168,17 +168,15 @@ when it was fixed — in proportion to how arithmetic-bound the workload is, and
 storage-bound ones.
 
 `BaseHook.sol` is an abstract contract, so its `onlyPoolManager` guard cannot be forgotten. Rust has
-no abstract types, and the trait-with-defaults and declarative-macro routes both dead-end — on
-`#[implements]`'s dyn-compatibility requirement and on a hygiene bug in `stylus-proc` respectively,
-both written up in [`hooks.rs`](stylus/base-hook/src/hooks.rs). The route that works is a procedural
-macro: [`#[guarded_hooks]`](stylus/base-hook-macros/src/lib.rs) rewrites the callbacks a hook already
-wrote to open with the guards, for no measurable contract size.
+no abstract types, so [`#[guarded_hooks]`](stylus/base-hook-macros/src/lib.rs) does the same job with
+a procedural macro: it inserts the guards into the callbacks a hook writes, and costs nothing —
+the four hooks here came out within 90 bytes of their hand-guarded size, three of them smaller.
+[Writing a hook](stylus/base-hook/README.md) is the guide.
 
-The catch is that most hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
-gas of Solidity arithmetic to be worth it, and nothing shipping gets close: OpenZeppelin's
-`AntiSandwichHook` has 21,000, a StableSwap curve 8,600, the counter and airdrop hooks essentially
-none. [BENCHMARK.md](BENCHMARK.md) has every sweep, an opcode profile of the shipping hooks, and a
-hook built specifically to clear the bar that still does not.
+The catch is that most hooks barely compute. A cached Stylus hook carries about 7,900 gas per call,
+so it needs roughly 12,000 gas of Solidity arithmetic to break even — 11 `rpow` calls, or 45
+`mulDiv`s. Hooks that do that much win, and win widely; the counter and airdrop hooks do essentially
+none and lose. [BENCHMARK.md](BENCHMARK.md) has every sweep and the crossover for each operation.
 
 ## Deploy a hook with no Solidity (Arbitrum Sepolia)
 

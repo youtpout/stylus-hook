@@ -1,55 +1,22 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! The attribute that gives a Stylus hook `BaseHook.sol`'s guarantees.
+//! The attribute that gives a Stylus hook `BaseHook.sol`'s guarantee.
 //!
-//! # Why a procedural macro
+//! Solidity inherits `onlyPoolManager` from an abstract contract. Rust has no abstract types, and
+//! the two obvious substitutes both fail on Stylus: a trait cannot hold the guard because that makes
+//! it non-dyn-compatible, which `#[implements]` requires, and a declarative macro has to write all
+//! ten entry points, which costs about 30 % of a contract's size.
 //!
-//! Solidity's `BaseHook` is an abstract contract: it owns the `external onlyPoolManager` entry
-//! points and the hook overrides internal `_beforeSwap`, so the guard cannot be forgotten. Rust has
-//! no abstract types, and its three substitutes each fail here:
-//!
-//! * **A trait with default bodies** cannot hold the guard: the guard needs the host, `HostAccess`
-//!   carries an associated `Host` type, and a `where Self: HookGuards` bound on a trait method makes
-//!   the trait non-dyn-compatible — which Stylus's `#[implements]` requires.
-//! * **A declarative macro** that writes the whole `#[public] impl` works, but it has to emit all
-//!   ten entry points, which measured about 30 % of a contract's size and pushed two of this
-//!   repository's hooks over a code fragment. Emitting only the declared ones needs a token-munching
-//!   macro, and that trips a hygiene bug in `stylus-proc`: `#[public]` binds `result` and references
-//!   it re-spanned to the method's output span, so a method arriving through a `$($out:tt)*` capture
-//!   fails with `cannot find value result`.
-//! * **A procedural macro** has neither problem. It rewrites the methods the hook already wrote,
-//!   emitting fresh tokens at one span, so `#[public]` sees ordinary hand-written code — and it adds
-//!   nothing for callbacks the hook does not implement, because it only touches what is there.
-//!
-//! # Use
-//!
-//! ```ignore
-//! #[guarded_hooks]
-//! #[public]
-//! impl IHooks for MyHook {
-//!     fn before_swap(&mut self, _sender: Address, key: PoolKey, ..)
-//!         -> Result<(FixedBytes<4>, BeforeSwapDelta, U24), Vec<u8>>
-//!     {
-//!         // the caller is the pool manager and `key` names this hook: both already checked
-//!         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
-//!     }
-//! }
-//! ```
-//!
-//! Attributes apply outside in, so this runs first and hands `#[public]` an impl whose every method
-//! opens with the guards.
+//! A procedural macro has neither problem. It edits the callbacks the hook already wrote, so
+//! `#[public]` sees ordinary code and nothing is emitted for callbacks that do not exist.
 
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{FnArg, ImplItem, ItemImpl, Pat};
 
-/// Inserts `BaseHook.sol`'s two guards at the top of every method in an `impl IHooks` block.
+/// Inserts `require_pool_manager`, and `require_valid_pool` where the method takes a `PoolKey`, at
+/// the top of every method in an `impl IHooks` block.
 ///
-/// `require_pool_manager` goes into every method. `require_valid_pool` goes into those that take a
-/// `PoolKey`, which is all ten v4 callbacks — it is conditional only so the attribute stays useful
-/// on an impl that grows a helper.
-///
-/// A method already calling a guard is left alone, so applying this to existing code is a no-op
-/// rather than a double check.
+/// A method that already guards itself is left alone, so this is safe to add to existing code.
 #[proc_macro_attribute]
 pub fn guarded_hooks(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut input = match syn::parse::<ItemImpl>(item.clone()) {

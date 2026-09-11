@@ -5,46 +5,17 @@
 //! only the callbacks it enables — every other callback keeps its default body, which reverts with
 //! `HookNotImplemented`, exactly as the Solidity `BaseHook` does.
 //!
-//! # How the guards are enforced, given that Rust has no abstract types
+//! # Guards
 //!
-//! `BaseHook.sol` is an abstract contract: it owns the `external onlyPoolManager` entry points and
-//! the hook overrides an internal `_beforeSwap`, so the guard cannot be forgotten. Rust has no
-//! abstract types, and its three substitutes do not all work here.
+//! Solidity's `BaseHook` makes its entry points `external onlyPoolManager`, so a hook author cannot
+//! forget the check. Rust has no abstract types to inherit that from, so
+//! [`guarded_hooks`](stylus_uniswap_v4_macros::guarded_hooks) inserts it instead — put it above
+//! `#[public]` on the `impl IHooks` block and every callback gains
+//! [`HookGuards::require_pool_manager`], plus [`HookGuards::require_valid_pool`] where it takes a
+//! `PoolKey`.
 //!
-//! * **A trait with default bodies** cannot hold the guard. The guard needs the host, `HostAccess`
-//!   carries an associated `Host` type, and a `where Self: HookGuards` bound on a trait method makes
-//!   the trait non-dyn-compatible — which `#[implements]` requires. The library compiles and every
-//!   hook then fails with `the trait IHooks is not dyn compatible`.
-//!
-//! * **A declarative macro** writing the whole `#[public] impl` works, but it has to emit all ten
-//!   entry points: measured at about 30 % of a contract's size, enough to push two of this
-//!   repository's hooks over a Stylus code fragment and so out of reach of address mining. Emitting
-//!   only the declared callbacks needs a token-munching macro, which trips a hygiene bug in
-//!   `stylus-proc` — `#[public]` binds `result` and references it re-spanned to the method's output
-//!   span, so a method arriving through a `$($out:tt)*` capture fails with
-//!   `cannot find value result`.
-//!
-//! * **A procedural macro** has neither problem, and that is what
-//!   [`guarded_hooks`](stylus_uniswap_v4_macros::guarded_hooks) is. It rewrites the methods the hook
-//!   already wrote, inserting [`HookGuards::require_pool_manager`] and, where the method takes a
-//!   `PoolKey`, [`HookGuards::require_valid_pool`]. Attributes apply outside in, so it runs before
-//!   `#[public]`, which then sees ordinary hand-written code. It adds nothing for callbacks a hook
-//!   does not implement, because it only touches what is there: the four hooks in this repository
-//!   came out within 90 bytes of their hand-guarded size, three of them smaller.
-//!
-//! ```ignore
-//! #[guarded_hooks]
-//! #[public]
-//! impl IHooks for MyHook {
-//!     fn before_swap(&mut self, _sender: Address, key: PoolKey, ..) -> .. {
-//!         // the caller is the pool manager and `key` names this hook: both already checked
-//!         Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
-//!     }
-//! }
-//! ```
-//!
-//! Put it only on the `impl IHooks` block. A hook's own entry points — an order book, a claim — must
-//! *not* require the pool manager, and the attribute would lock them out.
+//! Only on that block, though. A hook's own entry points — an order book, a claim — must *not*
+//! require the pool manager.
 
 use alloc::vec::Vec;
 
