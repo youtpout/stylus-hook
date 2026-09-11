@@ -19,45 +19,37 @@ L2 execution gas the comparison is about.
 
 ## The counter, three ways
 
-`./bench-counter.bash` asks the follow-up question directly: does dropping the Solidity shell
-recover what it costs? Same hook, three implementations, one swap per transaction. A swap hits this
-hook twice — `beforeSwap` and `afterSwap` — so every figure below is two hook calls.
+`./bench-counter.bash` asks whether dropping the Solidity shell recovers what it costs. Same hook,
+three implementations, one swap per transaction. A swap hits this hook twice — `beforeSwap` and
+`afterSwap` — so every figure is two hook calls.
 
 | | gas per swap | hook costs |
 | --- | ---: | ---: |
-| no hook | 115,125 | — |
-| `Counter.sol`, one Solidity contract | 134,063 | +18,938 |
-| `CounterProxy.sol` → Stylus | 199,968 | +84,843 |
-| **`native-counter`, no Solidity in the hook** | **199,353** | **+84,228** |
-| the same, if the contract is cached | 184,256 (projected) | +69,131 |
+| no hook | 115,129 | — |
+| `Counter.sol`, one Solidity contract | 134,067 | +18,938 |
+| `CounterProxy.sol` → Stylus | 196,034 | +80,905 |
+| `native-counter`, no Solidity in the hook | 199,595 | +84,466 |
 
-Going fully native saves **615 gas** — a rounding error — and only because of Binaryen. `-Oz` cuts
-the native hook's init gas from 21,274 to 17,751, and this hook is entered twice per swap, so
-without it the shell would win by several thousand:
+**Uncached, going fully native costs 3,561 gas.** The shell wins, and the reason is compiled size:
+`ArbWasm` prices `programInitGas` off it, the native hook carries the whole `IHooks` router and the
+ABI decoders for `PoolKey` and `SwapParams`, and it is entered twice per swap.
 
-| | compiled size | init gas, uncached / cached |
+| | asm size | init gas, uncached / cached |
 | --- | ---: | ---: |
-| `native-counter`, no `wasm-opt` | 1,044,480 | 21,274 / 3,585 |
-| `native-counter`, `-Oz` | 862,208 | 17,751 / 2,654 |
-| the contract behind `CounterProxy` | 779,264 | 15,010 / 1,977 |
+| `native-counter` | 857,088 | 17,482 / 2,187 |
+| the contract behind `CounterProxy` | 676,864 | 13,259 / 1,462 |
 
-Two things pull against going native, and they nearly cancel the win:
+**Cached, the sign flips: native wins by 3,435.** Caching removes most of the init gas from both, and
+what is left is the shell's own overhead — an extra contract and an extra call. Since caching is a
+one-off bid and any hook with users would be cached, that is the figure that counts.
 
-- The native hook carries the whole `IHooks` router and the ABI decoders for `PoolKey` and
-  `SwapParams`, so its program is bigger — and `ArbWasm` prices `programInitGas` off compiled size,
-  charged on every call.
-- v4 hands a hook the full `PoolKey`, `SwapParams` and `hookData`. The native hook decodes all of
-  that in WASM and hashes the key there too. The Solidity shell does both in the EVM, where this
-  shape is cheap, and passes Stylus a single `bytes32`.
+So the shell is not pure overhead: it doubles as a calldata decoder, doing in the EVM — cheaply —
+what the native hook does in WASM. Removing it is still the right call, for one less contract and one
+less trust assumption, and on gas it is worth about 3,400 warm.
 
-So the shell is not only overhead: it doubles as a calldata decoder. Removing it is still the right
-call — one less contract, one less trust assumption, and it no longer costs anything — but on gas
-alone it is a wash, and it will only pay for a hook whose own work is worth more than its front
-door.
-
-Against pure Solidity the native hook still costs 65,290 gas more per swap, 4.4× the Solidity hook.
-Same conclusion as the counter: this hook writes one storage slot per callback and computes
-nothing.
+Against pure Solidity the native hook costs 65,528 gas more per swap either way. That is the
+conclusion of this whole document in one line: this hook writes a storage slot per callback and
+computes nothing, so there is nothing for Stylus to win back.
 
 ## Where Rust starts winning
 
@@ -1328,11 +1320,9 @@ Those are the hooks worth writing in Rust, and they are what
 
 ## A caveat on the numbers
 
-Gas here is L2 execution gas only. The benchmark sets the L1 data-posting price to zero
-(`ArbOwner.setL1PricePerUnit(0)`) because that component is identical across all four pools — same
-calldata, same swap — and on a real chain it dwarfs the differences being measured.
+Gas here is L2 execution gas only. The benchmarks set the L1 data-posting price to zero
+(`ArbOwner.setL1PricePerUnit(0)`) because that component is identical across the variants being
+compared — same calldata, same swap — and on a real chain it dwarfs the differences being measured.
 
-[`uniswap/test/Gas.t.sol`](uniswap/test/Gas.t.sol) runs the same comparison inside `forge test`, but
-forge cannot execute WASM, so its "stylus" row is really the `replica` row. Its numbers
-(33,545 / 39,126 hook cost measured on-chain vs 31,732 / 37,309 in forge) track each other within
-about 5 % for the Solidity variants, which is what makes it useful as a fast check.
+Nothing here is measured inside `forge test`: forge cannot execute WASM, so every Stylus figure comes
+from a transaction on a dev node.

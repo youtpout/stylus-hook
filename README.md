@@ -106,16 +106,19 @@ only a hook if the `PoolManager`'s calls land on the right methods.
 Every benchmark stands up a throwaway Arbitrum Nitro dev node in Docker — the cheapest chain that
 runs both EVM bytecode and WASM — deploys both implementations, and reads `gasUsed` off the receipts.
 
+`./bench-counter.bash`, on a hook that only counts callbacks — two hook calls per swap:
+
 | hook | gas per swap | costs |
 | --- | ---: | ---: |
-| none | 119,562 | — |
-| one Solidity contract | 153,107 | +33,545 |
-| two Solidity contracts | 158,688 | +39,126 |
-| Solidity shell + Stylus | 194,049 | +74,487 |
+| none | 115,129 | — |
+| `Counter.sol`, one Solidity contract | 134,067 | +18,938 |
+| `CounterProxy.sol` → Stylus | 196,034 | +80,905 |
+| `native-counter`, no Solidity at all | 199,595 | +84,466 |
 
-Stylus costs 2.22× what Solidity does here. That is the workload's fault, not the port's: `afterSwap`
-is six `SLOAD`s and six `SSTORE`s with almost no arithmetic, and Stylus makes compute cheap, not
-storage.
+Stylus costs 4.4× what Solidity does here, and that is the workload's fault rather than the port's:
+the hook writes a storage slot per callback and computes nothing, and Stylus makes compute cheap, not
+storage. It is also the comparison that justifies dropping the Solidity shell — worth about 3,400 gas
+once the program is cached, though the shell wins by 3,561 while it is not.
 
 `./bench-compute.bash` shows the other side of it, running the same arithmetic in both languages and
 sweeping how much of it there is. The interesting column is `mulDiv`, because that is what Uniswap's
