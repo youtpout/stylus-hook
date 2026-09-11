@@ -151,17 +151,21 @@ in more detail.
 The pm-AMM was the next candidate, and the one whose arithmetic genuinely cannot be removed — its
 invariant is transcendental, so every swap must run a Gaussian solve.
 [`stylus/native-gaussian`](stylus/native-gaussian/src/gaussian.rs) is a bit-exact port of
-`primitivefinance/solstat`, agreeing with it to the wei on chain. A Newton solve:
+`primitivefinance/solstat`, agreeing with it to the wei on chain:
 
 | | Solidity | Rust | ratio |
 | --- | ---: | ---: | ---: |
 | Gaussian CDF | 5,137 | **2,082** | 2.47× |
-| solve, 8 iterations | 62,426 | **28,838** | 2.17× |
+| solve, 8 iterations | 62,425 | **27,659** | 2.26× |
 
-**+25,672 gas per swap in Rust's favour**, on every swap. Getting there needed a wasm-opt flag:
-without `--llvm-memory-copy-fill-lowering`, rustc's `opt-level = 2` and `3` emit a `DataCount`
-section ArbOS refuses to activate, so a Stylus contract is capped at `"s"` — compiled for size, on a
-platform that charges for execution. That flag is worth 2× the gas here, and nothing warns you.
+**+26,850 gas per swap in Rust's favour**, on every swap. Getting there took a wasm-opt flag, and it
+is the single most useful thing in this repository: without `--llvm-memory-copy-fill-lowering`,
+rustc's `opt-level = 2` and `3` emit a `DataCount` section ArbOS refuses to activate, so a Stylus
+contract is capped at `"s"` — **compiled for size, on a platform that charges for execution.** The
+build succeeds, `cargo stylus check` succeeds, and only activation fails. Every benchmark in this
+repository was measuring size-optimised code until that was found, and every ratio roughly doubled
+when it was fixed — in proportion to how arithmetic-bound the workload is, and not at all for the
+storage-bound ones.
 
 The catch is that most hooks barely compute. Against a ~20,000 gas entry fee, a 3× saving needs ~62,000
 gas of Solidity arithmetic to be worth it, and nothing shipping gets close: OpenZeppelin's

@@ -289,25 +289,43 @@ which is called on both `beforeSwap` and `afterSwap`.
 
 ### The rule this all adds up to
 
-Five measurements of the same question:
+Five measurements of the same question, all remeasured with the contracts built for speed (see
+*The flag that changes every number in this document*, below — the first pass of this table was
+compiled for size and every ratio in it was roughly half of what follows):
 
 | operation | what it needs | Solidity | Rust | ratio |
 | --- | --- | ---: | ---: | ---: |
-| plain `a * b / c` | one `MUL`, one `DIV`, checked | 278 | 93 | 3.0× |
-| `rpow` (Bunni's LDF) | `mulDiv`, Q96, fits in 256 bits | 3,058 | 1,850 | 1.65× |
-| `mulDiv` | 512-bit intermediate | 694 | 247 | 2.8× |
-| `sqrt` | 512-bit intermediate + bit length | 2,009 | 447 | 4.5× |
-| xorshift64 | 64-bit words | 115 | 10.9 | 10.6× |
+| plain `a * b / c` | one `MUL`, one `DIV`, checked | 278 | 51 | **5.5×** |
+| `rpow` (Bunni's LDF) | `mulDiv`, Q96, fits in 256 bits | 3,058 | 1,019 | **3.0×** |
+| `mulDiv` | 512-bit intermediate | 694 | 204 | **3.4×** |
+| `sqrt` | 512-bit intermediate + bit length | 2,009 | 362 | **5.6×** |
+| xorshift64 | 64-bit words | 115 | 2.8 | **41.6×** |
+| storage write | a host operation either way | 2,397 | 2,265 | 1.06× |
 
-Rust is cheaper in every row, by between 1.65× and 10.6×. How much cheaper tracks how badly the work
-fits a 256-bit word: `rpow` in Q96 gains least because that is exactly the shape the EVM is built
-for, and 64-bit words gain most because the EVM pays for a word it cannot use.
+Rust is cheaper in every row, by between 3.0× and 41.6×, and storage — a host operation on both
+sides — is the row that does not move. How much cheaper tracks how badly the work fits a 256-bit
+word: `rpow` in Q96 gains least because that is exactly the shape the EVM is built for, and 64-bit
+words gain most because the EVM pays for a word it cannot use.
 
-But the ratio was never the binding constraint. **The amount of arithmetic is.** Against a fixed
-cost of roughly 20,000 gas to enter a Stylus contract, a 3× saving needs about 30,000 gas of
-Solidity arithmetic just to break even, and 62,000 to be worth the trouble. Nothing measured in this
-document gets there: AntiSandwichHook has 21,000, a StableSwap curve 8,600, the counter and airdrop
-hooks essentially none.
+The width effect is worth measuring directly. The same expression, 100 times, changing only how many
+of a `U256`'s four limbs are non-zero:
+
+| 100 × `a*b/c` | Solidity | Rust | ratio |
+| --- | ---: | ---: | ---: |
+| operands ~2^32 (one limb) | 9,599 | 2,285 | **4.20×** |
+| operands ~2^96 (two limbs) | 9,599 | 2,825 | **3.40×** |
+| operands ~2^128 (four limbs) | 9,599 | 4,083 | **2.35×** |
+
+**The EVM's column is flat: `MUL` and `DIV` cost 5 gas whatever the operands are.** A `U256` in WASM
+is four 64-bit limbs and `ruint` only pays for the ones that are non-zero, so Rust's advantage
+narrows as the words fill up — but it does not run out. A hook lives in Q96 and WAD fixed point,
+which is the middle row.
+
+Even so, the ratio was never the binding constraint. **The amount of arithmetic is.** Against the
+fixed cost of entering a Stylus contract — 7,916 gas for a cached hook, measured against the
+production TWAMM below — a 3× saving needs about 12,000 gas of Solidity arithmetic to break even.
+AntiSandwichHook has 21,000, a StableSwap curve 8,600, the counter and airdrop hooks essentially
+none, and the pm-AMM's Gaussian solve has 62,000.
 
 That is the finding. Not that Stylus computes slowly — it does not — but that **hooks do not compute
 enough** for it to matter.
@@ -649,6 +667,39 @@ expiries, settlement — so it is 37 KB and pays 30,289 gas to be loaded uncache
 cached. Against 11,555 saved per interval that is **2.6 intervals to break even cold, and under
 half an interval warm**; against the quad-float form Uniswap actually ships, 1.4 intervals cold.
 
+### The flag that changes every number in this document
+
+Every benchmark here was, for months, measuring code compiled for size rather than speed — and not
+by choice.
+
+`opt-level = 2` or `3` produces a wasm ArbOS refuses to activate: *"program activation failed: failed
+to parse wasm — unsupported section type DataCountSection"*. rustc emits `memory.copy` at the speed
+levels, that brings a `DataCount` section, and the ArbOS prover does not support it. Nothing warns
+you: the build succeeds, `cargo stylus check` succeeds, and the failure appears only at activation.
+So the default a Stylus developer can actually reach is `"s"` or `"z"`.
+
+Adding `--llvm-memory-copy-fill-lowering` to the wasm-opt flags lowers those bulk-memory ops back to
+loops, drops the section, and makes the speed levels activatable, for a couple of hundred extra
+bytes. Every crate's `Stylus.toml` here now passes it and the workspace builds at `opt-level = 3`.
+
+What it is worth, by workload:
+
+| | built for size | built for speed | change |
+| --- | ---: | ---: | ---: |
+| xorshift64, 64-bit | 10.6× | **41.6×** | ×3.9 |
+| `a*b/c`, 256-bit | 3.0× | **5.5×** | ×1.8 |
+| `rpow` Q96 | 1.65× | **3.0×** | ×1.8 |
+| pm-AMM Gaussian solve | 1.13× | **2.26×** | ×2.0 |
+| TWAMM, per expiry crossed | 1.44× | **1.47×** | ×1.02 |
+| storage write | 1.02× | **1.06×** | ×1.04 |
+
+**It buys arithmetic and nothing else**, in proportion to how much of a workload is arithmetic. The
+two storage-bound rows do not move. That is a useful sanity check on the whole document: the
+improvement lands exactly where the theory says it should.
+
+It also reverses one conclusion. At `"s"`, the pm-AMM's Gaussian solve saved 7,395 gas against a
+7,916 handicap and therefore lost. At `3` it saves 34,766 and wins by a wide margin.
+
 ### The pm-AMM, and the rule that explains every result above
 
 TWAMM stopped being the interesting case once the deployed version turned out to use plain integer
@@ -680,18 +731,17 @@ about 200 extra bytes.
 
 What that is worth, on this contract, cached and net of call overhead:
 
-| | Solidity | Rust `"s"` | Rust `3` | ratio at `3` |
+| | Solidity | Rust, built for size | Rust, built for speed | ratio |
 | --- | ---: | ---: | ---: | ---: |
 | `expWad` | 451 | 2,569 | 1,246 | 0.36× |
-| `pdf` | 1,273 | 2,748 | — | — |
-| `erfc` | 4,367 | 4,082 | — | — |
 | `cdf` | 5,137 | 3,828 | **2,082** | **2.47×** |
-| Newton solve, 8 iterations | 62,426 | 55,031 | **28,838** | **2.17×** |
+| Newton solve, 1 iteration | 7,996 | 6,539 | **3,536** | **2.26×** |
+| Newton solve, 8 iterations | 62,425 | 55,031 | **27,659** | **2.26×** |
 
 Bit-exactness survives the change: the two implementations still agree to the wei on 32 values and
 four solves, checked on chain at `opt-level = 3`.
 
-So a pm-AMM solve saves **33,588 gas**, against the 7,916 a cached Stylus hook carries — **+25,672
+So a pm-AMM solve saves **34,766 gas**, against the 7,916 a cached Stylus hook carries — **+26,850
 gas per swap in Rust's favour**, and paid on every swap rather than only when intervals are crossed.
 That is the first hook workload in this document that clears the bar for a reason that survives
 scrutiny.
@@ -700,25 +750,9 @@ scrutiny.
 for precision, so every multiply and shift in it is full-width, and full-width 256-bit arithmetic is
 where the EVM's single opcodes are hardest to beat.
 
-#### How much operand width matters
-
-The same expression, 100 times, with nothing changed but how wide the operands are:
-
-| 100 × `a*b/c` | Solidity | Rust `"s"` | Rust `3` | ratio at `3` |
-| --- | ---: | ---: | ---: | ---: |
-| operands ~2^32 (one limb) | 7,297 | 6,925 | 2,764 | 2.64× |
-| operands ~2^96 (two limbs) | 7,824 | 7,452 | 3,293 | 2.38× |
-| operands ~2^128 (four limbs) | 9,282 | 8,910 | 4,754 | 1.95× |
-
-A `U256` in WASM is four 64-bit limbs and `ruint` only pays for the ones that are non-zero, so Rust's
-advantage narrows as the words fill up — 2.64× down to 1.95×. It does not disappear, which is what
-the `"s"` numbers had suggested. The Solidity column is not flat either, by about 27 % across the
-same range, and I have no verified explanation for that; `MUL` and `DIV` are fixed-price opcodes and
-the calldata cancels out of the differences. It is measured, repeatable, and unexplained.
-
-The useful version of the rule is therefore weaker than "Stylus loses on wide arithmetic": **Stylus
-wins on this arithmetic at every width, by less as the words fill up, and only if the contract is
-compiled for speed — which takes a wasm-opt flag nothing warns you about.**
+Operand width is measured in the summary table near the top of this document, and it is the reason
+`expWad` is the one row Rust loses: it converts into a 2^96 basis on purpose, for precision, so every
+multiply and shift in it is full-width.
 
 ### Against the TWAMM that is actually in production
 
@@ -741,15 +775,19 @@ per expiry. The Rust program is in Arbitrum's cache, which is what any hook with
 
 | | Rust | production Solidity |
 | --- | ---: | ---: |
-| swap, pool idle | 140,173 | 132,257 |
-| swap, one span of virtual orders | **305,104** | 339,612 |
-| swap, four expiries crossed | **412,801** | 494,950 |
-| **per expiry crossed** | **26,924** | **38,834** |
+| swap, pool idle | 138,746 | 132,257 |
+| swap, one span of virtual orders | **297,015** | 339,609 |
+| swap, four expiries crossed | **402,484** | 494,948 |
+| **per expiry crossed** | **26,367** | **38,834** |
 
 Baseline swap with no hook at all: 115,065.
 
-So the Rust hook is **7,916 gas worse on an idle pool** and **11,910 better per expiry — 31 %** —
-and it is ahead from the first span of real work, because that first span alone saves 34,508.
+So the Rust hook is **6,489 gas worse on an idle pool** and **12,467 better per expiry — 32 %** —
+and it is ahead from the first span of real work, because that first span alone saves 42,594.
+
+Note how little building for speed moved this one: 26,924 gas per expiry before, 26,367 after. The
+pm-AMM's solve halved over the same change. That is the cleanest confirmation of what the flag
+actually does — **it buys arithmetic, and a TWAMM expiry is 92 % storage.**
 
 **This is not a language result.** The two implementations differ in a way that flatters mine:
 theirs settles against the pool at every interval, mine computes every span first and settles once

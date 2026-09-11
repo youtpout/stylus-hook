@@ -22,9 +22,14 @@ codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
-opt-level = "s"
-
-# Compiled for speed, not size, which on Stylus takes a wasm-opt flag to be activatable at all —
-# see native-gaussian/Stylus.toml. Worth 2x the gas on this contract.
-[profile.release.package.stylus-native-gaussian]
+# Compiled for speed, not size.
+#
+# This is not the default you can reach on Stylus. rustc emits `memory.copy` at the speed levels,
+# that brings a `DataCount` section, and ArbOS refuses to activate the contract with
+# "unsupported section type DataCountSection" — the build succeeds, `cargo stylus check` passes, and
+# the failure only shows up at activation. Every crate's `Stylus.toml` therefore passes
+# `--llvm-memory-copy-fill-lowering` to wasm-opt, which lowers those ops back to loops and drops the
+# section. On the Gaussian contract the pair is worth 2x the gas for about 200 extra bytes, and every
+# benchmark in this repository before that discovery was measuring size-optimised code.
 opt-level = 3
+

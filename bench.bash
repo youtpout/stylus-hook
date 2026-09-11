@@ -25,6 +25,12 @@ ROUNDS=${ROUNDS:-4}
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 export PATH="$HOME/.foundry/bin:$PATH"
+# `stylus/airdrop/Stylus.toml` pins a wasm-opt version, so one has to be on PATH before any
+# `cargo stylus` call — it refuses to build against a different Binaryen than the one pinned.
+BINWORK=$(mktemp -d)
+# shellcheck source=bench-lib.bash
+. "$ROOT/bench-lib.bash"
+ensure_binaryen "$BINWORK"
 
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
@@ -33,7 +39,7 @@ docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run --rm -d --name "$CONTAINER" -p 8547:8547 "$NITRO_IMAGE" \
   --dev --http.addr 0.0.0.0 --http.port 8547 --http.api=net,web3,eth,debug,arb \
   --http.corsdomain='*' --http.vhosts='*' >/dev/null
-trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1 || true' EXIT
+trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; rm -rf "$BINWORK"' EXIT
 
 for _ in $(seq 1 60); do
   cast chain-id --rpc-url "$RPC" >/dev/null 2>&1 && break

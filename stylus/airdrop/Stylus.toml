@@ -1,8 +1,10 @@
 [contract]
 
-# Optional: apply a pinned wasm-opt (Binaryen) optimization step to reduce the
-# contract's binary size. The same version and flags are replayed during
-# `cargo stylus verify` so the deployed bytes remain reproducibly verifiable.
-# [wasm-opt]
-# version = "131"
-# flags = ["-Oz"]
+# The same pinned wasm-opt pass the benchmarked contracts get, so `bench.bash` and
+# `bench-counter.bash` compare like with like. `--llvm-memory-copy-fill-lowering` is what makes the
+# workspace's `opt-level = 3` activatable: without it rustc's `memory.copy` brings a `DataCount`
+# section ArbOS refuses. The version and flags are replayed during `cargo stylus verify`, so the
+# deployed bytes stay reproducible.
+[wasm-opt]
+version = "131"
+flags = ["-Oz", "--llvm-memory-copy-fill-lowering", "--enable-bulk-memory-opt", "--enable-sign-ext", "--enable-mutable-globals", "--enable-nontrapping-float-to-int"]
