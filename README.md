@@ -13,6 +13,8 @@ CREATE2 salt that lands it on a flag-carrying address.
 
 📖 **[Writing a hook](stylus/base-hook/README.md)** — five steps, with the counter as the worked
 example.
+📝 **[FEEDBACK.md](FEEDBACK.md)** — feedback to Uniswap from porting v4-core, including a failing
+input in v4-core's own `TickMath` fuzz test.
 
 `./prove-native-hook.bash` is the receipt: it stands up a chain, mines the address, deploys the Rust
 hook to it and has a real `PoolManager` drive every callback the hook declares.
@@ -311,4 +313,11 @@ from the formula instead, and EulerSwap — BUSL-1.1 — is referenced in
 | Its Solidity twin, pinned to the same values | [`uniswap/src/PmAmmMath.sol`](uniswap/src/PmAmmMath.sol) |
 | Gas benchmarks | [`bench-pmamm.bash`](bench-pmamm.bash), [`bench-twamm.bash`](bench-twamm.bash), [`bench-compute.bash`](bench-compute.bash), [`bench-counter.bash`](bench-counter.bash), [`bench-stableswap.bash`](bench-stableswap.bash) |
 | Opcode profile of shipping hooks | [`profile-hooks.bash`](profile-hooks.bash), [`bench-antisandwich.bash`](bench-antisandwich.bash) |
-| Deploying a hook too large for one code fragment | [`bench-lib.bash`](bench-lib.bash) |
+| v4-core's swap math in Rust, on Uniswap's own vectors | [`stylus/v4-math/src/swap_math.rs`](stylus/v4-math/src/swap_math.rs), [`tick_math.rs`](stylus/v4-math/src/tick_math.rs), [`sqrt_price_math.rs`](stylus/v4-math/src/sqrt_price_math.rs), [`full_math.rs`](stylus/v4-math/src/full_math.rs) |
+| `Pool.swap`'s loop, the workload that wins at 7.1× | [`stylus/native-v4-math/src/lib.rs`](stylus/native-v4-math/src/lib.rs) |
+| Its control, calling v4-core's libraries directly | [`uniswap/src/V4MathBench.sol`](uniswap/src/V4MathBench.sol) |
+| Keccak-f, SHAKE256 and ML-DSA's NTT, at 643× | [`stylus/native-crypto/src/keccak.rs`](stylus/native-crypto/src/keccak.rs), [`ntt.rs`](stylus/native-crypto/src/ntt.rs) |
+| Their Solidity control, in unrolled assembly | [`uniswap/src/CryptoBench.sol`](uniswap/src/CryptoBench.sol) |
+| Gas benchmarks, the two newest | [`bench-v4-math.bash`](bench-v4-math.bash), [`bench-crypto.bash`](bench-crypto.bash) |
+| Deploying a hook too large for one code fragment | [`bench-lib.bash`](bench-lib.bash#L51) |
+| **Feedback to Uniswap, including a bug in v4-core's tests** | [**`FEEDBACK.md`**](FEEDBACK.md) |
