@@ -15,72 +15,7 @@ The benchmarks also set `ArbOwner.setL1PricePerUnit(0)`. The L1 data-posting com
 across the variants being compared — same calldata, same swap — and on a real chain it dwarfs the
 L2 execution gas the comparison is about.
 
-# What the airdrop hook costs per swap
-
-Measured on an Arbitrum Nitro dev node (ArbOS 59, Stylus v3), the cheapest chain that can execute
-both EVM bytecode and WASM. Reproduce with:
-
-```bash
-./bench.bash
-```
-
-It stands up a throwaway node in Docker, deploys a full Uniswap v4 stack and four pools onto it,
-then swaps through each in its own transaction and reads `gasUsed` off the receipts.
-
-## The four pools
-
-| Pool | Hook |
-| --- | --- |
-| control | none |
-| solidity | `AirdropHook.sol` — one contract, Solidity |
-| replica | `AirdropHookProxy.sol` → `MockStylusAirdrop.sol` — two contracts, both Solidity |
-| stylus | `AirdropHookProxy.sol` → `stylus/airdrop` — two contracts, the second one Rust/WASM |
-
-`replica` is the control that makes the comparison fair. It has the same two-contract shape as
-`stylus` and runs the identical accounting, so the gap between the two is the cost of Stylus itself
-rather than the cost of the extra call.
-
-## Results
-
-Gas per swap, warm (the first swap on a pool pays zero-to-non-zero `SSTORE` prices and is discarded):
-
-| | gas per swap | hook costs |
-| --- | ---: | ---: |
-| no hook | 119,562 | — |
-| hook in one Solidity contract | 153,107 | +33,545 |
-| hook split over two Solidity contracts | 158,688 | +39,126 |
-| **hook with its state in Stylus** | **194,049** | **+74,487** |
-| hook with its state in Stylus, if cached | 176,822 (projected) | +57,260 |
-
-Breaking down the 74,487:
-
-| | gas |
-| --- | ---: |
-| the accounting itself, as Solidity would do it | 33,545 |
-| the extra call the split design needs | 5,581 |
-| Stylus, over the identical Solidity callee | 35,361 |
-| — of which loading the WASM program, uncached | 20,439 |
-| — the same, once the contract is cached | 3,212 |
-
-**Stylus costs 2.22× what Solidity does for this hook, or 1.71× once the contract is cached.**
-
-The dev node has no `CacheManager`, so the cached row is computed from
-`ArbWasm.programInitGas(address)`, which reports both figures, rather than measured directly.
-
-## Why Stylus loses here
-
-Stylus makes *compute* roughly an order of magnitude cheaper. It does not make *storage* cheaper:
-`SLOAD` and `SSTORE` are host calls priced in EVM gas either way.
-
-`afterSwap` on this hook does about six `SLOAD`s and six `SSTORE`s and almost no arithmetic — six
-warm `SSTORE`s alone are 17,400 gas of the 33,545 the Solidity version costs. There is no compute
-for Stylus to win back, so all that is left is what it adds: ~20k to load the program on a cold
-call, plus the cross-VM call itself.
-
-This is a property of the workload, not of the implementation. Nothing in
-[`stylus/airdrop/src/lib.rs`](stylus/airdrop/src/lib.rs) is doing more storage work than
-[`AirdropHook.sol`](uniswap/src/AirdropHook.sol) — they write the same six slots, and both suites
-assert the same airdrop amounts to the wei.
+# What the hooks cost per swap
 
 ## The counter, three ways
 
@@ -121,7 +56,7 @@ alone it is a wash, and it will only pay for a hook whose own work is worth more
 door.
 
 Against pure Solidity the native hook still costs 65,290 gas more per swap, 4.4× the Solidity hook.
-Same conclusion as the airdrop: this hook writes one storage slot per callback and computes
+Same conclusion as the counter: this hook writes one storage slot per callback and computes
 nothing.
 
 ## Where Rust starts winning
@@ -332,7 +267,7 @@ which is the middle row.
 Even so, the ratio was never the binding constraint. **The amount of arithmetic is.** Against the
 fixed cost of entering a Stylus contract — 7,916 gas for a cached hook, measured against the
 production TWAMM below — a 3× saving needs about 12,000 gas of Solidity arithmetic to break even.
-AntiSandwichHook has 21,000, a StableSwap curve 8,600, the counter and airdrop hooks essentially
+AntiSandwichHook has 21,000, a StableSwap curve 8,600, the counter hook essentially
 none, and the pm-AMM's Gaussian solve has 62,000.
 
 That is the finding. Not that Stylus computes slowly — it does not — but that **hooks do not compute
@@ -1377,7 +1312,7 @@ bar.
 
 ## What this means for the project
 
-The airdrop hook was the wrong thing to port. It is a bookkeeping hook: read a counter, add to it,
+A bookkeeping hook is the wrong thing to port. Read a counter, add to it,
 write it back. That is the exact shape of hook where Stylus has nothing to offer.
 
 Stylus pays off when a hook has to *think* on every swap — past the crossover measured above, which

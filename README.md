@@ -33,25 +33,29 @@ address and forwards callbacks to Stylus:
 
 | Piece | Language | Role |
 | --- | --- | --- |
-| `AirdropHookProxy` / `CounterProxy` | Solidity | CREATE2-mined address carrying the permission flags; forwards every callback |
-| `stylus/airdrop` / `stylus/counter` | Rust → WASM | all of the hook's storage and logic |
+| `CounterProxy` | Solidity | CREATE2-mined address carrying the permission flags; forwards every callback |
+| `stylus/counter` | Rust → WASM | all of the hook's storage and logic |
 
-and the pure-Solidity equivalents `AirdropHook.sol` and `Counter.sol`, so the three approaches can
-be compared behaviour-for-behaviour and gas-for-gas.
+and the pure-Solidity equivalent `Counter.sol`, so the three approaches can be compared
+behaviour-for-behaviour and gas-for-gas.
 
 ## Layout
 
 ```
 uniswap/          Foundry project: the hooks, their pure-Solidity baselines, tests and deploy scripts
-  src/            Counter.sol, CounterProxy.sol, AirdropHook.sol, AirdropHookProxy.sol, tokens
-  test/           forge tests, including the Solidity replica of the Stylus contract
+  src/            the hooks and their pure-Solidity twins, tokens
+  test/           forge tests
   script/         CREATE2 hook mining + deployment
 stylus/           Cargo workspace of the Rust side
-  base-hook/      the IHooks callbacks, v4 types and permission flags, in Stylus
-  native-counter/ a hook with no Solidity at all, built on base-hook (15.7 KB WASM)
-  hook-miner/     mines the CREATE2 salt for a hook address
-  airdrop/        airdrop accounting behind AirdropHookProxy.sol (14.7 KB WASM)
-  counter/        callback counters behind CounterProxy.sol (7.5 KB WASM)
+  base-hook/            the IHooks callbacks, v4 types and permission flags, in Stylus
+  base-hook-macros/     #[guarded_hooks]
+  native-counter/       a hook with no Solidity at all, built on base-hook
+  native-twamm/         a complete TWAMM: orders, expiries, settlement
+  native-gaussian/      solstat's Gaussian, ported bit-exactly
+  native-compute/       arithmetic sweeps, for the crossover
+  native-stableswap/    a StableSwap curve
+  hook-miner/           mines the CREATE2 salt for a hook address
+  counter/              callback counters behind CounterProxy.sol
 ```
 
 ## Versions
@@ -88,10 +92,9 @@ cd stylus && cargo test
 ```
 
 The Foundry suite spins up a full local v4 stack (PoolManager, PositionManager, Permit2, router) and
-runs real swaps through the hooks. Forge cannot execute WASM, so `AirdropHookProxy` is tested
-against [`MockStylusAirdrop.sol`](uniswap/test/mocks/MockStylusAirdrop.sol), a Solidity replica of
-the Rust contract. The Rust suite checks the same scenarios with `TestVM`, and both assert the same
-airdrop amounts down to the wei.
+runs real swaps through the Solidity hooks. Forge cannot execute WASM, so the Rust side is tested with
+`TestVM` on the Cargo side, and where the two implement the same maths they are pinned to the same
+values — `PmAmmMath.sol` and `stylus/native-gaussian` assert an identical table, to the wei.
 
 The test that matters most for the Rust hook base is
 [`selectors_match_uniswap_ihooks`](stylus/base-hook/src/hooks.rs): all ten callback selectors
@@ -100,9 +103,8 @@ only a hook if the `PoolManager`'s calls land on the right methods.
 
 ## What it costs
 
-`./bench.bash` measures the airdrop hook on a throwaway Arbitrum Nitro dev node — the cheapest chain
-that runs both EVM bytecode and WASM — by swapping through four pools and reading `gasUsed` off the
-receipts.
+Every benchmark stands up a throwaway Arbitrum Nitro dev node in Docker — the cheapest chain that
+runs both EVM bytecode and WASM — deploys both implementations, and reads `gasUsed` off the receipts.
 
 | hook | gas per swap | costs |
 | --- | ---: | ---: |
@@ -176,8 +178,8 @@ a procedural macro: it inserts the guards into the callbacks a hook writes, and 
 
 The catch is that most hooks barely compute. A cached Stylus hook carries about 7,900 gas per call,
 so it needs roughly 12,000 gas of Solidity arithmetic to break even — 11 `rpow` calls, or 45
-`mulDiv`s. Hooks that do that much win, and win widely; the counter and airdrop hooks do essentially
-none and lose. [BENCHMARK.md](BENCHMARK.md) has every sweep and the crossover for each operation.
+`mulDiv`s. Hooks that do that much win, and win widely; a hook that only counts swaps does essentially
+none and loses. [BENCHMARK.md](BENCHMARK.md) has every sweep and the crossover for each operation.
 
 ## Deploy a hook with no Solidity (Arbitrum Sepolia)
 
@@ -199,24 +201,21 @@ run. The address is fixed by the init code, so rebuilding the contract changes t
 
 ## Deploy the split design (Arbitrum Sepolia)
 
-Uniswap v4 and Stylus are both live on Arbitrum Sepolia, so no local node is needed.
+Kept for comparison: a Solidity shell owns the mined address and forwards to Stylus. Uniswap v4 and
+Stylus are both live on Arbitrum Sepolia, so no local node is needed.
 
 ```bash
 cd stylus
-cargo stylus deploy --contract stylus-airdrop-hook \
+cargo stylus deploy --contract stylus-counter-hook \
   --endpoint https://sepolia-rollup.arbitrum.io/rpc --private-key $PRIVATE_KEY
 ```
 
 Then mine the hook address, deploy the shell and bind it to the Stylus contract:
 
 ```bash
-cd uniswap && STYLUS_AIRDROP=0x... forge script script/01_DeployStylusAirdropHook.s.sol \
+cd uniswap && STYLUS_COUNTER=0x... forge script script/02_DeployStylusCounterHook.s.sol \
   --rpc-url arbitrum_sepolia --broadcast
 ```
-
-`./deploy.bash` runs both steps. The counter hook follows the same two commands with
-`stylus-counter-hook` / `02_DeployStylusCounterHook.s.sol`, and
-`00_DeployAirdropHook.s.sol` deploys the pure-Solidity baseline for comparison.
 
 ## Licensing
 
@@ -246,10 +245,11 @@ from the formula instead, and EulerSwap — BUSL-1.1 — is referenced in
 | A hook with no Solidity at all | [`stylus/native-counter/src/lib.rs`](stylus/native-counter/src/lib.rs) |
 | End-to-end proof that it works | [`prove-native-hook.bash`](prove-native-hook.bash) |
 | CREATE2 salt mining for a hook address | [`stylus/hook-miner/src/lib.rs`](stylus/hook-miner/src/lib.rs) |
-| Gas benchmarks | [`bench.bash`](bench.bash), [`bench-counter.bash`](bench-counter.bash), [`bench-compute.bash`](bench-compute.bash), [`bench-stableswap.bash`](bench-stableswap.bash) |
+| The guard attribute, and why it is a proc macro | [`stylus/base-hook-macros/src/lib.rs`](stylus/base-hook-macros/src/lib.rs) |
+| How to write a hook, step by step | [`stylus/base-hook/README.md`](stylus/base-hook/README.md) |
+| A complete TWAMM in Rust: orders, expiries, settlement | [`stylus/native-twamm/src/lib.rs`](stylus/native-twamm/src/lib.rs) |
+| The workload that wins: solstat's Gaussian, ported bit-exactly | [`stylus/native-gaussian/src/gaussian.rs`](stylus/native-gaussian/src/gaussian.rs) |
+| Its Solidity twin, pinned to the same values | [`uniswap/src/PmAmmMath.sol`](uniswap/src/PmAmmMath.sol) |
+| Gas benchmarks | [`bench-pmamm.bash`](bench-pmamm.bash), [`bench-twamm.bash`](bench-twamm.bash), [`bench-compute.bash`](bench-compute.bash), [`bench-counter.bash`](bench-counter.bash), [`bench-stableswap.bash`](bench-stableswap.bash) |
 | Opcode profile of shipping hooks | [`profile-hooks.bash`](profile-hooks.bash), [`bench-antisandwich.bash`](bench-antisandwich.bash) |
-| Hook forwarding v4 callbacks to Stylus | [`uniswap/src/AirdropHookProxy.sol`](uniswap/src/AirdropHookProxy.sol) |
-| The same hook in pure Solidity | [`uniswap/src/AirdropHook.sol`](uniswap/src/AirdropHook.sol) |
-| Hook state and logic in Rust | [`stylus/airdrop/src/lib.rs`](stylus/airdrop/src/lib.rs) |
-| ABI boundary between the two | [`uniswap/src/interfaces/IAirdropHook.sol`](uniswap/src/interfaces/IAirdropHook.sol) |
-| CREATE2 mining + binding | [`uniswap/script/01_DeployStylusAirdropHook.s.sol`](uniswap/script/01_DeployStylusAirdropHook.s.sol) |
+| Deploying a hook too large for one code fragment | [`bench-lib.bash`](bench-lib.bash) |

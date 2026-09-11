@@ -8,7 +8,6 @@ overall design.
 | [`base-hook`](base-hook/src/lib.rs) | `BaseHook.sol`'s counterpart in Stylus: v4 types, permission flags, the ten `IHooks` callbacks, and the `PoolManager` calls a hook makes | library |
 | [`native-counter`](native-counter/src/lib.rs) | a v4 hook with no Solidity at all, built on `base-hook` | 15.7 KB |
 | [`hook-miner`](hook-miner/src/lib.rs) | mines the CREATE2 salt that puts a Stylus contract on a hook address | host CLI |
-| [`airdrop`](airdrop/src/lib.rs) | airdrop accounting behind `AirdropHookProxy.sol` | 14.7 KB |
 | [`counter`](counter/src/lib.rs) | callback counters behind `CounterProxy.sol` | 7.5 KB |
 
 `hook-miner` runs on the host, so it is a workspace member but not a *default* member — the wasm
@@ -18,38 +17,14 @@ build skips it. Use `cargo test --workspace` to include its tests.
 cargo test --workspace                                   # unit tests, via stylus_sdk::testing::TestVM
 cargo build --target wasm32-unknown-unknown --release    # the contracts
 cargo stylus check -e https://sepolia-rollup.arbitrum.io/rpc
-cargo run -p stylus-airdrop-hook --features export-abi   # Solidity interface for the hook side
 ```
 
-`export-abi` output must stay in sync with `uniswap/src/interfaces/IAirdropHook.sol` and
+`export-abi` output must stay in sync with
 `uniswap/src/ICounter.sol` — those are what the Solidity hooks call through.
 
 ## Writing a hook in Rust
 
-Implement `HookConfig` to declare the pool manager and the callbacks the hook enables, then
-implement only those callbacks. Everything else keeps the base implementation, which reverts with
-`HookNotImplemented` exactly as the Solidity `BaseHook` does.
-
-```rust
-impl HookConfig for MyHook {
-    fn pool_manager(&self) -> Address { self.pool_manager.get() }
-    fn permissions(&self) -> Permissions { Permissions::none().with_after_swap() }
-}
-
-#[public]
-#[implements(IHooks)]
-impl MyHook {}
-
-#[public]
-impl IHooks for MyHook {
-    fn after_swap(&mut self, ..) -> Result<(FixedBytes<4>, i128), Vec<u8>> {
-        self.require_pool_manager()?;
-        Ok((selector::AFTER_SWAP, 0))
-    }
-}
-```
-
-See [`native-counter`](native-counter/src/lib.rs) for the whole thing.
+See [`base-hook/README.md`](base-hook/README.md).
 
 ## Deploying to a hook address
 
@@ -72,9 +47,9 @@ command to run. The address is derived from the init code, so rebuilding the con
 salt.
 
 For the split design, deploy the Stylus contract normally and bind it with
-`uniswap/script/01_DeployStylusAirdropHook.s.sol`:
+`uniswap/script/02_DeployStylusCounterHook.s.sol`:
 
 ```bash
-cargo stylus deploy --contract stylus-airdrop-hook \
+cargo stylus deploy --contract stylus-counter-hook \
   --endpoint https://sepolia-rollup.arbitrum.io/rpc --private-key $PRIVATE_KEY
 ```

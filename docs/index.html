@@ -42,19 +42,18 @@
         <div class="pair">
             <div class="card">
                 <h3>The shell — Solidity</h3>
-                <p><code>AirdropHookProxy.sol</code> owns the CREATE2-mined address that carries the
+                <p><code>CounterProxy.sol</code> owns the CREATE2-mined address that carries the
                     permission flags, and forwards every callback. It holds no state.</p>
             </div>
             <div class="card">
                 <h3>The hook — Rust</h3>
-                <p><code>stylus/airdrop</code> holds all of the storage and all of the logic, and
+                <p><code>stylus/counter</code> holds all of the storage and all of the logic, and
                     only accepts writes from the shell it is bound to.</p>
             </div>
         </div>
 
-        <p>Each hook also has a pure-Solidity twin — <code>AirdropHook.sol</code>,
-            <code>Counter.sol</code> — kept so the two implementations can be compared
-            behaviour-for-behaviour and gas-for-gas.</p>
+        <p>Each hook also has a pure-Solidity twin — <code>Counter.sol</code> — kept so the two
+            implementations can be compared behaviour-for-behaviour and gas-for-gas.</p>
 
         <h2>What ships today</h2>
         <div class="table-wrap">
@@ -68,12 +67,6 @@
                 </thead>
                 <tbody>
                     <tr>
-                        <td><code>AirdropHookProxy</code></td>
-                        <td>Books swap volume and swap count per user, then distributes an ERC-20
-                            airdrop weighted 80 % on volume and 20 % on activity.</td>
-                        <td>14.7 KB</td>
-                    </tr>
-                    <tr>
                         <td><code>CounterProxy</code></td>
                         <td>Counts <code>beforeSwap</code>, <code>afterSwap</code> and the two
                             liquidity callbacks, per pool.</td>
@@ -84,11 +77,11 @@
         </div>
 
         <h3>Proving the two implementations agree</h3>
-        <p>Foundry cannot execute WASM, so the Rust contract has a Solidity replica,
-            <code>MockStylusAirdrop.sol</code>, that the hook is tested against. The Rust suite runs
-            the same scenarios against <code>stylus_sdk::testing::TestVM</code>. Both assert the same
-            airdrop amounts down to the wei, which is what makes the replica trustworthy as a spec.
-        </p>
+        <p>Foundry cannot execute WASM, so the Rust side is tested against
+            <code>stylus_sdk::testing::TestVM</code>. Where both languages implement the same maths
+            they are pinned to the same table of values — <code>PmAmmMath.sol</code> and
+            <code>stylus/native-gaussian</code> agree to the wei, which is what makes the gas
+            comparison a comparison of languages rather than of precision.</p>
 
         <h2>Where this is going</h2>
         <p>The Solidity shell exists only to own a flagged address. The goal is a

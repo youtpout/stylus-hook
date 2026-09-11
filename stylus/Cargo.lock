@@ -3654,15 +3654,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
-name = "stylus-airdrop-hook"
-version = "0.2.0"
-dependencies = [
- "alloy-primitives",
- "alloy-sol-types",
- "stylus-sdk",
-]
-
-[[package]]
 name = "stylus-core"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
