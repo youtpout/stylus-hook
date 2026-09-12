@@ -93,7 +93,7 @@ log "opening one pool per variant"
 open_pool() {
   cast send "$FIXTURE" "open(address,address,address,uint128)" \
     "$CURRENCY0" "$CURRENCY1" "$1" "$LIQUIDITY" --rpc-url "$RPC" --private-key $KEY \
-    | awk '/^gasUsed/{print $2}'
+    | awk '$1=="gasUsed"{print $2; exit}'
 }
 G_NONE=$(open_pool 0x0000000000000000000000000000000000000000)
 G_SOL=$(open_pool "$SOLIDITY_HOOK")
@@ -107,7 +107,7 @@ for round in $(seq 1 "$ROUNDS"); do
   row=""
   for i in 0 1 2; do
     g=$(cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$i" "$SWAP_AMOUNT" true \
-      --rpc-url "$RPC" --private-key $KEY | awk '/^gasUsed/{print $2}')
+      --rpc-url "$RPC" --private-key $KEY | awk '$1=="gasUsed"{print $2; exit}')
     LAST[$i]=$g
     row=$(printf '%s %12s' "$row" "$g")
   done
@@ -125,7 +125,7 @@ cached=$(cache_stylus_program "$NATIVE_HOOK" "$EOA")
 echo "native hook cached: $cached"
 for i in 0 1 2; do
   LAST[$i]=$(cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$i" "$SWAP_AMOUNT" true \
-    --rpc-url "$RPC" --private-key $KEY | awk '/^gasUsed/{print $2}')
+    --rpc-url "$RPC" --private-key $KEY | awk '$1=="gasUsed"{print $2; exit}')
 done
 
 log "results (gas per swap — two hook calls each: beforeSwap and afterSwap)"

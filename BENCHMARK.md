@@ -758,23 +758,33 @@ ahead by
 ```
 
 from the two figures measured above: 11,910 gas saved per expiry crossed, against 7,916 worse on an
-idle pool. Break-even is at **0.66 of one expiry**, and everything past that is linear:
+idle pool. Break-even is at **0.66 of one expiry**.
 
-| streams ending between two touches | projected saving |
-| ---: | ---: |
-| 1 | +3,994 |
-| 4 | +39,724 |
-| 8 | +87,364 |
-| 16 | +182,644 |
+`./bench-twamm-concurrent.bash` measures it rather than projecting it. For each `M` it places `M`
+streams expiring on consecutive grid points, lets them all come due with nobody touching the pool,
+and times the single swap that catches up across all `M` at once. Both hooks on the same node, same
+grid, same order sizes, Rust program cached:
 
-**So the single-stream benchmark is the worst case Stylus will ever be measured in, and it already
-wins.** A busy pool is not a harder test for the port, it is an easier one — the fixed cost is
-amortised across every stream while the saving is not.
+| streams ending between two touches | Rust | production Solidity | saving |
+| ---: | ---: | ---: | ---: |
+| idle, no orders | 147,365 | 132,321 | −15,044 |
+| 1 | 340,930 | 351,474 | **+10,544** |
+| 2 | 353,116 | 377,841 | **+24,725** |
+| 4 | 466,890 | 545,831 | **+78,941** |
 
-`./bench-twamm-concurrent.bash` measures that directly rather than projecting it. For each `M` it
-places `M` streams expiring on consecutive grid points, lets them all come due with nobody touching
-the pool, and times the single swap that has to catch up across all `M` at once, on both hooks. The
-projection above is what the marginal costs already measured imply; the script is what checks it.
+A swap through a hookless pool on the same node is 115,129.
+
+**So the single-stream measurement is the worst case Stylus will ever be shown in, and it already
+wins.** A busy pool is not a harder test for the port, it is an easier one: the fixed cost is
+amortised across every stream while the saving is not. And the saving grows faster than the linear
+projection — 78,941 at four streams against 39,724 projected — because the control settles once per
+interval where this hook settles once per catch-up, so its per-interval work compounds too.
+
+The sweep was configured for 1, 2, 4, 8 and 16 and stopped after four. The dev node degrades as the
+order book grows: by the 8-stream row it was producing a block every few minutes, which is a
+property of a single-threaded dev node rather than of either hook. The three rows measured are
+enough to show the shape; the two larger ones are not in this table because they were not
+measured.
 
 One caveat the script cannot remove: it subtracts a single idle figure taken before the sweep, and
 each batch leaves earnings-factor state behind, so the per-stream column drifts slightly across

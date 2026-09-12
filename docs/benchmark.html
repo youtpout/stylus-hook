@@ -367,44 +367,59 @@
                 per swap regardless, and the per-interval saving is paid once per stream.</strong>
             Catching a pool up is a loop over occupied intervals, so with M streams ending between
             two touches of the pool the Rust hook is ahead by 11,910 × M − 7,916, from the two
-            figures measured above. Break-even is at two thirds of a single expiry, and everything
-            past it is linear.</p>
+            figures measured above. Break-even is at two thirds of a single expiry.</p>
+        <p><code>./bench-twamm-concurrent.bash</code> measures that rather than projecting it. For
+            each M it places M streams on consecutive grid points, lets them all come due with
+            nobody touching the pool, and times the single swap that catches up across all of them.
+            Both hooks on the same node, same grid, same order sizes, Rust program cached.</p>
         <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
                         <th class="num">Streams ending between two touches</th>
-                        <th class="num">Projected saving</th>
+                        <th class="num">Rust</th>
+                        <th class="num">Production Solidity</th>
+                        <th class="num">Saving</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
+                        <td class="num">idle, no orders</td>
+                        <td class="num">147,365</td>
+                        <td class="num">132,321</td>
+                        <td class="num loss">−15,044</td>
+                    </tr>
+                    <tr>
                         <td class="num">1</td>
-                        <td class="num win">+3,994</td>
+                        <td class="num">340,930</td>
+                        <td class="num">351,474</td>
+                        <td class="num win">+10,544</td>
+                    </tr>
+                    <tr>
+                        <td class="num">2</td>
+                        <td class="num">353,116</td>
+                        <td class="num">377,841</td>
+                        <td class="num win">+24,725</td>
                     </tr>
                     <tr>
                         <td class="num">4</td>
-                        <td class="num win">+39,724</td>
-                    </tr>
-                    <tr>
-                        <td class="num">8</td>
-                        <td class="num win">+87,364</td>
-                    </tr>
-                    <tr>
-                        <td class="num">16</td>
-                        <td class="num win">+182,644</td>
+                        <td class="num">466,890</td>
+                        <td class="num">545,831</td>
+                        <td class="num win">+78,941</td>
                     </tr>
                 </tbody>
             </table>
         </div>
-        <p><strong>So the single-stream benchmark is the worst case Stylus will ever be measured in,
+        <p>A swap through a hookless pool on the same node is 115,129.</p>
+        <p><strong>So the single-stream measurement is the worst case Stylus will ever be shown in,
                 and it already wins.</strong> A busy pool is not a harder test for the port, it is an
-            easier one: the fixed cost is amortised across every stream while the saving is not.</p>
-        <p class="lead">Those four rows are a projection from marginal costs measured on this page,
-            not a measurement.
-            <code>./bench-twamm-concurrent.bash</code> measures them directly — for each M it places
-            M streams on consecutive grid points, lets them all come due with nobody touching the
-            pool, and times the single swap that catches up across all of them.</p>
+            easier one: the fixed cost is amortised across every stream while the saving is not. The
+            saving also grows faster than linearly, because the control settles once per interval
+            where this hook settles once per catch-up.</p>
+        <p class="lead">The sweep was configured for 1, 2, 4, 8 and 16 streams and stopped after
+            four. The dev node degrades as the order book grows, which is a property of a
+            single-threaded dev node rather than of either hook, so the two larger rows are absent
+            rather than estimated.</p>
 
         <h2>5. The pm-AMM's Gaussian solve <span class="pill">wins</span></h2>
         <p>The pm-AMM's invariant is transcendental, so every swap must run a Gaussian solve. This is

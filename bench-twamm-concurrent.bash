@@ -112,7 +112,7 @@ swap_gas() {
     printf '%s\n' "$out" | head -3 >&2
     return 1
   fi
-  printf '%s\n' "$out" | awk '/^gasUsed/{print $2}'
+  printf '%s\n' "$out" | awk '$1=="gasUsed"{print $2; exit}'
 }
 
 # A nitro dev node only makes a block when it has a transaction to put in one, so its clock does not

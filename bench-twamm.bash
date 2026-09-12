@@ -114,7 +114,7 @@ swap_gas() {
       --rpc-url "$RPC" 2>&1 | head -3 >&2
     return 1
   fi
-  printf '%s\n' "$out" | awk '/^gasUsed/{print $2}'
+  printf '%s\n' "$out" | awk '$1=="gasUsed"{print $2; exit}'
 }
 
 log "sweeping the amount of work"

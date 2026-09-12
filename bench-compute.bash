@@ -109,7 +109,7 @@ echo "both hooks compute the same xorshift64, mulDiv, rpow and sqrt"
 
 swap_gas() {
   cast send "$FIXTURE" "swap(uint256,uint256,bool)" "$1" "$SWAP_AMOUNT" true \
-    --rpc-url "$RPC" --private-key $KEY | awk '/^gasUsed/{print $2}'
+    --rpc-url "$RPC" --private-key $KEY | awk '$1=="gasUsed"{print $2; exit}'
 }
 
 log "sweeping the amount of work"
