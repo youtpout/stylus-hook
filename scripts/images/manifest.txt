@@ -1,0 +1,7 @@
+0 logo 1024 1024
+1 logo-light 1024 1024
+2 cover 1200 630
+3 01-twamm-concurrency 1600 900
+4 02-crossover 1600 900
+5 03-per-operation 1600 900
+6 04-three-costs 1600 900

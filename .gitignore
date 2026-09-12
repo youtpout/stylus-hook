@@ -14,3 +14,6 @@ node_modules/
 
 # Rendered video: regenerate with ./scripts/video/build.sh
 scripts/video/out/
+
+# Rendered press images: regenerate with ./scripts/images/build.sh
+scripts/images/out/

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stylus Hook — press images</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0d12;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.card{position:absolute;top:0;left:0;display:none;overflow:hidden}
+.card.on{display:flex}
+:root{--ink:#f2f2f6;--dim:#a3a3b2;--faint:#6f6f80;--plane:#16161d;--line:#2a2a34;
+ --pink:#ff2d84;--rust:#3987e5;--sol:#d95926;
+ --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+.dark{background:#0d0d12;color:var(--ink)}
+.light{background:#fbfbfd;color:#121217}
+.pad{padding:64px 76px}
+h1{font-size:60px;line-height:1.04;letter-spacing:-.025em;font-weight:800}
+h2{font-size:42px;line-height:1.1;letter-spacing:-.02em;font-weight:750}
+.kick{font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--pink)}
+.sub{font-size:24px;line-height:1.4;color:var(--dim);margin-top:16px;max-width:52ch}
+.wm{font-family:var(--mono);font-size:15px;color:var(--faint)}
+svg{display:block}
+.gr{stroke:#2a2a34;stroke-width:1}.ax-l{stroke:#3a3a46;stroke-width:1}
+.ax{fill:var(--faint);font-size:16px;font-family:inherit}
+.rl{fill:var(--ink);font-size:19px;font-family:inherit}
+.dl{fill:var(--ink);font-size:19px;font-weight:700;font-family:inherit}
+.nt{fill:var(--dim);font-size:16px;font-family:inherit}
+.mk{stroke:#0d0d12;stroke-width:2.5}
+.legend{display:flex;gap:28px;font-size:18px;color:var(--dim);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:10px}
+.legend i{width:20px;height:4px;border-radius:2px}
+.cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:30px;margin-top:40px}
+.box{background:var(--plane);border:1px solid var(--line);border-radius:16px;padding:30px 32px}
+.box h3{font-size:22px;font-weight:750;margin-bottom:12px}
+.box p{font-size:20px;line-height:1.5;color:var(--dim)}
+.big{font-size:52px;font-weight:800;letter-spacing:-.03em;margin-bottom:6px}
+</style>
+</head>
+<body>
+<section class="card dark" data-name="logo" data-w="1024" data-h="1024" style="width:1024px;height:1024px">
+ <div style="width:1024px;height:1024px;display:flex;align-items:center;justify-content:center">
+   <svg viewBox="2 8 84 84" width="900" height="900"><defs>
+  <linearGradient id="g1" x1="20" y1="10" x2="72" y2="86" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ff2d84"/><stop offset="1" stop-color="#3987e5"/>
+  </linearGradient>
+</defs><g>
+  <rect x="59.5" y="12" width="13" height="8.5" rx="3" fill="url(#g1)"/>
+  <rect x="59.5" y="24" width="13" height="8.5" rx="3" fill="url(#g1)"/>
+  <rect x="59.5" y="36" width="13" height="8.5" rx="3" fill="url(#g1)"/>
+  <path d="M66 50 L66 60 A22 22 0 1 1 22 60 L22 52"
+        fill="none" stroke="url(#g1)" stroke-width="13"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>
+ </div></section>
+<section class="card light" data-name="logo-light" data-w="1024" data-h="1024" style="width:1024px;height:1024px">
+ <div style="width:1024px;height:1024px;display:flex;align-items:center;justify-content:center">
+   <svg viewBox="2 8 84 84" width="900" height="900"><defs>
+  <linearGradient id="g2" x1="20" y1="10" x2="72" y2="86" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ff2d84"/><stop offset="1" stop-color="#3987e5"/>
+  </linearGradient>
+</defs><g>
+  <rect x="59.5" y="12" width="13" height="8.5" rx="3" fill="url(#g2)"/>
+  <rect x="59.5" y="24" width="13" height="8.5" rx="3" fill="url(#g2)"/>
+  <rect x="59.5" y="36" width="13" height="8.5" rx="3" fill="url(#g2)"/>
+  <path d="M66 50 L66 60 A22 22 0 1 1 22 60 L22 52"
+        fill="none" stroke="url(#g2)" stroke-width="13"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>
+ </div></section>
+<section class="card dark" data-name="cover" data-w="1200" data-h="630" style="width:1200px;height:630px">
+ <div class="pad" style="width:1200px;height:630px;display:flex;flex-direction:column;justify-content:space-between">
+   <div>
+     <div style="display:flex;align-items:center;gap:24px">
+       <svg viewBox="2 8 84 84" width="96" height="96"><defs>
+  <linearGradient id="g3" x1="20" y1="10" x2="72" y2="86" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ff2d84"/><stop offset="1" stop-color="#3987e5"/>
+  </linearGradient>
+</defs><g>
+  <rect x="59.5" y="12" width="13" height="8.5" rx="3" fill="url(#g3)"/>
+  <rect x="59.5" y="24" width="13" height="8.5" rx="3" fill="url(#g3)"/>
+  <rect x="59.5" y="36" width="13" height="8.5" rx="3" fill="url(#g3)"/>
+  <path d="M66 50 L66 60 A22 22 0 1 1 22 60 L22 52"
+        fill="none" stroke="url(#g3)" stroke-width="13"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>
+       <div>
+         <div class="kick">Uniswap v4 · Arbitrum Stylus</div>
+         <h1 style="font-size:58px;margin-top:4px">Stylus Hook</h1>
+       </div>
+     </div>
+     <p class="sub" style="font-size:27px;max-width:64ch;margin-top:26px">Uniswap v4 hooks written
+     entirely in Rust. No Solidity in the hook — the contract the PoolManager calls
+     <em style="color:#4cc2ff;font-style:normal;font-weight:650">is</em> the Stylus contract.</p>
+   </div>
+   <div>
+     <div style="height:1px;background:var(--line);margin-bottom:26px"></div>
+     <div style="display:flex;align-items:baseline;gap:18px;flex-wrap:wrap">
+       <span style="font-size:38px;font-weight:800;letter-spacing:-.02em;color:var(--sol)">2,849,561</span>
+       <span style="font-size:26px;color:var(--faint)">→</span>
+       <span style="font-size:38px;font-weight:800;letter-spacing:-.02em;color:var(--rust)">1,891,213</span>
+       <span style="font-size:21px;color:var(--dim)">gas per swap, at 32 concurrent TWAMM orders</span>
+     </div>
+     <p class="wm" style="margin-top:22px;font-size:17px">github.com/youtpout/stylus-hook</p>
+   </div>
+ </div>
+</section>
+
+<section class="card dark" data-name="01-twamm-concurrency" data-w="1600" data-h="900" style="width:1600px;height:900px">
+ <div class="pad" style="width:1600px;height:900px;display:flex;flex-direction:column">
+   <div class="kick">Measured on an Arbitrum Nitro node</div>
+   <h2 style="margin-top:10px">A TWAMM under real order flow</h2>
+   <div class="legend"><span><i style="background:var(--rust)"></i>Rust on Stylus</span><span><i style="background:var(--sol)"></i>Production Solidity</span></div>
+   <div style="flex:1;display:flex;align-items:center"><svg viewBox="0 0 1500 620" width="1500" height="620"><line x1="110" y1="562.0" x2="1230" y2="562.0" class="gr"/><text class="ax" x="98" y="568.0" text-anchor="end">0k</text><line x1="110" y1="381.3" x2="1230" y2="381.3" class="gr"/><text class="ax" x="98" y="387.3" text-anchor="end">1,000k</text><line x1="110" y1="200.7" x2="1230" y2="200.7" class="gr"/><text class="ax" x="98" y="206.7" text-anchor="end">2,000k</text><line x1="110" y1="20.0" x2="1230" y2="20.0" class="gr"/><text class="ax" x="98" y="26.0" text-anchor="end">3,000k</text>
+<line x1="110" y1="562" x2="1230" y2="562" class="ax-l"/>
+<path d="M110.0 498.5 L334.0 493.7 L558.0 463.4 L782.0 402.9 L1006.0 287.8 L1230.0 47.2 L1230.0 220.3 L1006.0 371.1 L782.0 436.4 L558.0 477.6 L334.0 498.2 L110.0 500.4 Z" fill="var(--sol)" opacity="0.13"/>
+<path d="M110.0 498.5 L334.0 493.7 L558.0 463.4 L782.0 402.9 L1006.0 287.8 L1230.0 47.2" fill="none" stroke="var(--sol)" stroke-width="3.5" stroke-linejoin="round"/>
+<path d="M110.0 500.4 L334.0 498.2 L558.0 477.6 L782.0 436.4 L1006.0 371.1 L1230.0 220.3" fill="none" stroke="var(--rust)" stroke-width="3.5" stroke-linejoin="round"/><circle cx="110.0" cy="498.5" r="6" fill="var(--sol)" class="mk"/><circle cx="334.0" cy="493.7" r="6" fill="var(--sol)" class="mk"/><circle cx="558.0" cy="463.4" r="6" fill="var(--sol)" class="mk"/><circle cx="782.0" cy="402.9" r="6" fill="var(--sol)" class="mk"/><circle cx="1006.0" cy="287.8" r="6" fill="var(--sol)" class="mk"/><circle cx="1230.0" cy="47.2" r="6" fill="var(--sol)" class="mk"/><circle cx="110.0" cy="500.4" r="6" fill="var(--rust)" class="mk"/><circle cx="334.0" cy="498.2" r="6" fill="var(--rust)" class="mk"/><circle cx="558.0" cy="477.6" r="6" fill="var(--rust)" class="mk"/><circle cx="782.0" cy="436.4" r="6" fill="var(--rust)" class="mk"/><circle cx="1006.0" cy="371.1" r="6" fill="var(--rust)" class="mk"/><circle cx="1230.0" cy="220.3" r="6" fill="var(--rust)" class="mk"/>
+<text class="dl" x="1246.0" y="53.2" fill="var(--sol)">Solidity 2,849,561</text>
+<text class="dl" x="1246.0" y="226.3" fill="var(--rust)">Rust 1,891,213</text>
+<text class="nt" x="1246.0" y="139.8">saves 958,348</text>
+<text class="ax" x="110.0" y="588.0" text-anchor="middle">1</text><text class="ax" x="334.0" y="588.0" text-anchor="middle">2</text><text class="ax" x="558.0" y="588.0" text-anchor="middle">4</text><text class="ax" x="782.0" y="588.0" text-anchor="middle">8</text><text class="ax" x="1006.0" y="588.0" text-anchor="middle">16</text><text class="ax" x="1230.0" y="588.0" text-anchor="middle">32</text><text class="ax" x="670.0" y="614" text-anchor="middle">concurrent order streams caught up in one swap</text></svg></div>
+   <p class="wm">stylus-hook · against the TWAMM live on Base and Unichain</p>
+ </div></section>
+<section class="card dark" data-name="02-crossover" data-w="1600" data-h="900" style="width:1600px;height:900px">
+ <div class="pad" style="width:1600px;height:900px;display:flex;flex-direction:column">
+   <div class="kick">Where Stylus starts winning</div>
+   <h2 style="margin-top:10px">89 operations (mulDiv)</h2>
+   <div class="legend"><span><i style="background:var(--rust)"></i>Rust on Stylus</span><span><i style="background:var(--sol)"></i>Solidity</span></div>
+   <div style="flex:1;display:flex;align-items:center"><svg viewBox="0 0 1500 620" width="1500" height="620"><line x1="110" y1="562.0" x2="1330" y2="562.0" class="gr"/><text class="ax" x="98" y="568.0" text-anchor="end">0k</text><line x1="110" y1="411.4" x2="1330" y2="411.4" class="gr"/><text class="ax" x="98" y="417.4" text-anchor="end">1,000k</text><line x1="110" y1="260.9" x2="1330" y2="260.9" class="gr"/><text class="ax" x="98" y="266.9" text-anchor="end">2,000k</text><line x1="110" y1="110.3" x2="1330" y2="110.3" class="gr"/><text class="ax" x="98" y="116.3" text-anchor="end">3,000k</text>
+<line x1="110" y1="562" x2="1330" y2="562" class="ax-l"/>
+<line x1="459.1" y1="20" x2="459.1" y2="562" class="ax-l" stroke-dasharray="5 5"/>
+<text class="nt" x="469.1" y="38">they cross at 89</text>
+<path d="M110.0 543.3 L362.7 538.0 L615.5 522.4 L964.3 438.8 L1330.0 20.8" fill="none" stroke="var(--sol)" stroke-width="3.5" stroke-linejoin="round"/>
+<path d="M110.0 537.3 L362.7 535.5 L615.5 529.9 L964.3 500.0 L1330.0 351.0" fill="none" stroke="var(--rust)" stroke-width="3.5" stroke-linejoin="round"/><circle cx="110.0" cy="543.3" r="6" fill="var(--sol)" class="mk"/><circle cx="362.7" cy="538.0" r="6" fill="var(--sol)" class="mk"/><circle cx="615.5" cy="522.4" r="6" fill="var(--sol)" class="mk"/><circle cx="964.3" cy="438.8" r="6" fill="var(--sol)" class="mk"/><circle cx="1330.0" cy="20.8" r="6" fill="var(--sol)" class="mk"/><circle cx="110.0" cy="537.3" r="6" fill="var(--rust)" class="mk"/><circle cx="362.7" cy="535.5" r="6" fill="var(--rust)" class="mk"/><circle cx="615.5" cy="529.9" r="6" fill="var(--rust)" class="mk"/><circle cx="964.3" cy="500.0" r="6" fill="var(--rust)" class="mk"/><circle cx="1330.0" cy="351.0" r="6" fill="var(--rust)" class="mk"/>
+<text class="dl" x="1346.0" y="26.8" fill="var(--sol)">Solidity</text>
+<text class="dl" x="1346.0" y="357.0" fill="var(--rust)">Rust</text>
+<text class="ax" x="110.0" y="588.0" text-anchor="middle">0</text><text class="ax" x="362.7" y="588.0" text-anchor="middle">50</text><text class="ax" x="615.5" y="588.0" text-anchor="middle">200</text><text class="ax" x="964.3" y="588.0" text-anchor="middle">1,000</text><text class="ax" x="1330.0" y="588.0" text-anchor="middle">5,000</text><text class="ax" x="720.0" y="614" text-anchor="middle">mulDiv operations per swap</text></svg></div>
+   <p class="wm">stylus-hook · identical loop, both languages, one swap per transaction</p>
+ </div></section>
+<section class="card dark" data-name="03-per-operation" data-w="1600" data-h="900" style="width:1600px;height:900px">
+ <div class="pad" style="width:1600px;height:900px;display:flex;flex-direction:column">
+   <div class="kick">The gain tracks the word size</div>
+   <h2 style="margin-top:10px">How much cheaper the same operation is in Rust</h2>
+   <div style="flex:1;display:flex;align-items:center"><svg viewBox="0 0 1500 600" width="1500" height="600"><line x1="380" y1="26" x2="380" y2="580" class="ax-l"/><text class="rl" x="360" y="68" text-anchor="end">xorshift64, 64-bit words</text><rect x="380" y="42" width="990.0" height="40" rx="8" fill="var(--rust)" opacity="1.00"/><text class="dl" x="1386.0" y="70">41.6×</text><text class="rl" x="360" y="160" text-anchor="end">integer sqrt</text><rect x="380" y="134" width="133.3" height="40" rx="8" fill="var(--rust)" opacity="0.68"/><text class="dl" x="529.3" y="162">5.6×</text><text class="rl" x="360" y="252" text-anchor="end">plain a*b/c</text><rect x="380" y="226" width="130.9" height="40" rx="8" fill="var(--rust)" opacity="0.68"/><text class="dl" x="526.9" y="254">5.5×</text><text class="rl" x="360" y="344" text-anchor="end">mulDiv, 512-bit</text><rect x="380" y="318" width="80.9" height="40" rx="8" fill="var(--rust)" opacity="0.57"/><text class="dl" x="476.9" y="346">3.4×</text><text class="rl" x="360" y="436" text-anchor="end">rpow in Q96</text><rect x="380" y="410" width="71.4" height="40" rx="8" fill="var(--rust)" opacity="0.55"/><text class="dl" x="467.4" y="438">3.0×</text><text class="rl" x="360" y="528" text-anchor="end">one storage write</text><rect x="380" y="502" width="25.2" height="40" rx="8" fill="var(--rust)" opacity="0.45"/><text class="dl" x="421.2" y="530">1.06×</text></svg></div>
+   <p class="wm">stylus-hook · storage is a host operation either way, and barely moves</p>
+ </div></section>
+<section class="card dark" data-name="04-three-costs" data-w="1600" data-h="900" style="width:1600px;height:900px">
+ <div class="pad" style="width:1600px;height:900px;display:flex;flex-direction:column;justify-content:center">
+   <div class="kick">Why most hooks should stay in Solidity</div>
+   <h2 style="margin-top:10px">Stylus is not faster. It is differently priced.</h2>
+   <div class="cols">
+     <div class="box"><div class="big" style="color:var(--sol)">+7,900</div><h3>Entering</h3>
+       <p>gas per call that Solidity never pays, even with the program cached</p></div>
+     <div class="box"><div class="big">1.06×</div><h3>Storage</h3>
+       <p>the same slots in the same trie, at the same EVM prices</p></div>
+     <div class="box"><div class="big" style="color:var(--rust)">3–640×</div><h3>Computing</h3>
+       <p>cheaper, depending on how badly the work fits a 256-bit word</p></div>
+   </div>
+   <p class="sub" style="margin-top:44px;max-width:70ch;font-size:26px">So a port pays off only above
+   roughly <strong style="color:var(--ink)">12,000 gas of Solidity arithmetic per call</strong>.
+   That is the whole decision.</p>
+ </div></section>
+<script>
+const cards=[...document.querySelectorAll('.card')];
+function show(i){cards.forEach((c,k)=>c.classList.toggle('on',k===i));}
+show(parseInt(location.hash.slice(1),10)||0);
+addEventListener('hashchange',()=>show(parseInt(location.hash.slice(1),10)||0));
+</script>
+</body>
+</html>
