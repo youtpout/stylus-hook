@@ -26,6 +26,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);
 .kicker{font-size:15px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
 h1{font-size:74px;line-height:1.03;letter-spacing:-.025em;font-weight:800}
 h2{font-size:46px;line-height:1.1;letter-spacing:-.02em;font-weight:750;margin-bottom:8px}
+.tag{font-size:38px;line-height:1.2;font-weight:650;letter-spacing:-.015em;color:var(--ink);margin-top:20px}
 .sub{font-size:25px;line-height:1.4;color:var(--dim);max-width:56ch;margin-top:18px}
 .body{font-size:23px;line-height:1.55;color:var(--dim);max-width:62ch;margin-top:22px}
 .body strong,.sub strong{color:var(--ink);font-weight:700}
@@ -87,7 +88,8 @@ body.video .slide{border:none;border-radius:0}
 <div class="kicker">Continuity track · Uniswap v4 · Arbitrum Stylus</div>
 
   <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
-    <h1>Uniswap v4 hooks,<br>written entirely in Rust</h1>
+    <h1>Stylus Hook</h1>
+    <p class="tag">Uniswap v4 hooks written entirely in Rust</p>
     <p class="sub">No Solidity anywhere in the hook. The contract the <code>PoolManager</code> calls
     <em>is</em> the Stylus contract, and it lands on its own permission address.</p>
   </div>
