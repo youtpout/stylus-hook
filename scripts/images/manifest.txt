@@ -1,6 +1,6 @@
-0 logo 1024 1024 transparent
-1 logo-256 256 256 transparent
-2 logo-64 64 64 transparent
+0 logo 1024 1024 dark
+1 logo-256 256 256 dark
+2 logo-64 64 64 dark
 3 cover 1200 630 dark
 4 01-twamm-concurrency 1600 900 dark
 5 02-crossover 1600 900 dark
