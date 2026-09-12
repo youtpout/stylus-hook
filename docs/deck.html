@@ -93,7 +93,7 @@ body.video .slide{border:none;border-radius:0}
     <p class="sub">No Solidity anywhere in the hook. The contract the <code>PoolManager</code> calls
     <em>is</em> the Stylus contract, and it lands on its own permission address.</p>
   </div>
-<div class="foot"><span>stylus-hook</span><span>1 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>1 / 16</span></div>
 </section>
 <section class="slide" data-i="1">
 <div class="kicker">Where this started</div>
@@ -107,7 +107,7 @@ body.video .slide{border:none;border-radius:0}
     <li class="no">The logic was Rust. The hook was not.
       <b>It was never Stylus end to end.</b></li>
   </ul>
-<div class="foot"><span>stylus-hook</span><span>2 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>2 / 16</span></div>
 </section>
 <section class="slide" data-i="2">
 <div class="kicker">Why it stopped there</div>
@@ -123,7 +123,7 @@ body.video .slide{border:none;border-radius:0}
   </div>
   <p class="body">You cannot finish a bridge between two things that are both still moving. The
   honest call was to stop and wait.</p>
-<div class="foot"><span>stylus-hook</span><span>3 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>3 / 16</span></div>
 </section>
 <section class="slide" data-i="3">
 <div class="kicker">What changed</div>
@@ -138,7 +138,7 @@ body.video .slide{border:none;border-radius:0}
       CREATE2 on a non-zero salt</li>
   </ul>
   <p class="body">Every reason to stop in 2024 had been removed. So we finished it.</p>
-<div class="foot"><span>stylus-hook</span><span>4 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>4 / 16</span></div>
 </section>
 <section class="slide" data-i="4">
 <div class="kicker">The whole problem</div>
@@ -152,7 +152,7 @@ body.video .slide{border:none;border-radius:0}
     not see. This was the blocker.</p></div>
   </div>
   <p class="body">The ABI was never the obstacle. <strong>The address was.</strong></p>
-<div class="foot"><span>stylus-hook</span><span>5 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>5 / 16</span></div>
 </section>
 <section class="slide" data-i="5">
 <div class="kicker">What we built</div>
@@ -170,7 +170,7 @@ body.video .slide{border:none;border-radius:0}
   <p class="body">A test asserts all <strong>ten callback selectors</strong> computed from the Rust
   ABI equal those in the compiled <code>IHooks.sol</code>. A Rust hook is only a hook if the calls
   land on the right methods.</p>
-<div class="foot"><span>stylus-hook</span><span>6 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>6 / 16</span></div>
 </section>
 <section class="slide" data-i="6">
 <div class="kicker">Writing one</div>
@@ -192,7 +192,7 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
 
 <span class="c">// 5. mine the salt, then deploy to the address it prints</span>
 <span class="s">cargo run -p stylus-hook-miner -- --permissions before-swap</span></pre>
-<div class="foot"><span>stylus-hook</span><span>7 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>7 / 16</span></div>
 </section>
 <section class="slide" data-i="7">
 <div class="kicker">Proof</div>
@@ -208,7 +208,7 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
 <span class="o">ok</span>  afterSwap reached the Rust hook
 <span class="o">ok</span>  beforeRemoveLiquidity reached the Rust hook
 <span class="o">ok</span>  beforeDonate reverts with HookNotImplemented</pre>
-<div class="foot"><span>stylus-hook</span><span>8 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>8 / 16</span></div>
 </section>
 <section class="slide" data-i="8">
 <div class="kicker">So is it worth it?</div>
@@ -224,12 +224,12 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
   </div>
   <p class="body">So a port pays off only above roughly <strong>12,000 gas of Solidity arithmetic
   per call</strong>. That is the whole decision.</p>
-<div class="foot"><span>stylus-hook</span><span>9 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>9 / 16</span></div>
 </section>
 <section class="slide" data-i="9">
 <div class="kicker">Where the lines cross</div>
 
-  <h2>89 operations</h2>
+  <h2>89 operations (mulDiv)</h2>
   <div class="legend"><span><i style="background:var(--rust)"></i>Rust on Stylus</span>
   <span><i style="background:var(--sol)"></i>Solidity</span></div>
   <figure><svg viewBox="0 0 980 320" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gas per swap against mulDiv operations. The lines cross at 89 operations.">
@@ -241,7 +241,7 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
 <text class="dl" x="861.0" y="19.4" fill="var(--sol)">Solidity</text>
 <text class="dl" x="861.0" y="181.4" fill="var(--rust)">Rust</text>
 <text class="ax" x="76.0" y="302.0" text-anchor="middle">0</text><text class="ax" x="235.9" y="302.0" text-anchor="middle">50</text><text class="ax" x="395.8" y="302.0" text-anchor="middle">200</text><text class="ax" x="616.6" y="302.0" text-anchor="middle">1,000</text><text class="ax" x="848.0" y="302.0" text-anchor="middle">5,000</text><text class="ax" x="462.0" y="316" text-anchor="middle">mulDiv operations per swap</text></svg></figure>
-<div class="foot"><span>stylus-hook</span><span>10 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>10 / 16</span></div>
 </section>
 <section class="slide" data-i="10">
 <div class="kicker">When NOT to use it</div>
@@ -257,7 +257,7 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
     <li class="no">Anything expensive because of the <b>algorithm it picked</b>. Fix that first,
       in Solidity.</li>
   </ul>
-<div class="foot"><span>stylus-hook</span><span>11 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>11 / 16</span></div>
 </section>
 <section class="slide" data-i="11">
 <div class="kicker">When to use it</div>
@@ -267,7 +267,7 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
 <line x1="250" y1="12" x2="250" y2="284" class="ax-l"/><text class="rl" x="236" y="34" text-anchor="end">xorshift64, 64-bit words</text><rect x="250" y="17" width="540.0" height="24" rx="5" fill="var(--rust)" opacity="1.00"/><text class="dl" x="801.0" y="35">41.6×</text><text class="rl" x="236" y="80" text-anchor="end">integer sqrt</text><rect x="250" y="63" width="72.7" height="24" rx="5" fill="var(--rust)" opacity="0.68"/><text class="dl" x="333.7" y="81">5.6×</text><text class="rl" x="236" y="126" text-anchor="end">plain a*b/c</text><rect x="250" y="109" width="71.4" height="24" rx="5" fill="var(--rust)" opacity="0.68"/><text class="dl" x="332.4" y="127">5.5×</text><text class="rl" x="236" y="172" text-anchor="end">mulDiv, 512-bit</text><rect x="250" y="155" width="44.1" height="24" rx="5" fill="var(--rust)" opacity="0.57"/><text class="dl" x="305.1" y="173">3.4×</text><text class="rl" x="236" y="218" text-anchor="end">rpow in Q96</text><rect x="250" y="201" width="38.9" height="24" rx="5" fill="var(--rust)" opacity="0.55"/><text class="dl" x="299.9" y="219">3.0×</text><text class="rl" x="236" y="264" text-anchor="end">one storage write</text><rect x="250" y="247" width="13.8" height="24" rx="5" fill="var(--rust)" opacity="0.45"/><text class="dl" x="274.8" y="265">1.06×</text></svg></figure>
   <p class="body" style="margin-top:6px">Storage barely moves. Everything that is real arithmetic
   does.</p>
-<div class="foot"><span>stylus-hook</span><span>12 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>12 / 16</span></div>
 </section>
 <section class="slide" data-i="12">
 <div class="kicker">The case that matters</div>
@@ -286,7 +286,7 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
 <text class="dl" x="771.0" y="121.0" fill="var(--rust)">Rust 1,891,213</text>
 <text class="nt" x="771.0" y="76.9">saves 958,348</text>
 <text class="ax" x="76.0" y="312.0" text-anchor="middle">1</text><text class="ax" x="212.4" y="312.0" text-anchor="middle">2</text><text class="ax" x="348.8" y="312.0" text-anchor="middle">4</text><text class="ax" x="485.2" y="312.0" text-anchor="middle">8</text><text class="ax" x="621.6" y="312.0" text-anchor="middle">16</text><text class="ax" x="758.0" y="312.0" text-anchor="middle">32</text><text class="ax" x="417.0" y="326" text-anchor="middle">concurrent order streams caught up in one swap</text></svg></figure>
-<div class="foot"><span>stylus-hook</span><span>13 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>13 / 16</span></div>
 </section>
 <section class="slide" data-i="13">
 <div class="kicker">Why that shape is the point</div>
@@ -304,7 +304,7 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
   <p class="body" style="margin-top:16px">Each extra stream costs <strong>52,163 gas in Rust against
   83,256 in Solidity</strong>. On a busy protocol the quiet benchmark is the worst case, and it
   already wins.</p>
-<div class="foot"><span>stylus-hook</span><span>14 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>14 / 16</span></div>
 </section>
 <section class="slide" data-i="14">
 <div class="kicker">What Solidity cannot do at all</div>
@@ -322,43 +322,9 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
   with <code>0x1f</code>, so <strong>SHAKE cannot come from any built-in, in either language</strong>.
   A swap costs ~115,000 gas. Solidity would spend ninety-nine swaps to check one signature.
   Rust spends a third of one.</p>
-<div class="foot"><span>stylus-hook</span><span>15 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>15 / 16</span></div>
 </section>
 <section class="slide" data-i="15">
-<div class="kicker">Two traps worth an order of magnitude</div>
-
-  <h2>Both compile. Both pass <code>cargo stylus check</code>.</h2>
-  <ul>
-    <li><b>An optimisation level you cannot reach by default.</b> At <code>opt-level</code> 2 or 3
-      rustc emits a <code>DataCount</code> section ArbOS refuses to activate, so Stylus looks capped
-      at size-optimised. One wasm-opt flag fixes it, and <b>every ratio here roughly doubled</b>
-      when it was found.</li>
-    <li><b>Constants built from strings.</b> Our first TickMath port <em>lost</em> by 3.6×, because
-      nineteen factors were parsed with <code>from_str_radix</code> inside the loop. Hoisting them to
-      real constants moved it from <b>0.28× to 4.57×</b>, algorithm untouched.</li>
-  </ul>
-  <p class="body">Neither failure announces itself. The first only shows up at deployment.</p>
-<div class="foot"><span>stylus-hook</span><span>16 / 18</span></div>
-</section>
-<section class="slide" data-i="16">
-<div class="kicker">Feedback to Uniswap</div>
-
-  <h2>Porting is the harshest way to read a protocol</h2>
-  <ul>
-    <li><b>A failing input in v4-core's own test suite.</b> At <code>tick == MAX_TICK - 1</code> the
-      TickMath fuzz test asks for the tick of a price <code>getTickAtSqrtPrice</code> rejects by
-      design. The fuzzer has never drawn that one value out of 1.77 million.
-      <b>The fix is one character.</b></li>
-    <li>Sweep exhaustively where the domain is small. Ours takes <b>8.7 seconds</b> for all
-      1,774,543 ticks.</li>
-    <li>The hook safety contract lives in a base class rather than a specification, so a
-      non-Solidity implementation has to re-derive it.</li>
-    <li>Permission bits in the address put a size ceiling on any hook.</li>
-  </ul>
-  <p class="body"><strong>FEEDBACK.md</strong> has all seven items with reproductions.</p>
-<div class="foot"><span>stylus-hook</span><span>17 / 18</span></div>
-</section>
-<section class="slide" data-i="17">
 <div class="kicker">Take it</div>
 
   <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
@@ -371,7 +337,7 @@ HookGuards::validate_hook_address(<span class="k">self</span>)
     </ul>
     <p class="sub" style="margin-top:34px">github.com/youtpout/stylus-hook</p>
   </div>
-<div class="foot"><span>stylus-hook</span><span>18 / 18</span></div>
+<div class="foot"><span>stylus-hook</span><span>16 / 16</span></div>
 </section>
 </div>
 <div id="notes"></div>

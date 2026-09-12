@@ -79,16 +79,6 @@
       "text": "And one thing Solidity cannot do at all. SHAKE is not behind the E V M's Keccak opcode. One post quantum signature check: eleven million gas in Solidity, thirty three thousand in Rust."
     },
     {
-      "id": "16-traps",
-      "hold": 0.9,
-      "text": "Two traps cost an order of magnitude each. An optimisation level that fails only at deployment, and constants built from strings."
-    },
-    {
-      "id": "17-feedback",
-      "hold": 1.0,
-      "text": "Porting is the harshest way to read a protocol. We found a failing input in v4 core's own tick math fuzz test. The fix is one character."
-    },
-    {
       "id": "18-close",
       "hold": 1.4,
       "text": "All open source. If you want to write a Uniswap v4 hook in Rust, the hard parts are done."
