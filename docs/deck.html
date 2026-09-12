@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stylus Hook — Uniswap v4 hooks in Rust</title>
+<meta name="description" content="Slide deck: Uniswap v4 hooks written entirely in Rust on Arbitrum Stylus.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d12; --plane:#16161d; --line:#2a2a34;
+  --ink:#f2f2f6; --dim:#a3a3b2; --faint:#6f6f80;
+  --accent:#ff2d84; --accent2:#4cc2ff;
+  --rust:#3987e5; --sol:#d95926; --good:#0ca30c;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%;background:var(--bg);color:var(--ink);
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+#stage{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.slide{position:absolute;width:1280px;height:720px;padding:62px 76px;
+  background:var(--plane);border:1px solid var(--line);border-radius:18px;
+  display:none;flex-direction:column;transform-origin:center center}
+.slide.on{display:flex}
+.kicker{font-size:15px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1{font-size:74px;line-height:1.03;letter-spacing:-.025em;font-weight:800}
+h2{font-size:46px;line-height:1.1;letter-spacing:-.02em;font-weight:750;margin-bottom:8px}
+.sub{font-size:25px;line-height:1.4;color:var(--dim);max-width:56ch;margin-top:18px}
+.body{font-size:23px;line-height:1.55;color:var(--dim);max-width:62ch;margin-top:22px}
+.body strong,.sub strong{color:var(--ink);font-weight:700}
+em{color:var(--accent2);font-style:normal;font-weight:650}
+code,.mono{font-family:var(--mono);font-size:.88em;background:#20202a;padding:.1em .38em;border-radius:5px;color:#dcdce6}
+.grow{flex:1}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:34px;margin-top:26px}
+.card{background:#1c1c25;border:1px solid var(--line);border-radius:13px;padding:24px 26px}
+.card h3{font-size:20px;font-weight:700;margin-bottom:9px}
+.card p{font-size:18.5px;line-height:1.5;color:var(--dim)}
+.card.no h3{color:var(--sol)} .card.yes h3{color:var(--rust)}
+ul{list-style:none;margin-top:24px}
+li{font-size:23px;line-height:1.45;color:var(--dim);padding-left:36px;position:relative;margin:15px 0}
+li::before{content:"→";position:absolute;left:0;color:var(--accent);font-weight:700}
+li.ok::before{content:"✓";color:var(--good)}
+li.no::before{content:"✕";color:var(--sol)}
+li b{color:var(--ink);font-weight:700}
+pre{margin-top:22px;background:#15151c;border:1px solid var(--line);border-radius:11px;padding:20px 22px;
+  font-family:var(--mono);font-size:17.5px;line-height:1.62;color:#cfcfdb;overflow:hidden}
+pre .c{color:var(--faint)} pre .k{color:#ff7ab0} pre .s{color:#7ee0a8} pre .o{color:var(--good)}
+table{width:100%;border-collapse:collapse;margin-top:24px}
+th{font-size:14px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:650;
+  text-align:left;padding:0 14px 10px;border-bottom:1px solid var(--line)}
+td{font-size:21px;padding:13px 14px;border-bottom:1px solid var(--line);color:var(--dim)}
+td:first-child{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.win{color:var(--rust);font-weight:700} .loss{color:var(--sol);font-weight:700}
+.legend{display:flex;gap:26px;margin-top:14px;font-size:17px;color:var(--dim)}
+.legend span{display:inline-flex;align-items:center;gap:9px}
+.legend i{width:18px;height:4px;border-radius:2px;display:inline-block}
+figure{margin-top:6px;flex:1;min-height:0;display:flex;align-items:center}
+svg{width:100%;height:100%;max-height:100%;display:block}
+.gr{stroke:#2a2a34;stroke-width:1}
+.ax-l{stroke:#3a3a46;stroke-width:1}
+.ax{fill:var(--faint);font-size:15px;font-family:inherit}
+.rl{fill:var(--ink);font-size:18px;font-family:inherit}
+.dl{fill:var(--ink);font-size:17px;font-weight:700;font-family:inherit}
+.nt{fill:var(--dim);font-size:15px;font-family:inherit}
+.mk{stroke:var(--plane);stroke-width:2.5}
+.hero{font-size:112px;font-weight:800;letter-spacing:-.035em;line-height:1}
+.hero .u{font-size:40px;color:var(--dim);font-weight:600;letter-spacing:-.01em}
+.foot{position:absolute;left:76px;right:76px;bottom:30px;display:flex;justify-content:space-between;
+  font-size:15px;color:var(--faint);font-family:var(--mono)}
+#bar{position:fixed;left:0;top:0;height:3px;background:var(--accent);transition:width .18s ease;z-index:10}
+#notes{position:fixed;left:0;right:0;bottom:0;max-height:36vh;overflow:auto;background:#07070a;
+  border-top:1px solid var(--line);padding:20px 30px;font-size:17px;line-height:1.6;color:#d8d8e2;display:none;z-index:9}
+#notes.on{display:block}
+#notes b{color:var(--accent)}
+#help{position:fixed;right:16px;bottom:14px;font-size:13px;color:#45454f;font-family:var(--mono);z-index:11}
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div id="stage">
+<section class="slide" data-i="0">
+<div class="kicker">Continuity track · Uniswap v4 · Arbitrum Stylus</div>
+
+  <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
+    <h1>Uniswap v4 hooks,<br>written entirely in Rust</h1>
+    <p class="sub">No Solidity anywhere in the hook. The contract the <code>PoolManager</code> calls
+    <em>is</em> the Stylus contract, and it lands on its own permission address.</p>
+  </div>
+<div class="foot"><span>stylus-hook</span><span>1 / 18</span></div>
+</section>
+<section class="slide" data-i="1">
+<div class="kicker">Where this started</div>
+
+  <h2>Scaling Ethereum 2024</h2>
+  <p class="sub">The original Stylus Hook adapted a Uniswap limit-order hook to Stylus and measured
+  the two side by side.</p>
+  <ul>
+    <li class="ok"><b>1st place</b>, Arbitrum Stylus project</li>
+    <li class="ok"><b>2nd place</b>, Best use of Arbitrum tech</li>
+    <li>It proved hooks <b>could</b> run on Stylus. It could not prove they <b>should</b>.</li>
+  </ul>
+<div class="foot"><span>stylus-hook</span><span>2 / 18</span></div>
+</section>
+<section class="slide" data-i="2">
+<div class="kicker">Why it stopped there</div>
+
+  <h2>Two blockers, neither of them ours</h2>
+  <div class="cols">
+    <div class="card no"><h3>v4 was not finished</h3><p>v4-core needed transient storage, which
+    Arbitrum did not have. The 2024 repo had to vendor a <code>no-cancun</code> fork of the
+    protocol to run at all.</p></div>
+    <div class="card no"><h3>Stylus could not reach the address</h3><p>A hook must sit at an address
+    whose low 14 bits encode its permissions. <code>cargo stylus</code> had no CREATE2, so every
+    hook shipped as a Solidity shell in front of a Rust body.</p></div>
+  </div>
+  <p class="body">Both protocols were young. The honest thing was to stop.</p>
+<div class="foot"><span>stylus-hook</span><span>3 / 18</span></div>
+</section>
+<section class="slide" data-i="3">
+<div class="kicker">What changed</div>
+
+  <h2>Both protocols grew up</h2>
+  <ul>
+    <li class="ok">Uniswap <b>v4.0.0</b> shipped and is live on Arbitrum</li>
+    <li class="ok">Arbitrum has had <b>transient storage since ArbOS 32</b>, so this runs against
+      upstream v4-core with no fork</li>
+    <li class="ok"><code>cargo stylus deploy</code> routes through <b>StylusDeployer</b>, which
+      does CREATE2 on a non-zero salt</li>
+    <li class="ok"><b>ArbOS 61</b> lets a contract exceed 24 KB across code fragments</li>
+  </ul>
+  <p class="body">Every reason to stop in 2024 had been removed. It was time to finish it.</p>
+<div class="foot"><span>stylus-hook</span><span>4 / 18</span></div>
+</section>
+<section class="slide" data-i="4">
+<div class="kicker">The whole problem</div>
+
+  <h2>v4 asks a hook for exactly two things</h2>
+  <div class="cols">
+    <div class="card yes"><h3>1. Answer the IHooks ABI</h3><p>Free. A Stylus contract is
+    ABI-equivalent to a Solidity one, so the ten callbacks just work.</p></div>
+    <div class="card no"><h3>2. Live at a flagged address</h3><p>The low 14 bits encode the
+    callbacks. The <code>PoolManager</code> reads them off the address and never calls one it does
+    not see. This was the blocker.</p></div>
+  </div>
+  <p class="body">The ABI was never the obstacle. <strong>The address was.</strong></p>
+<div class="foot"><span>stylus-hook</span><span>5 / 18</span></div>
+</section>
+<section class="slide" data-i="5">
+<div class="kicker">What we built</div>
+
+  <h2>Three pieces, no Solidity</h2>
+  <div class="cols" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="card"><h3>stylus/base-hook</h3><p><code>BaseHook.sol</code>'s counterpart in
+    Stylus: v4 types, permission flags, all ten callbacks, and the calls back into the
+    singleton.</p></div>
+    <div class="card"><h3>#[guarded_hooks]</h3><p>Rust has no abstract types, so a proc macro
+    inserts the caller and pool-key checks that Solidity gets from inheritance. Costs nothing.</p></div>
+    <div class="card"><h3>stylus/hook-miner</h3><p>Mines the CREATE2 salt whose StylusDeployer
+    address carries exactly the declared flags.</p></div>
+  </div>
+  <p class="body">A test asserts all <strong>ten callback selectors</strong> computed from the Rust
+  ABI equal those in the compiled <code>IHooks.sol</code>. A Rust hook is only a hook if the calls
+  land on the right methods.</p>
+<div class="foot"><span>stylus-hook</span><span>6 / 18</span></div>
+</section>
+<section class="slide" data-i="6">
+<div class="kicker">Writing one</div>
+
+  <h2>Five steps</h2>
+  <pre><span class="c">// 1. storage and entry point — the hook owns its state</span>
+<span class="k">#[storage] #[entrypoint]</span>
+<span class="k">pub struct</span> Counter { before_swap_count: StorageMap&lt;FixedBytes&lt;32&gt;, StorageU256&gt; }
+
+<span class="c">// 2. declare the permissions the address will encode</span>
+<span class="k">fn</span> permissions(&amp;<span class="k">self</span>) -&gt; Permissions { Permissions::none().with_before_swap() }
+
+<span class="c">// 3. constructor validates the mined address, or reverts</span>
+HookGuards::validate_hook_address(<span class="k">self</span>)
+
+<span class="c">// 4. implement only the declared callbacks</span>
+<span class="k">#[guarded_hooks] #[public]</span>
+<span class="k">impl</span> IHooks <span class="k">for</span> Counter { <span class="k">fn</span> before_swap(..) { <span class="c">/* guards already inserted */</span> } }
+
+<span class="c">// 5. mine the salt, then deploy to the address it prints</span>
+<span class="s">cargo run -p stylus-hook-miner -- --permissions before-swap</span></pre>
+<div class="foot"><span>stylus-hook</span><span>7 / 18</span></div>
+</section>
+<section class="slide" data-i="7">
+<div class="kicker">Proof</div>
+
+  <h2>A real PoolManager, driving a Rust hook</h2>
+  <p class="sub"><code>./prove-native-hook.bash</code> stands up an Arbitrum Nitro node, mines the
+  address, deploys, and exercises every declared callback.</p>
+  <pre><span class="o">ok</span>  landed on the mined address
+<span class="o">ok</span>  the code at that address is an activated Stylus program
+<span class="o">ok</span>  its constructor ran and validated the address
+<span class="o">ok</span>  beforeAddLiquidity reached the Rust hook
+<span class="o">ok</span>  beforeSwap reached the Rust hook
+<span class="o">ok</span>  afterSwap reached the Rust hook
+<span class="o">ok</span>  beforeRemoveLiquidity reached the Rust hook
+<span class="o">ok</span>  beforeDonate reverts with HookNotImplemented</pre>
+<div class="foot"><span>stylus-hook</span><span>8 / 18</span></div>
+</section>
+<section class="slide" data-i="8">
+<div class="kicker">So is it worth it?</div>
+
+  <h2>Stylus is not faster. It is differently priced.</h2>
+  <div class="cols" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="card no"><h3>Entering · worse</h3><p>About <b>7,900 gas</b> per call that Solidity
+    never pays, even with the program cached.</p></div>
+    <div class="card"><h3>Storage · identical</h3><p>Same slots, same trie, same EVM prices.
+    Measured <b>1.06×</b>. There is no such thing as Stylus storage.</p></div>
+    <div class="card yes"><h3>Computing · far better</h3><p><b>3× to 640×</b> cheaper, depending on
+    how badly the work fits a 256-bit word.</p></div>
+  </div>
+  <p class="body">So a port pays off only above roughly <strong>12,000 gas of Solidity arithmetic
+  per call</strong>. That is the whole decision.</p>
+<div class="foot"><span>stylus-hook</span><span>9 / 18</span></div>
+</section>
+<section class="slide" data-i="9">
+<div class="kicker">Where the lines cross</div>
+
+  <h2>89 operations</h2>
+  <div class="legend"><span><i style="background:var(--rust)"></i>Rust on Stylus</span>
+  <span><i style="background:var(--sol)"></i>Solidity</span></div>
+  <figure><svg viewBox="0 0 980 320" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gas per swap against mulDiv operations. The lines cross at 89 operations.">
+<line x1="76" y1="280.0" x2="848" y2="280.0" class="gr"/><text class="ax" x="66" y="285.0" text-anchor="end">0k</text><line x1="76" y1="206.1" x2="848" y2="206.1" class="gr"/><text class="ax" x="66" y="211.1" text-anchor="end">1,000k</text><line x1="76" y1="132.2" x2="848" y2="132.2" class="gr"/><text class="ax" x="66" y="137.2" text-anchor="end">2,000k</text><line x1="76" y1="58.3" x2="848" y2="58.3" class="gr"/><text class="ax" x="66" y="63.3" text-anchor="end">3,000k</text><line x1="76" y1="280" x2="848" y2="280" class="ax-l"/>
+<line x1="296.9" y1="14" x2="296.9" y2="280" class="ax-l" stroke-dasharray="4 4"/>
+<text class="nt" x="304.9" y="28">they cross at 89</text>
+<path d="M76.0 270.8 L235.9 268.2 L395.8 260.5 L616.6 219.5 L848.0 14.4" fill="none" stroke="var(--sol)" stroke-width="3" stroke-linejoin="round"/>
+<path d="M76.0 267.9 L235.9 267.0 L395.8 264.2 L616.6 249.6 L848.0 176.4" fill="none" stroke="var(--rust)" stroke-width="3" stroke-linejoin="round"/><circle cx="76.0" cy="270.8" r="5" fill="var(--sol)" class="mk"/><circle cx="235.9" cy="268.2" r="5" fill="var(--sol)" class="mk"/><circle cx="395.8" cy="260.5" r="5" fill="var(--sol)" class="mk"/><circle cx="616.6" cy="219.5" r="5" fill="var(--sol)" class="mk"/><circle cx="848.0" cy="14.4" r="5" fill="var(--sol)" class="mk"/><circle cx="76.0" cy="267.9" r="5" fill="var(--rust)" class="mk"/><circle cx="235.9" cy="267.0" r="5" fill="var(--rust)" class="mk"/><circle cx="395.8" cy="264.2" r="5" fill="var(--rust)" class="mk"/><circle cx="616.6" cy="249.6" r="5" fill="var(--rust)" class="mk"/><circle cx="848.0" cy="176.4" r="5" fill="var(--rust)" class="mk"/>
+<text class="dl" x="861.0" y="19.4" fill="var(--sol)">Solidity</text>
+<text class="dl" x="861.0" y="181.4" fill="var(--rust)">Rust</text>
+<text class="ax" x="76.0" y="302.0" text-anchor="middle">0</text><text class="ax" x="235.9" y="302.0" text-anchor="middle">50</text><text class="ax" x="395.8" y="302.0" text-anchor="middle">200</text><text class="ax" x="616.6" y="302.0" text-anchor="middle">1,000</text><text class="ax" x="848.0" y="302.0" text-anchor="middle">5,000</text><text class="ax" x="462.0" y="316" text-anchor="middle">mulDiv operations per swap</text></svg></figure>
+<div class="foot"><span>stylus-hook</span><span>10 / 18</span></div>
+</section>
+<section class="slide" data-i="10">
+<div class="kicker">When NOT to use it</div>
+
+  <h2>Most hooks should stay in Solidity</h2>
+  <ul>
+    <li class="no">A hook that <b>only keeps books</b>. Our counter costs <b>2.8×</b> what the
+      Solidity one does. Read a slot, add, write it back is the worst possible workload.</li>
+    <li class="no">Anything <b>input-output bound</b>. EulerSwap inverts a curve with a 255-bit
+      square root and still spends <b>2 %</b> of its gas on arithmetic, the rest querying vaults.</li>
+    <li class="no">Anything <b>gated on a precompile</b>. ecrecover, SHA-256, BN254, BLS12-381 are
+      all live on Arbitrum and Stylus calls them at the same price.</li>
+    <li class="no">Anything expensive because of the <b>algorithm it picked</b>. Fix that first,
+      in Solidity.</li>
+  </ul>
+<div class="foot"><span>stylus-hook</span><span>11 / 18</span></div>
+</section>
+<section class="slide" data-i="11">
+<div class="kicker">When to use it</div>
+
+  <h2>The gain tracks how badly the work fits a 256-bit word</h2>
+  <figure><svg viewBox="0 0 880 300" role="img" aria-label="Times cheaper in Rust: xorshift 41.6, square root 5.6, multiply-divide 5.5, mulDiv 3.4, rpow 3.0, storage write 1.06.">
+<line x1="250" y1="12" x2="250" y2="284" class="ax-l"/><text class="rl" x="236" y="34" text-anchor="end">xorshift64, 64-bit words</text><rect x="250" y="17" width="540.0" height="24" rx="5" fill="var(--rust)" opacity="1.00"/><text class="dl" x="801.0" y="35">41.6×</text><text class="rl" x="236" y="80" text-anchor="end">integer sqrt</text><rect x="250" y="63" width="72.7" height="24" rx="5" fill="var(--rust)" opacity="0.68"/><text class="dl" x="333.7" y="81">5.6×</text><text class="rl" x="236" y="126" text-anchor="end">plain a*b/c</text><rect x="250" y="109" width="71.4" height="24" rx="5" fill="var(--rust)" opacity="0.68"/><text class="dl" x="332.4" y="127">5.5×</text><text class="rl" x="236" y="172" text-anchor="end">mulDiv, 512-bit</text><rect x="250" y="155" width="44.1" height="24" rx="5" fill="var(--rust)" opacity="0.57"/><text class="dl" x="305.1" y="173">3.4×</text><text class="rl" x="236" y="218" text-anchor="end">rpow in Q96</text><rect x="250" y="201" width="38.9" height="24" rx="5" fill="var(--rust)" opacity="0.55"/><text class="dl" x="299.9" y="219">3.0×</text><text class="rl" x="236" y="264" text-anchor="end">one storage write</text><rect x="250" y="247" width="13.8" height="24" rx="5" fill="var(--rust)" opacity="0.45"/><text class="dl" x="274.8" y="265">1.06×</text></svg></figure>
+  <p class="body" style="margin-top:6px">Storage barely moves. Everything that is real arithmetic
+  does.</p>
+<div class="foot"><span>stylus-hook</span><span>12 / 18</span></div>
+</section>
+<section class="slide" data-i="12">
+<div class="kicker">The case that matters</div>
+
+  <h2>A TWAMM under real order flow</h2>
+  <p class="sub">Against <code>akshatmittal/v4-twamm-hook</code> by Uniswap Labs and Zaha Studio,
+  audited by ABDK and Certora, <strong>live on Base and Unichain</strong>.</p>
+  <div class="legend"><span><i style="background:var(--rust)"></i>Rust on Stylus</span>
+  <span><i style="background:var(--sol)"></i>Production Solidity</span></div>
+  <figure><svg viewBox="0 0 980 330" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gas per swap against concurrent order streams. Solidity reaches 2,849,561 at thirty-two streams; Rust reaches 1,891,213.">
+<line x1="76" y1="290.0" x2="758" y2="290.0" class="gr"/><text class="ax" x="66" y="295.0" text-anchor="end">0k</text><line x1="76" y1="198.0" x2="758" y2="198.0" class="gr"/><text class="ax" x="66" y="203.0" text-anchor="end">1,000k</text><line x1="76" y1="106.0" x2="758" y2="106.0" class="gr"/><text class="ax" x="66" y="111.0" text-anchor="end">2,000k</text><line x1="76" y1="14.0" x2="758" y2="14.0" class="gr"/><text class="ax" x="66" y="19.0" text-anchor="end">3,000k</text><line x1="76" y1="290" x2="758" y2="290" class="ax-l"/>
+<path d="M76.0 257.7 L212.4 255.2 L348.8 239.8 L485.2 209.0 L621.6 150.4 L758.0 27.8 L758.0 116.0 L621.6 192.8 L485.2 226.0 L348.8 247.0 L212.4 257.5 L76.0 258.6 Z" fill="var(--sol)" opacity="0.12"/>
+<path d="M76.0 257.7 L212.4 255.2 L348.8 239.8 L485.2 209.0 L621.6 150.4 L758.0 27.8" fill="none" stroke="var(--sol)" stroke-width="3" stroke-linejoin="round"/>
+<path d="M76.0 258.6 L212.4 257.5 L348.8 247.0 L485.2 226.0 L621.6 192.8 L758.0 116.0" fill="none" stroke="var(--rust)" stroke-width="3" stroke-linejoin="round"/><circle cx="76.0" cy="257.7" r="5" fill="var(--sol)" class="mk"/><circle cx="212.4" cy="255.2" r="5" fill="var(--sol)" class="mk"/><circle cx="348.8" cy="239.8" r="5" fill="var(--sol)" class="mk"/><circle cx="485.2" cy="209.0" r="5" fill="var(--sol)" class="mk"/><circle cx="621.6" cy="150.4" r="5" fill="var(--sol)" class="mk"/><circle cx="758.0" cy="27.8" r="5" fill="var(--sol)" class="mk"/><circle cx="76.0" cy="258.6" r="5" fill="var(--rust)" class="mk"/><circle cx="212.4" cy="257.5" r="5" fill="var(--rust)" class="mk"/><circle cx="348.8" cy="247.0" r="5" fill="var(--rust)" class="mk"/><circle cx="485.2" cy="226.0" r="5" fill="var(--rust)" class="mk"/><circle cx="621.6" cy="192.8" r="5" fill="var(--rust)" class="mk"/><circle cx="758.0" cy="116.0" r="5" fill="var(--rust)" class="mk"/>
+<text class="dl" x="771.0" y="32.8" fill="var(--sol)">Solidity 2,849,561</text>
+<text class="dl" x="771.0" y="121.0" fill="var(--rust)">Rust 1,891,213</text>
+<text class="nt" x="771.0" y="76.9">saves 958,348</text>
+<text class="ax" x="76.0" y="312.0" text-anchor="middle">1</text><text class="ax" x="212.4" y="312.0" text-anchor="middle">2</text><text class="ax" x="348.8" y="312.0" text-anchor="middle">4</text><text class="ax" x="485.2" y="312.0" text-anchor="middle">8</text><text class="ax" x="621.6" y="312.0" text-anchor="middle">16</text><text class="ax" x="758.0" y="312.0" text-anchor="middle">32</text><text class="ax" x="417.0" y="326" text-anchor="middle">concurrent order streams caught up in one swap</text></svg></figure>
+<div class="foot"><span>stylus-hook</span><span>13 / 18</span></div>
+</section>
+<section class="slide" data-i="13">
+<div class="kicker">Why that shape is the point</div>
+
+  <h2>The fee is paid once. The saving is paid per stream.</h2>
+  <table>
+    <thead><tr><th>Streams at once</th><th class="num">Rust</th><th class="num">Solidity</th><th class="num">Saving</th></tr></thead>
+    <tbody>
+      <tr><td>idle</td><td class="num">147,365</td><td class="num">132,321</td><td class="num loss">−15,044</td></tr>
+      <tr><td>1</td><td class="num">340,930</td><td class="num">351,474</td><td class="num win">+10,544</td></tr>
+      <tr><td>8</td><td class="num">695,352</td><td class="num">880,744</td><td class="num win">+185,392</td></tr>
+      <tr><td>32</td><td class="num">1,891,213</td><td class="num">2,849,561</td><td class="num win">+958,348</td></tr>
+    </tbody>
+  </table>
+  <p class="body" style="margin-top:16px">Each extra stream costs <strong>52,163 gas in Rust against
+  83,256 in Solidity</strong>. On a busy protocol the quiet benchmark is the worst case, and it
+  already wins.</p>
+<div class="foot"><span>stylus-hook</span><span>14 / 18</span></div>
+</section>
+<section class="slide" data-i="14">
+<div class="kicker">What Solidity cannot do at all</div>
+
+  <h2>Post-quantum signatures</h2>
+  <table>
+    <thead><tr><th></th><th class="num">Solidity</th><th class="num">Rust</th><th class="num">Ratio</th></tr></thead>
+    <tbody>
+      <tr><td>One Keccak-f[1600] permutation</td><td class="num">101,662</td><td class="num win">158</td><td class="num win">643×</td></tr>
+      <tr><td>SHAKE256, 200 B in, 1088 B out</td><td class="num">1,250,263</td><td class="num win">2,559</td><td class="num win">489×</td></tr>
+      <tr><td>One ML-DSA verification</td><td class="num">11,353,437</td><td class="num win">33,372</td><td class="num win">340×</td></tr>
+    </tbody>
+  </table>
+  <p class="body"><code>keccak256</code> has the <code>0x01</code> pad compiled in and SHAKE pads
+  with <code>0x1f</code>, so <strong>SHAKE cannot come from any built-in, in either language</strong>.
+  A swap costs ~115,000 gas. Solidity would spend ninety-nine swaps to check one signature.
+  Rust spends a third of one.</p>
+<div class="foot"><span>stylus-hook</span><span>15 / 18</span></div>
+</section>
+<section class="slide" data-i="15">
+<div class="kicker">Two traps worth an order of magnitude</div>
+
+  <h2>Both compile. Both pass <code>cargo stylus check</code>.</h2>
+  <ul>
+    <li><b>An optimisation level you cannot reach by default.</b> At <code>opt-level</code> 2 or 3
+      rustc emits a <code>DataCount</code> section ArbOS refuses to activate, so Stylus looks capped
+      at size-optimised. One wasm-opt flag fixes it, and <b>every ratio here roughly doubled</b>
+      when it was found.</li>
+    <li><b>Constants built from strings.</b> Our first TickMath port <em>lost</em> by 3.6×, because
+      nineteen factors were parsed with <code>from_str_radix</code> inside the loop. Hoisting them to
+      real constants moved it from <b>0.28× to 4.57×</b>, algorithm untouched.</li>
+  </ul>
+  <p class="body">Neither failure announces itself. The first only shows up at deployment.</p>
+<div class="foot"><span>stylus-hook</span><span>16 / 18</span></div>
+</section>
+<section class="slide" data-i="16">
+<div class="kicker">Feedback to Uniswap</div>
+
+  <h2>Porting is the harshest way to read a protocol</h2>
+  <ul>
+    <li><b>A failing input in v4-core's own test suite.</b> At <code>tick == MAX_TICK - 1</code> the
+      TickMath fuzz test asks for the tick of a price <code>getTickAtSqrtPrice</code> rejects by
+      design. The fuzzer has never drawn that one value out of 1.77 million.
+      <b>The fix is one character.</b></li>
+    <li>Sweep exhaustively where the domain is small. Ours takes <b>8.7 seconds</b> for all
+      1,774,543 ticks.</li>
+    <li>The hook safety contract lives in a base class rather than a specification, so a
+      non-Solidity implementation has to re-derive it.</li>
+    <li>Permission bits in the address put a size ceiling on any hook.</li>
+  </ul>
+  <p class="body"><strong>FEEDBACK.md</strong> has all seven items with reproductions.</p>
+<div class="foot"><span>stylus-hook</span><span>17 / 18</span></div>
+</section>
+<section class="slide" data-i="17">
+<div class="kicker">Take it</div>
+
+  <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
+    <h2 style="font-size:54px">Write your v4 hook in Rust</h2>
+    <ul style="margin-top:30px">
+      <li class="ok"><code>stylus/base-hook</code> — the ten callbacks, ready to build on</li>
+      <li class="ok"><code>stylus/hook-miner</code> — the address, solved</li>
+      <li class="ok">Seven benchmarks that tell you honestly whether to bother</li>
+      <li class="ok"><code>FEEDBACK.md</code> — what porting v4-core taught us</li>
+    </ul>
+    <p class="sub" style="margin-top:34px">github.com/youtpout/stylus-hook</p>
+  </div>
+<div class="foot"><span>stylus-hook</span><span>18 / 18</span></div>
+</section>
+</div>
+<div id="notes"></div>
+<div id="help">← → move · N notes · F fullscreen</div>
+<script>
+const slides=[...document.querySelectorAll('.slide')];
+const notes=["A continuation of Stylus Hook, first built at Scaling Ethereum 2024. The goal this time was to remove the last piece of Solidity, and then to find out honestly whether it is worth doing.",
+"The original won first place in the Arbitrum Stylus track at Scaling Ethereum 2024. It showed a hook could run on Stylus. What it could not answer was whether that was a good idea, and it could not remove Solidity.",
+"It stopped for two reasons, and neither was the idea. Uniswap v4 was unreleased and needed transient storage Arbitrum did not yet have, so the repo had to vendor a forked protocol. And Stylus had no way to put a contract on a mined address, so every hook needed a Solidity shell in front of it.",
+"Everything that blocked it is gone. v4 shipped. Arbitrum has transient storage, so this runs against upstream v4-core with no fork. Cargo stylus deploys through StylusDeployer, which does CREATE2. And ArbOS 61 lifted the contract size ceiling. Every reason to stop had been removed.",
+"A hook has to do two things. Answer the IHooks ABI, which Stylus gets for free. And live at an address whose low fourteen bits encode its permissions. The ABI was never the problem. The address was.",
+"Three pieces. A Stylus port of BaseHook with all ten callbacks. A procedural macro that inserts the safety guards Solidity gets from inheritance. And a miner for the CREATE2 salt. A test pins all ten callback selectors against the compiled IHooks interface.",
+"Writing one is five steps. Storage and entry point. Declare the permissions the address will encode. Validate that address in the constructor. Implement the callbacks, with the guards inserted by the macro. Then mine the salt and deploy.",
+"This is the receipt. A script stands up an Arbitrum node, mines the address, deploys the Rust hook to it, and has a real PoolManager drive every callback the hook declares.",
+"Stylus is not faster than Solidity, it is differently priced. Entering costs about seven thousand nine hundred gas more. Storage is identical, because it is the same slots in the same trie. And arithmetic is three to six hundred times cheaper. So the port pays off only above about twelve thousand gas of arithmetic per call.",
+"Running the identical loop in both languages and sweeping how much of it there is, the two cross at eighty-nine mulDiv operations. Below that line Solidity wins. Above it, Rust wins and keeps winning.",
+"This is the part most projects would leave out. Most hooks should stay in Solidity. A bookkeeping hook loses by nearly three times. An IO-bound hook has nothing to move. And anything resting on a precompile gains nothing, because Stylus calls precompiles at the same price.",
+"When it does pay, this is why. The EVM pays for a two hundred fifty six bit word whether the work needs one or not. Sixty-four bit operations gain forty times. Storage, which is a host operation either way, barely moves at all.",
+"Here is the case that matters, measured against the TWAMM that is actually in production, audited and live on Base and Unichain. People place long-term orders independently and nobody coordinates their end times, so several running at once is the ordinary state of a busy pool. At thirty-two concurrent streams Solidity spends two point eight five million gas on one swap. Rust spends one point eight nine million.",
+"The shape is the argument. The entry fee is paid once per swap however busy the pool is, while the saving is paid once per stream. So the busier the protocol, the better the port looks. Each extra concurrent stream costs fifty-two thousand in Rust against eighty-three thousand in Solidity.",
+"And there is one category Solidity cannot do at all. The EVM can do Keccak, but only through the single door it provides, and SHAKE is not behind that door. Verifying one post-quantum signature would cost eleven million gas in Solidity, about ninety-nine swaps. In Rust it costs a third of one swap.",
+"Two traps account for most of the distance between a Stylus hook that wins and one that loses. An optimisation level that silently fails only at deployment, and constants built from strings at runtime. Each was worth about an order of magnitude, and both compile cleanly.",
+"Porting a protocol is the harshest way to read it. We found a failing input in v4-core's own TickMath fuzz test: at one specific tick the test asks for something the library rejects by design, and the fuzzer has never drawn that value out of one point seven seven million. The fix is one character. FEEDBACK dot MD has all seven items.",
+"Everything is open source. The hook base, the address miner, the benchmarks, and the feedback. If you want to write a v4 hook in Rust, the hard parts are done. Thank you."];
+let i=0;
+const bar=document.getElementById('bar'), np=document.getElementById('notes');
+function fit(){
+  const s=Math.min(window.innerWidth/1320, (window.innerHeight-(np.classList.contains('on')?window.innerHeight*0.36:0))/760);
+  slides.forEach(el=>el.style.transform='scale('+s+')');
+}
+function show(n){
+  i=Math.max(0,Math.min(slides.length-1,n));
+  slides.forEach((el,k)=>el.classList.toggle('on',k===i));
+  bar.style.width=((i+1)/slides.length*100)+'%';
+  np.innerHTML='<b>Slide '+(i+1)+'</b> &nbsp; '+notes[i];
+  fit();
+}
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();show(i+1)}
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();show(i-1)}
+  else if(e.key==='Home'){show(0)} else if(e.key==='End'){show(slides.length-1)}
+  else if(e.key==='n'||e.key==='N'){np.classList.toggle('on');fit()}
+  else if(e.key==='f'||e.key==='F'){document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()}
+});
+addEventListener('resize',fit);
+document.getElementById('stage').addEventListener('click',e=>show(i+(e.clientX<innerWidth*0.25?-1:1)));
+show(0);
+</script>
+</body>
+</html>
