@@ -1,3 +1,5 @@
+<img src="media/logo-256.png" alt="" width="96" align="right">
+
 # stylus-hook
 
 **Uniswap v4 hooks whose state and logic run in Rust/WASM on [Arbitrum Stylus](https://docs.arbitrum.io/stylus/gentle-introduction).**

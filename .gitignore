@@ -11,3 +11,6 @@ node_modules/
 
 # Secrets
 .env
+
+# Rendered press images are committed under media/; this is the scratch dir
+scripts/images/out/
