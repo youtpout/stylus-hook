@@ -12,8 +12,24 @@ ensure_binaryen() {
      wasm-opt --version 2>/dev/null | grep -q "version $BINARYEN_VERSION\b"; then
     return 0
   fi
-  local url="https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz"
-  echo "fetching binaryen $BINARYEN_VERSION (pinned by Stylus.toml)"
+  # The release publishes one tarball per platform, and picking the wrong one fails late and
+  # obscurely: the download and the untar both succeed, and the first `cargo stylus` invocation dies
+  # with "Exec format error" from inside a deploy step.
+  local os arch
+  case "$(uname -s)" in
+    Darwin) os=macos ;;
+    Linux)  os=linux ;;
+    *) echo "no binaryen build for $(uname -s); install wasm-opt $BINARYEN_VERSION yourself" >&2
+       return 1 ;;
+  esac
+  case "$(uname -m)" in
+    arm64|aarch64) [ "$os" = macos ] && arch=arm64 || arch=aarch64 ;;
+    x86_64|amd64)  arch=x86_64 ;;
+    *) echo "no binaryen build for $(uname -m); install wasm-opt $BINARYEN_VERSION yourself" >&2
+       return 1 ;;
+  esac
+  local url="https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-${arch}-${os}.tar.gz"
+  echo "fetching binaryen $BINARYEN_VERSION for ${arch}-${os} (pinned by Stylus.toml)"
   curl -sL -m 300 -o "$dir/binaryen.tar.gz" "$url"
   tar xzf "$dir/binaryen.tar.gz" -C "$dir"
   export PATH="$dir/binaryen-version_${BINARYEN_VERSION}/bin:$PATH"
