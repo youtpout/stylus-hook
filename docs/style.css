@@ -231,3 +231,92 @@ footer {
     color: var(--muted);
     font-size: .875rem;
 }
+
+nav.site {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    margin-top: 1.5rem;
+    font-size: .9rem;
+}
+
+nav.site a {
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 600;
+    padding-bottom: .2rem;
+    border-bottom: 2px solid transparent;
+}
+
+nav.site a:hover {
+    color: var(--text);
+}
+
+nav.site a[aria-current="page"] {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+}
+
+.note {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 10px 10px 0;
+    padding: .9rem 1.1rem;
+    margin: 1.25rem 0;
+    box-shadow: var(--shadow);
+}
+
+.note p {
+    margin: 0;
+    font-size: .92rem;
+}
+
+.note p + p {
+    margin-top: .6rem;
+}
+
+.note strong {
+    color: var(--accent);
+}
+
+.step {
+    counter-increment: step;
+}
+
+.step h3::before {
+    content: counter(step) ". ";
+    color: var(--accent);
+    font-weight: 700;
+}
+
+main {
+    counter-reset: step;
+}
+
+td.num,
+th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+td.win {
+    color: #12a150;
+    font-weight: 600;
+}
+
+td.loss {
+    color: var(--accent);
+}
+
+.pill {
+    display: inline-block;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    background: var(--code-bg);
+    color: var(--muted);
+}

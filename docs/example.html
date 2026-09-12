@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>A hook, start to finish — Stylus Hook</title>
+    <meta name="description"
+        content="A complete Uniswap v4 hook in Rust, from storage to a mined CREATE2 address deployed on Arbitrum.">
+    <link rel="stylesheet" href="style.css?v=6">
+</head>
+
+<body>
+    <header>
+        <span class="kicker">Example</span>
+        <h1>A hook, start to finish</h1>
+        <p class="tagline">The whole of <code>native-counter</code>: five steps of Rust, an address
+            mined to carry its permissions, and a deployment to Arbitrum. No Solidity at any point.
+        </p>
+        <nav class="site">
+            <a href="index.html">Why Stylus</a>
+            <a href="example.html" aria-current="page">Example &amp; deployment</a>
+            <a href="benchmark.html">Benchmarks</a>
+            <a href="https://github.com/youtpout/stylus-hook">GitHub</a>
+        </nav>
+    </header>
+
+    <main>
+        <h2>What we are building</h2>
+        <p>A hook that counts four callbacks per pool — <code>beforeSwap</code>,
+            <code>afterSwap</code>, <code>beforeAddLiquidity</code> and
+            <code>beforeRemoveLiquidity</code>. It is deliberately the simplest thing that is still a
+            real hook, so the mechanics are visible with no maths in the way.</p>
+        <div class="note">
+            <p>Be clear about what this example is for. A counter is the <em>worst</em> workload for
+                Stylus: it writes a storage slot per callback and computes nothing, so it costs
+                about 2.8× what the Solidity version does. It is here to show the shape of a hook,
+                not to argue for one. <a href="benchmark.html">The benchmarks</a> say which hooks
+                are worth writing this way.</p>
+        </div>
+        <p>The full source is
+            <a href="https://github.com/youtpout/stylus-hook/blob/main/stylus/native-counter/src/lib.rs"><code>stylus/native-counter/src/lib.rs</code></a>,
+            and the base it builds on is <code>stylus/base-hook</code>.</p>
+
+        <h2>Setup</h2>
+        <pre><code>curl -L https://foundry.paradigm.xyz | bash &amp;&amp; foundryup
+cargo install --locked cargo-stylus
+rustup target add wasm32-unknown-unknown
+
+git clone --recurse-submodules https://github.com/youtpout/stylus-hook
+cd stylus-hook</code></pre>
+
+        <h2>Writing it</h2>
+
+        <div class="step">
+            <h3>Storage and the entry point</h3>
+            <p>An ordinary Stylus contract. The hook owns its state directly — this <em>is</em> the
+                contract the pool manager calls.</p>
+            <pre><code>#[storage]
+#[entrypoint]
+pub struct Counter {
+    before_swap_count: StorageMap&lt;FixedBytes&lt;32&gt;, StorageU256&gt;,
+    after_swap_count: StorageMap&lt;FixedBytes&lt;32&gt;, StorageU256&gt;,
+    before_add_liquidity_count: StorageMap&lt;FixedBytes&lt;32&gt;, StorageU256&gt;,
+    before_remove_liquidity_count: StorageMap&lt;FixedBytes&lt;32&gt;, StorageU256&gt;,
+}</code></pre>
+            <p>The pool manager is <em>not</em> a field. Solidity keeps it in an
+                <code>immutable</code>, which costs nothing to read; the Stylus SDK has no
+                equivalent, so a constructor argument could only go to storage and every callback
+                would pay a cold <code>SLOAD</code> — 2,100 gas — just to check its caller. A Rust
+                <code>const</code> lives in the WASM and is free, so
+                <code>build.rs</code> bakes the address in at compile time:</p>
+            <pre><code>include!(concat!(env!("OUT_DIR"), "/pool_manager.rs"));   // gives you POOL_MANAGER</code></pre>
+            <p>Measured, that is worth 2,568 gas per swap on this hook, which is called twice. The
+                cost is that the address is fixed at build time, and every <code>cargo</code>
+                command needs it in the environment:</p>
+            <pre><code>POOL_MANAGER=0x46b1852A2896902CcE7C5613AD5da97497a6F0C6 \
+  cargo build -p stylus-native-counter</code></pre>
+            <p class="lead">A <code>static</code> is not an alternative. It compiles, and a Stylus
+                program is instantiated per call, so anything written to one is silently gone by the
+                next call.</p>
+        </div>
+
+        <div class="step">
+            <h3>Declare the pool manager and the permissions</h3>
+            <p><code>permissions()</code> must match the callbacks you implement exactly, because
+                this is what the mined address will encode and what v4 will read back out of it.</p>
+            <pre><code>impl HookConfig for Counter {
+    fn pool_manager(&amp;self) -&gt; Address {
+        POOL_MANAGER
+    }
+
+    fn permissions(&amp;self) -&gt; Permissions {
+        Permissions::none()
+            .with_before_swap()
+            .with_after_swap()
+            .with_before_add_liquidity()
+            .with_before_remove_liquidity()
+    }
+}</code></pre>
+            <p>Those four flags are <code>0x0ac0</code>, and that is what the low 14 bits of the
+                deployed address will have to be.</p>
+        </div>
+
+        <div class="step">
+            <h3>Validate both addresses in the constructor</h3>
+            <p><code>validate_hook_address</code> reverts unless the deployed address carries
+                exactly the declared flags — the same assertion Solidity's <code>BaseHook</code>
+                makes. It is why a plain <code>cargo stylus deploy</code> cannot deploy a hook, and
+                why step 5 mines a salt first.</p>
+            <p>The constructor also takes the pool manager, purely to compare it with the baked-in
+                constant. Building against the wrong <code>$POOL_MANAGER</code> would otherwise give
+                you a hook that compiles, deploys, mines a valid address, and then silently rejects
+                every call the pool manager makes.</p>
+            <pre><code>#[public]
+#[implements(IHooks)]
+impl Counter {
+    #[constructor]
+    pub fn constructor(&amp;mut self, pool_manager: Address) -&gt; Result&lt;(), Vec&lt;u8&gt;&gt; {
+        if pool_manager != POOL_MANAGER {
+            return Err(PoolManagerMismatch { baked: POOL_MANAGER, given: pool_manager }.abi_encode());
+        }
+        HookGuards::validate_hook_address(self)
+    }
+
+    pub fn before_swap_count(&amp;self, pool_id: FixedBytes&lt;32&gt;) -&gt; U256 {
+        self.before_swap_count.get(pool_id)
+    }
+}</code></pre>
+            <p class="lead">The check costs 239 gas per swap — not the constructor, which runs once,
+                but the slightly larger program, which <code>ArbWasm</code> prices by compiled size.
+                Cheap for turning a silent misconfiguration into a failed deployment.</p>
+        </div>
+
+        <div class="step">
+            <h3>Implement the callbacks</h3>
+            <p>Write only the ones <code>permissions()</code> declares. The rest keep the base
+                implementation and revert with <code>HookNotImplemented</code>. Each returns its own
+                selector, which v4 checks on the way out.</p>
+            <pre><code>#[guarded_hooks]
+#[public]
+impl IHooks for Counter {
+    fn before_swap(
+        &amp;mut self,
+        _sender: Address,
+        key: PoolKey,
+        _params: SwapParams,
+        _hook_data: Bytes,
+    ) -&gt; Result&lt;(FixedBytes&lt;4&gt;, BeforeSwapDelta, U24), Vec&lt;u8&gt;&gt; {
+        // the caller is the pool manager and `key` names this hook: both already checked
+        Self::bump(&amp;mut self.before_swap_count, key.to_id());
+        Ok((selector::BEFORE_SWAP, ZERO_DELTA, U24::ZERO))
+    }
+
+    fn after_swap(
+        &amp;mut self,
+        _sender: Address,
+        key: PoolKey,
+        _params: SwapParams,
+        _delta: BalanceDelta,
+        _hook_data: Bytes,
+    ) -&gt; Result&lt;(FixedBytes&lt;4&gt;, i128), Vec&lt;u8&gt;&gt; {
+        Self::bump(&amp;mut self.after_swap_count, key.to_id());
+        Ok((selector::AFTER_SWAP, 0))
+    }
+}</code></pre>
+            <p><code>BaseHook.sol</code> is an abstract contract, so its <code>onlyPoolManager</code>
+                guard cannot be forgotten. Rust has no abstract types, so
+                <code>#[guarded_hooks]</code> does the same job as a procedural macro: it inserts
+                the caller and pool-key checks into every method below it, and costs nothing.</p>
+            <div class="note">
+                <p><strong>Put <code>#[guarded_hooks]</code> only on the <code>impl IHooks</code>
+                        block.</strong> A hook's own entry points — an order book, a claim, a read
+                    of the counters — must not require the pool manager as caller, and the attribute
+                    would lock them out.</p>
+            </div>
+            <p>A hook that returns a non-zero delta has to settle its own books before the lock
+                closes. <code>PoolManagerCalls</code> wraps <code>unlock</code>, <code>swap</code>,
+                <code>take</code>, <code>settle</code>, <code>sync</code> and <code>extsload</code>;
+                <code>native-twamm</code> uses them for real.</p>
+        </div>
+
+        <div class="step">
+            <h3>Mine the address and deploy</h3>
+            <p>The address derives from the init code, so rebuilding the contract changes the salt.
+                Mine after the final build, never before.</p>
+            <pre><code>export POOL_MANAGER=0xYourPoolManager        # baked in at build time, so set it first
+cd stylus
+
+cargo stylus get-initcode --contract stylus-native-counter | tail -1 &gt; initcode.hex
+
+cargo run -p stylus-hook-miner -- \
+  --initcode-file initcode.hex \
+  --permissions before-swap,after-swap,before-add-liquidity,before-remove-liquidity \
+  --constructor-signature "$(cargo stylus constructor --contract stylus-native-counter | tail -1)" \
+  --constructor-args $POOL_MANAGER</code></pre>
+            <p>It prints the mined address, the salt, and the deploy command to run:</p>
+            <pre><code>cargo stylus deploy --contract stylus-native-counter \
+  --deployer-salt 0x… \
+  --constructor-args $POOL_MANAGER \
+  --endpoint https://sepolia-rollup.arbitrum.io/rpc \
+  --private-key $PRIVATE_KEY</code></pre>
+            <p class="lead">A contract too large for one code fragment cannot use
+                <code>get-initcode</code>: the init code would contain fragment addresses that do
+                not exist until the fragments are deployed.
+                <code>deploy_fragmented_hook</code> in <code>bench-lib.bash</code> is the way round
+                it.</p>
+        </div>
+
+        <h2>Testing before you deploy</h2>
+        <p>Forge cannot execute WASM, so the two sides are tested separately and pinned to each
+            other wherever they implement the same maths.</p>
+        <pre><code>cd uniswap &amp;&amp; forge test     # the Solidity twins, through a real local v4 stack
+cd stylus  &amp;&amp; cargo test     # the Rust contracts, against stylus_sdk::testing::TestVM</code></pre>
+        <p>The counter's own tests cover what actually goes wrong with a hook: that the callbacks
+            count per pool, that a caller other than the pool manager is rejected, that a pool key
+            naming a different hook is rejected, that undeclared callbacks revert, and that the
+            constructor refuses an address without the flags.</p>
+        <p>The test that matters most for any Rust hook lives in the base:
+            <code>selectors_match_uniswap_ihooks</code> asserts that all ten callback selectors
+            computed from the Rust ABI equal the ones in the compiled <code>IHooks.sol</code>. A
+            hook written in Rust is only a hook if the pool manager's calls land on the right
+            methods.</p>
+        <p>Then <code>./prove-native-hook.bash</code> does the whole path for real. It stands up an
+            Arbitrum Nitro dev node in Docker, mines the address, deploys the Rust hook to it, and
+            has a real <code>PoolManager</code> drive every callback the hook declares:</p>
+        <pre><code>ok  landed on the mined address
+ok  the code at that address is an activated Stylus program
+ok  its constructor ran and validated the address
+ok  beforeAddLiquidity reached the Rust hook
+ok  beforeSwap reached the Rust hook
+ok  afterSwap reached the Rust hook
+ok  beforeRemoveLiquidity reached the Rust hook
+ok  beforeDonate reverts with HookNotImplemented</code></pre>
+
+        <h2>Deploying to Arbitrum</h2>
+        <p>Uniswap v4 and Stylus are both live on Arbitrum One and Arbitrum Sepolia, so no local
+            node is needed. Go to Sepolia first — the address depends on the init code, so a testnet
+            hook and a mainnet hook are different deployments regardless.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>What</th>
+                        <th>Where</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Arbitrum Sepolia RPC</td>
+                        <td><code>https://sepolia-rollup.arbitrum.io/rpc</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>StylusDeployer</code></td>
+                        <td><code>0xcEcba2F1DC234f70Dd89F2041029807F8D03A990</code>, which is
+                            <code>cargo stylus deploy</code>'s default</td>
+                    </tr>
+                    <tr>
+                        <td><code>CacheManager</code>, Arbitrum One</td>
+                        <td><code>0x51dEDBD2f190E0696AFbEE5E60bFdE96d86464ec</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>PoolManager</code></td>
+                        <td>from Uniswap's v4 deployment list for the chain, passed as
+                            <code>$POOL_MANAGER</code></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>Check the contract against a live endpoint before spending anything:</p>
+        <pre><code>cargo stylus check -e https://sepolia-rollup.arbitrum.io/rpc</code></pre>
+
+        <h3>Then bid for the program cache</h3>
+        <p>A Stylus contract is compressed WASM, and the node must fetch, decompress and instantiate
+            it before running a byte. Arbitrum charges that as init gas on <em>every call</em>.
+            Caching is not a state that warms up during a transaction — it is a property of the
+            deployment, won by a one-off bid on <code>CacheManager</code>, and a hook nobody has bid
+            for pays the full load forever.</p>
+        <p>On this counter the difference is 17,482 gas per entry uncached against 2,187 cached, and
+            the hook is entered twice per swap. That is 30,590 gas per swap, and it is the single
+            largest lever on what a Stylus hook costs. Space in the cache is finite and low bids get
+            evicted, so treat it as an operational commitment rather than a deployment step.</p>
+
+        <h2>Build settings to copy</h2>
+        <p>Three, all in this repository's <code>Cargo.toml</code> and <code>Stylus.toml</code>
+            files, and all worth taking wholesale.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Setting</th>
+                        <th>Why</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>opt-level = 3</code></td>
+                        <td>Cargo's default compiles for size, on a platform that charges for
+                            execution. Roughly 2× the gas on arithmetic-bound work.</td>
+                    </tr>
+                    <tr>
+                        <td><code>--llvm-memory-copy-fill-lowering</code> in the wasm-opt flags</td>
+                        <td>Without it, <code>opt-level</code> 2 or 3 emits a
+                            <code>DataCount</code> section ArbOS refuses to activate. The build
+                            succeeds, <code>cargo stylus check</code> passes, and the failure
+                            appears only at deployment — which is what makes the opt-level cap look
+                            unavoidable.</td>
+                    </tr>
+                    <tr>
+                        <td><code>build.rs</code> for the pool manager</td>
+                        <td>Turns a cold <code>SLOAD</code> per callback into a free constant read.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="lead">One habit to go with them: never build a <code>U256</code> from a string at
+            runtime. It is the most readable option in Rust and about a hundred times the cost of
+            the arithmetic it feeds.</p>
+    </main>
+
+    <footer>
+        <p>Source and full documentation: <a
+                href="https://github.com/youtpout/stylus-hook">github.com/youtpout/stylus-hook</a>
+        </p>
+    </footer>
+</body>
+
+</html>

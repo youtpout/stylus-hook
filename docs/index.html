@@ -6,113 +6,348 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Stylus Hook — Uniswap v4 hooks in Rust</title>
     <meta name="description"
-        content="Uniswap v4 hooks whose state and logic run in Rust/WASM on Arbitrum Stylus.">
-    <link rel="stylesheet" href="style.css?v=4">
+        content="Why a Uniswap v4 hook would be written in Rust on Arbitrum Stylus: compute is far cheaper, entering the contract is not, and storage is identical.">
+    <link rel="stylesheet" href="style.css?v=6">
 </head>
 
 <body>
     <header>
         <span class="kicker">Uniswap v4 · Arbitrum Stylus</span>
-        <h1>Stylus Hook</h1>
-        <p class="tagline">Uniswap v4 hooks whose state and logic run in Rust, compiled to WASM and
-            executed by Arbitrum Stylus.</p>
+        <h1>Hooks that compute</h1>
+        <p class="tagline">Uniswap v4 hooks written entirely in Rust, compiled to WASM and executed
+            by Arbitrum Stylus. Stylus makes arithmetic 3× to 640× cheaper and changes nothing else
+            — so it is worth reaching for exactly when a hook has to think on every swap.</p>
         <div class="badges">
             <span class="badge">v4-core <strong>v4.0.0</strong></span>
             <span class="badge">Stylus SDK <strong>0.10.9</strong></span>
             <span class="badge">Solidity <strong>0.8.30</strong></span>
             <span class="badge">Rust <strong>1.91</strong></span>
         </div>
+        <nav class="site">
+            <a href="index.html" aria-current="page">Why Stylus</a>
+            <a href="example.html">Example &amp; deployment</a>
+            <a href="benchmark.html">Benchmarks</a>
+            <a href="https://github.com/youtpout/stylus-hook">GitHub</a>
+        </nav>
     </header>
 
     <main>
-        <h2>Why Rust for a hook</h2>
-        <p>Hooks opened up an enormous design space for AMMs, but the more state a hook touches the
-            more its gas cost dominates every swap in the pool — to the point where some designs are
-            simply not viable in the EVM. Stylus executes WASM instead of EVM bytecode, so compute
-            and memory are an order of magnitude cheaper, which moves the boundary of what a hook can
-            reasonably do on every swap.</p>
+        <h2>The premise</h2>
+        <p>Hooks opened an enormous design space for AMMs, and then the EVM closed most of it again.
+            Every callback runs inside every swap in the pool, so a hook that computes anything
+            serious prices itself out. Uniswap's own TWAMM example costs about 100,000 gas per
+            interval and was never deployed by anyone. A pm-AMM must solve a transcendental
+            invariant on every trade. A hook that verifies a post-quantum signature is not expensive
+            in Solidity, it is impossible.</p>
+        <p>Stylus executes WASM instead of EVM bytecode. Arithmetic gets much cheaper, which moves
+            that boundary — but only that boundary, and only in one direction.</p>
 
-        <h2>The shape of the problem</h2>
-        <p>A v4 hook must live at an address whose low 14 bits encode its permission flags, and the
-            <code>PoolManager</code> reaches it through the <code>IHooks</code> Solidity ABI. Stylus
-            contracts are ABI-equivalent to Solidity, but they are deployed by <code>cargo
-                stylus</code>, which cannot mine a CREATE2 address. So today each hook ships as a
-            pair.</p>
+        <div class="note">
+            <p><strong>Stylus is not faster than Solidity. It is differently priced.</strong>
+                Entering a Stylus contract costs about 7,900 gas that a Solidity contract does not
+                pay, even cached. Storage costs exactly the same in both. Arithmetic costs 3× to
+                640× less.</p>
+            <p>So a port pays off only when a hook does roughly <strong>12,000 gas of Solidity
+                    arithmetic per call</strong> — about 45 <code>mulDiv</code>s, or 11
+                <code>rpow</code>s, or eleven times what a StableSwap curve solve needs. Below that
+                line a Rust hook loses, and loses reliably.</p>
+        </div>
 
+        <h2>Where the three costs come from</h2>
         <div class="pair">
             <div class="card">
-                <h3>The shell — Solidity</h3>
-                <p><code>CounterProxy.sol</code> owns the CREATE2-mined address that carries the
-                    permission flags, and forwards every callback. It holds no state.</p>
+                <h3>Entering: worse</h3>
+                <p>A Stylus contract is compressed WASM. The node fetches, decompresses and
+                    instantiates it before running a byte, and Arbitrum charges that as init gas on
+                    every call. A one-off bid on <code>CacheManager</code> cuts it by roughly 6×; it
+                    never reaches zero.</p>
             </div>
             <div class="card">
-                <h3>The hook — Rust</h3>
-                <p><code>stylus/counter</code> holds all of the storage and all of the logic, and
-                    only accepts writes from the shell it is bound to.</p>
+                <h3>Storage: identical</h3>
+                <p>There is no such thing as Stylus storage. A Stylus contract writes the same
+                    32-byte slots in the same account trie, and ArbOS charges EVM prices. Measured,
+                    Rust is 1.8 % cheaper, and that margin is the hashing around the access, not the
+                    access.</p>
+            </div>
+            <div class="card">
+                <h3>Computing: far better</h3>
+                <p>3× on 512-bit <code>mulDiv</code>, 4.5× on a full-range <code>sqrt</code>, 7.1×
+                    on v4's tick math, 640× on a Keccak permutation the EVM has no opcode for. This
+                    is the entire case.</p>
             </div>
         </div>
 
-        <p>Each hook also has a pure-Solidity twin — <code>Counter.sol</code> — kept so the two
-            implementations can be compared behaviour-for-behaviour and gas-for-gas.</p>
-
-        <h2>What ships today</h2>
+        <h3>How much cheaper depends on the word size</h3>
+        <p>The pattern behind every measurement: Rust gains most where the work fits a 256-bit word
+            worst.</p>
         <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
-                        <th>Hook</th>
-                        <th>Does</th>
-                        <th>WASM</th>
+                        <th>Operation</th>
+                        <th>What it needs</th>
+                        <th class="num">Solidity</th>
+                        <th class="num">Rust</th>
+                        <th class="num">Ratio</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td><code>CounterProxy</code></td>
-                        <td>Counts <code>beforeSwap</code>, <code>afterSwap</code> and the two
-                            liquidity callbacks, per pool.</td>
-                        <td>7.5 KB</td>
+                        <td>xorshift64</td>
+                        <td>64-bit words</td>
+                        <td class="num">115</td>
+                        <td class="num">2.8</td>
+                        <td class="num win">41.6×</td>
+                    </tr>
+                    <tr>
+                        <td>integer <code>sqrt</code></td>
+                        <td>512-bit intermediate plus a bit scan</td>
+                        <td class="num">2,009</td>
+                        <td class="num">362</td>
+                        <td class="num win">5.6×</td>
+                    </tr>
+                    <tr>
+                        <td>plain <code>a * b / c</code></td>
+                        <td>one <code>MUL</code>, one <code>DIV</code>, checked</td>
+                        <td class="num">278</td>
+                        <td class="num">51</td>
+                        <td class="num win">5.5×</td>
+                    </tr>
+                    <tr>
+                        <td><code>mulDiv</code></td>
+                        <td>512-bit intermediate</td>
+                        <td class="num">694</td>
+                        <td class="num">204</td>
+                        <td class="num win">3.4×</td>
+                    </tr>
+                    <tr>
+                        <td><code>rpow</code> in Q96</td>
+                        <td>products that fit in 256 bits</td>
+                        <td class="num">3,058</td>
+                        <td class="num">1,019</td>
+                        <td class="num win">3.0×</td>
+                    </tr>
+                    <tr>
+                        <td>one storage write</td>
+                        <td>a host operation either way</td>
+                        <td class="num">2,397</td>
+                        <td class="num">2,265</td>
+                        <td class="num">1.06×</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>A <code>U256</code> in WASM is four 64-bit limbs and only the non-zero ones are paid for,
+            while <code>MUL</code> and <code>DIV</code> cost the EVM 5 gas whatever the operands
+            are. So 64-bit words gain most, Q96 fixed point gains least — Q96 is exactly the shape
+            the EVM was built for — and everything a hook actually works with sits in between.</p>
+
+        <h2>Which hooks are worth it</h2>
+        <p>The repository benchmarks this rather than asserting it, including on hooks that are
+            deployed and used. The honest summary of what came back:</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Worth porting</th>
+                        <th>Not worth porting</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Small-word cryptography — hashing, signature and proof verification.
+                            The only category where Solidity does not merely lose but cannot play.
+                        </td>
+                        <td>Anything whose cost is bookkeeping. Read a counter, add to it, write it
+                            back — the exact shape where Stylus has nothing to offer.</td>
+                    </tr>
+                    <tr>
+                        <td>Replaying v4's own swap math, which every hook that simulates a swap
+                            before allowing it already does. 7.1× per tick crossed.</td>
+                        <td>Anything whose cost is an external call. EulerSwap spends 2 % of its gas
+                            on its curve and the rest querying lending vaults.</td>
+                    </tr>
+                    <tr>
+                        <td>Curve solvers, Newton iterations, TWAP and volatility oracles, dynamic
+                            fees computed from a model rather than looked up.</td>
+                        <td>Q96 fixed-point work that already takes <code>FullMath</code>'s
+                            single-<code>DIV</code> fast path, where the gain is only 1.65×.</td>
+                    </tr>
+                    <tr>
+                        <td>Batch scanning or sorting inside a callback, where the loop dominates.
+                        </td>
+                        <td>Anything expensive only because of the algorithm it chose. Fix the
+                            algorithm first, in Solidity.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>That last row is the trap worth naming. The most expensive v4 hook found anywhere spends
+            4.3 million gas per swap, and about 90 % of it goes to computing a Gaussian CDF by
+            bisecting on its own inverse — a 405× penalty against the same function written
+            properly. Porting it to Rust would look like a spectacular result and would be the
+            algorithm wearing a language's clothes.</p>
+        <p><strong>The finding is not that Stylus computes slowly. It is that most hooks do not
+                compute enough for it to matter</strong> — and the ones that would are the ones
+            nobody can currently afford to write. <a href="benchmark.html">The benchmarks</a> have
+            every figure behind that sentence.</p>
+
+        <h2>How a hook is built here</h2>
+        <p>Uniswap v4 imposes two things on a hook, and only two. It must answer the
+            <code>IHooks</code> Solidity ABI, and it must live at an address whose low 14 bits
+            encode the callbacks it wants; the <code>PoolManager</code> reads those bits off the
+            address and never calls one the address does not advertise.</p>
+        <p>A Stylus contract is ABI-equivalent to a Solidity one, so the first is free. The second
+            needs CREATE2 with a mined salt, and <code>cargo stylus deploy</code> routes through the
+            on-chain <code>StylusDeployer</code>, which uses CREATE2 whenever it is handed a
+            non-zero salt. <strong>So the hook the pool manager calls is the Rust contract itself.
+                There is no Solidity in it, and nothing forwarding to it.</strong></p>
+        <div class="pair">
+            <div class="card">
+                <h3>stylus/base-hook</h3>
+                <p><code>BaseHook.sol</code>'s counterpart in Stylus: the v4 value types, the
+                    permission flags, the ten <code>IHooks</code> callbacks, and the calls a hook
+                    makes back into the pool manager.</p>
+            </div>
+            <div class="card">
+                <h3>stylus/base-hook-macros</h3>
+                <p><code>#[guarded_hooks]</code>. Solidity's guard cannot be forgotten because
+                    <code>BaseHook</code> is abstract; Rust has no abstract types, so a proc macro
+                    inserts the caller and pool-key checks instead, at no gas cost.</p>
+            </div>
+            <div class="card">
+                <h3>stylus/hook-miner</h3>
+                <p>Mines the CREATE2 salt whose <code>StylusDeployer</code> address carries exactly
+                    the flags the hook declares. A host CLI, not a contract.</p>
+            </div>
+        </div>
+        <p>Every hook has a pure-Solidity twin in <code>uniswap/src</code>, kept so the two can be
+            compared behaviour-for-behaviour and gas-for-gas. Where both implement the same maths
+            they are pinned to the same values: the Gaussian ports agree to the wei, and the v4 math
+            port is tested against v4-core's own vectors.</p>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hook in Rust</th>
+                        <th>What it does</th>
+                        <th>Measured against</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>native-counter</code></td>
+                        <td>Counts four callbacks per pool. The smallest complete hook, and the
+                            worst case for Stylus.</td>
+                        <td><code>Counter.sol</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>native-twamm</code></td>
+                        <td>A complete TWAMM: orders, order pools, an expiry grid, earnings factors,
+                            settlement against the v4 singleton.</td>
+                        <td>the TWAMM live on Base and Unichain</td>
+                    </tr>
+                    <tr>
+                        <td><code>native-gaussian</code></td>
+                        <td>solstat's Gaussian CDF and solve, ported bit-exactly, for a pm-AMM.</td>
+                        <td><code>PmAmmMath.sol</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>native-v4-math</code></td>
+                        <td><code>Pool.swap</code>'s loop: next initialised tick, price the step,
+                            cross, repeat.</td>
+                        <td>v4-core's own libraries</td>
+                    </tr>
+                    <tr>
+                        <td><code>native-crypto</code></td>
+                        <td>Keccak-f[1600], SHAKE256 and ML-DSA's number-theoretic transform.</td>
+                        <td><code>CryptoBench.sol</code>, in unrolled assembly</td>
+                    </tr>
+                    <tr>
+                        <td><code>native-stableswap</code></td>
+                        <td>A StableSwap curve, solved by Newton iteration on every swap.</td>
+                        <td><code>StableSwapHook.sol</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>native-compute</code></td>
+                        <td>Arithmetic sweeps, for locating the crossover.</td>
+                        <td><code>ComputeHook.sol</code></td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
-        <h3>Proving the two implementations agree</h3>
-        <p>Foundry cannot execute WASM, so the Rust side is tested against
-            <code>stylus_sdk::testing::TestVM</code>. Where both languages implement the same maths
-            they are pinned to the same table of values — <code>PmAmmMath.sol</code> and
-            <code>stylus/native-gaussian</code> agree to the wei, which is what makes the gas
-            comparison a comparison of languages rather than of precision.</p>
+        <h2>Two traps that cost an order of magnitude each</h2>
+        <p>Both compile. Both pass <code>cargo stylus check</code>. Neither announces itself, and
+            together they account for most of the distance between a Stylus hook that wins and one
+            that loses.</p>
+        <div class="note">
+            <p><strong>An optimisation level you cannot reach by default.</strong> At
+                <code>opt-level</code> 2 or 3, rustc emits <code>memory.copy</code>, which brings a
+                <code>DataCount</code> section that ArbOS refuses to activate — so a Stylus contract
+                appears to be capped at <code>"s"</code>, compiled for size on a platform that
+                charges for execution. Passing
+                <code>--llvm-memory-copy-fill-lowering</code> to wasm-opt lowers those ops back to
+                loops and drops the section. Every benchmark here was measuring size-optimised code
+                until that was found, and every ratio roughly doubled when it was fixed.</p>
+            <p><strong>Constants built from strings.</strong> The first port of v4's
+                <code>TickMath</code> <em>lost</em> by 3.6×, because its nineteen fixed-point factors
+                were <code>&amp;str</code> parsed with <code>from_str_radix</code> inside the loop.
+                Hoisting them to real <code>const</code> values moved the ratio from 0.28× to 4.57×
+                with the algorithm untouched. In Solidity a literal is a literal and this bug cannot
+                be written.</p>
+        </div>
 
-        <h2>Where this is going</h2>
-        <p>The Solidity shell exists only to own a flagged address. The goal is a
-            <code>BaseHook</code> written entirely in Stylus, so a hook can be 100 % Rust with no
-            Solidity anywhere in its dependency graph.</p>
+        <h2>Against the official guidance</h2>
+        <p>Arbitrum publishes gas optimisation best practices for Stylus. It says up front that its
+            multipliers are directional and that you should benchmark your own contract, which is
+            what this repository is. Four claims are checkable, and they do not all hold.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>The docs say</th>
+                        <th>Measured here</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Compute-heavy loops: ~50–100×</td>
+                        <td>10.6× at best, on 64-bit xorshift. 256-bit work runs 1.65× to 4.5×.</td>
+                    </tr>
+                    <tr>
+                        <td>Storage operations: no gain</td>
+                        <td>1.8 % cheaper. Agrees, for every practical purpose.</td>
+                    </tr>
+                    <tr>
+                        <td>Set <code>opt-level = "z"</code> for smaller binaries</td>
+                        <td>Makes them bigger, 18,555 → 18,928 bytes, because the SDK's own pinned
+                            <code>wasm-opt -Oz</code> already runs afterwards.</td>
+                    </tr>
+                    <tr>
+                        <td><code>ecrecover</code>: 3,000 gas → ~300, ~10×</td>
+                        <td>No mechanism for this is visible. There is no signature hostio, so a
+                            contract calls the <code>0x01</code> precompile at its EVM price or
+                            implements secp256k1 itself.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="lead">The 50–100× figure is the one that matters, because it is the number a team
+            would use to decide whether to port. Nothing measured here comes within a factor of five
+            of it.</p>
+
+        <h2>Read next</h2>
         <ul class="checks">
-            <li class="done">Run against upstream <code>v4-core</code> — Arbitrum has supported
-                transient storage since ArbOS 32, so the <code>no-cancun</code> fork this project
-                once needed is gone.</li>
-            <li class="done">Hook state and logic fully in Rust, behind a stateless Solidity shell.
-            </li>
-            <li class="done">Port <code>BaseHook</code> to Stylus — the ten callbacks, permission
-                and pool validation, the delta and fee encodings, and calling back into the
-                <code>PoolManager</code>.</li>
-            <li class="done">CREATE2 deployment, so a Stylus contract lands on a flag-carrying
-                address by itself — no Solidity factory involved.</li>
-            <li class="done">A hook with no Solidity anywhere, driven end to end by a real
-                <code>PoolManager</code>.</li>
-            <li>A hook whose work is compute rather than storage, where Stylus actually wins.</li>
-            <li>A hook template repository and documentation for building v4 hooks in Rust
-                end-to-end.</li>
+            <li><a href="example.html">A hook, start to finish</a> — the counter in five steps, then
+                mining its address and deploying it to Arbitrum.</li>
+            <li><a href="benchmark.html">The benchmarks</a> — every sweep, every crossover, and the
+                six real hooks that were ported and measured.</li>
+            <li><a href="https://github.com/youtpout/stylus-hook/blob/main/FEEDBACK.md">FEEDBACK.md</a>
+                — feedback to Uniswap from porting v4-core, including a failing input in v4-core's
+                own <code>TickMath</code> fuzz test.</li>
         </ul>
-
-        <h2>Try it</h2>
-        <pre><code>git clone --recurse-submodules https://github.com/youtpout/stylus-hook
-cd stylus-hook
-
-cd uniswap &amp;&amp; forge test     # hooks, swapped through a real local v4 stack
-cd ../stylus &amp;&amp; cargo test    # the Rust contracts</code></pre>
-        <p class="lead">Uniswap v4 and Stylus are both live on Arbitrum Sepolia, so deploying needs
-            no local node — see the repository README for the two-command deployment flow.</p>
     </main>
 
     <footer>

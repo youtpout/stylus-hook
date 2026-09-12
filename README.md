@@ -12,7 +12,9 @@ built on it with no Solidity anywhere, and [`stylus/hook-miner`](stylus/hook-min
 CREATE2 salt that lands it on a flag-carrying address.
 
 📖 **[Writing a hook](stylus/base-hook/README.md)** — five steps, with the counter as the worked
-example.
+example. The documentation site covers the same ground in three pages:
+[why Stylus](docs/index.html), [the worked example and deployment](docs/example.html), and
+[the benchmarks](docs/benchmark.html).
 📝 **[FEEDBACK.md](FEEDBACK.md)** — feedback to Uniswap from porting v4-core, including a failing
 input in v4-core's own `TickMath` fuzz test.
 

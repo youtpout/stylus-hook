@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Benchmarks — Stylus Hook</title>
+    <meta name="description"
+        content="Measured gas per swap for Uniswap v4 hooks written in Solidity against the same hooks written in Rust on Arbitrum Stylus.">
+    <link rel="stylesheet" href="style.css?v=6">
+</head>
+
+<body>
+    <header>
+        <span class="kicker">Benchmarks</span>
+        <h1>Solidity against Stylus, per swap</h1>
+        <p class="tagline">The same hook written twice, deployed to the same chain, and the gas read
+            off the receipts. Seven workloads, from a counter that loses badly to a permutation
+            Solidity cannot practically run at all.</p>
+        <nav class="site">
+            <a href="index.html">Why Stylus</a>
+            <a href="example.html">Example &amp; deployment</a>
+            <a href="benchmark.html" aria-current="page">Benchmarks</a>
+            <a href="https://github.com/youtpout/stylus-hook">GitHub</a>
+        </nav>
+    </header>
+
+    <main>
+        <h2>Method</h2>
+        <p>Every figure comes from a real transaction on a throwaway Arbitrum Nitro dev node in
+            Docker — the cheapest chain that executes both EVM bytecode and WASM. One swap per
+            transaction, so the cost is read off the receipt rather than estimated. Both
+            implementations are deployed to the same node, against the same pool manager, and where
+            both compute the same thing the benchmark checks they agree before it measures.</p>
+        <p>Both sides are optimised. Solidity is compiled with
+            <code>optimizer = true, optimizer_runs = 200</code>, which is what OpenZeppelin's
+            <code>uniswap-hooks</code> ships with. Rust is release-built with LTO,
+            <code>opt-level = 3</code> and the pinned <code>wasm-opt</code> flags.</p>
+        <p>Gas is L2 execution gas only: the benchmarks set
+            <code>ArbOwner.setL1PricePerUnit(0)</code>, because the L1 data-posting component is
+            identical across the variants being compared and would otherwise dwarf the difference.
+            Every Stylus figure is the <strong>cached</strong> one, since caching is a one-off bid
+            and a hook with users would be bid for. Where it matters the uncached figure is given
+            too.</p>
+
+        <h2>1. The floor: a hook that only counts</h2>
+        <p><code>./bench-counter.bash</code>. The hook writes one storage slot per callback and
+            computes nothing, and a swap enters it twice. This is the worst case for Stylus, and it
+            comes first so everything below is read against it.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hook</th>
+                        <th class="num">Gas per swap</th>
+                        <th class="num">Hook costs</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>No hook</td>
+                        <td class="num">115,065</td>
+                        <td class="num">—</td>
+                    </tr>
+                    <tr>
+                        <td><code>Counter.sol</code>, pure Solidity</td>
+                        <td class="num">134,003</td>
+                        <td class="num">+18,938</td>
+                    </tr>
+                    <tr>
+                        <td><code>native-counter</code>, Rust, cached</td>
+                        <td class="num">168,941</td>
+                        <td class="num loss">+53,876</td>
+                    </tr>
+                    <tr>
+                        <td><code>native-counter</code>, Rust, uncached</td>
+                        <td class="num">199,595</td>
+                        <td class="num loss">+84,530</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>Stylus costs 2.8× what Solidity does here</strong>, and that is the workload's
+            fault rather than the port's. The 30,654 gas between the two Rust rows is the WASM load,
+            paid twice per swap, and the rest is a hook with nothing for Stylus to win back.</p>
+
+        <h2>2. Where the crossover is</h2>
+        <p><code>./bench-compute.bash</code> runs the identical loop in both languages and sweeps
+            how much of it there is. The interesting column is <code>mulDiv</code>, because that is
+            what Uniswap's own swap math is made of.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="num"><code>mulDiv</code>s per swap</th>
+                        <th class="num">Solidity</th>
+                        <th class="num">Rust</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="num">0</td>
+                        <td class="num">124,362</td>
+                        <td class="num">163,869</td>
+                    </tr>
+                    <tr>
+                        <td class="num">50</td>
+                        <td class="num">159,158</td>
+                        <td class="num">176,341</td>
+                    </tr>
+                    <tr>
+                        <td class="num">200</td>
+                        <td class="num">263,258</td>
+                        <td class="num win">213,469</td>
+                    </tr>
+                    <tr>
+                        <td class="num">1,000</td>
+                        <td class="num">818,458</td>
+                        <td class="num win">411,485</td>
+                    </tr>
+                    <tr>
+                        <td class="num">5,000</td>
+                        <td class="num">3,594,426</td>
+                        <td class="num win">1,401,533</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>694 gas per <code>mulDiv</code> in Solidity against 247 in Rust, with about 39,000 gas
+            more to enter the Stylus contract: <strong>the two cross at 89 operations</strong>.</p>
+
+        <h3>Per operation</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Operation</th>
+                        <th>What it needs</th>
+                        <th class="num">Solidity</th>
+                        <th class="num">Rust</th>
+                        <th class="num">Ratio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>xorshift64</td>
+                        <td>64-bit words</td>
+                        <td class="num">115</td>
+                        <td class="num">2.8</td>
+                        <td class="num win">41.6×</td>
+                    </tr>
+                    <tr>
+                        <td>integer <code>sqrt</code>, EulerSwap's</td>
+                        <td>512-bit intermediate plus bit length</td>
+                        <td class="num">2,009</td>
+                        <td class="num">362</td>
+                        <td class="num win">5.6×</td>
+                    </tr>
+                    <tr>
+                        <td>plain <code>a * b / c</code></td>
+                        <td>one <code>MUL</code>, one <code>DIV</code>, checked</td>
+                        <td class="num">278</td>
+                        <td class="num">51</td>
+                        <td class="num win">5.5×</td>
+                    </tr>
+                    <tr>
+                        <td><code>mulDiv</code></td>
+                        <td>512-bit intermediate</td>
+                        <td class="num">694</td>
+                        <td class="num">204</td>
+                        <td class="num win">3.4×</td>
+                    </tr>
+                    <tr>
+                        <td><code>rpow</code>, Bunni's LDF</td>
+                        <td><code>mulDiv</code> in Q96, fits in 256 bits</td>
+                        <td class="num">3,058</td>
+                        <td class="num">1,019</td>
+                        <td class="num win">3.0×</td>
+                    </tr>
+                    <tr>
+                        <td>one storage write</td>
+                        <td>a host operation either way</td>
+                        <td class="num">2,397</td>
+                        <td class="num">2,265</td>
+                        <td class="num">1.06×</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>Storage does not move, and that is not an artefact: a cold slot costs 2,100 to touch and
+            100 to write in both languages. What Stylus shaves is only the arithmetic wrapped around
+            the access — hashing the mapping key, and the loop. Paying off the entry fee on storage
+            alone would take about 900 writes per call.</p>
+        <p>The same expression 100 times, changing only how many of a <code>U256</code>'s four limbs
+            are non-zero, shows where the rest of the variation comes from:</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>100 × <code>a*b/c</code></th>
+                        <th class="num">Solidity</th>
+                        <th class="num">Rust</th>
+                        <th class="num">Ratio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>operands ~2<sup>32</sup>, one limb</td>
+                        <td class="num">9,599</td>
+                        <td class="num">2,285</td>
+                        <td class="num win">4.20×</td>
+                    </tr>
+                    <tr>
+                        <td>operands ~2<sup>96</sup>, two limbs</td>
+                        <td class="num">9,599</td>
+                        <td class="num">2,825</td>
+                        <td class="num win">3.40×</td>
+                    </tr>
+                    <tr>
+                        <td>operands ~2<sup>128</sup>, four limbs</td>
+                        <td class="num">9,599</td>
+                        <td class="num">4,083</td>
+                        <td class="num win">2.35×</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>The EVM's column is flat — <code>MUL</code> and <code>DIV</code> cost 5 gas whatever the
+            operands are. A <code>U256</code> in WASM is four 64-bit limbs and only the non-zero
+            ones are paid for, so Rust's advantage narrows as the words fill up. It does not run
+            out.</p>
+
+        <h2>3. A StableSwap curve <span class="pill">loses</span></h2>
+        <p><code>./bench-stableswap.bash</code>. This hook was written specifically to be
+            arithmetic-heavy enough to clear the bar: twelve Newton iterations of 256-bit arithmetic
+            per swap, solving the invariant <code>D</code> and then the output reserve
+            <code>y</code>, with no storage beyond two reserves.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th class="num">Gas per swap</th>
+                        <th class="num">Over baseline</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>No hook</td>
+                        <td class="num">115,061</td>
+                        <td class="num">—</td>
+                    </tr>
+                    <tr>
+                        <td>StableSwap in Solidity</td>
+                        <td class="num">149,112</td>
+                        <td class="num">+34,051</td>
+                    </tr>
+                    <tr>
+                        <td>StableSwap in Rust</td>
+                        <td class="num">174,656</td>
+                        <td class="num loss">+59,595</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>It still lost, by 25,544 gas, and not because the arithmetic is slow — plain 256-bit
+            multiply-and-divide is three times cheaper in Rust, flat across three orders of
+            magnitude. One <code>getY</code>, all twelve iterations, is 8,629 gas in Solidity. Three
+            times cheaper saves under 6,000 against 19,724 to load the program.</p>
+        <p><strong>Twelve Newton iterations sounds like a lot and is not.</strong> The bar is closer
+            to seven <code>getY</code> calls per swap, or 220 plain multiply-divides.</p>
+
+        <h2>4. OpenZeppelin's AntiSandwichHook <span class="pill">loses</span></h2>
+        <p><code>./bench-antisandwich.bash</code>. The most compute-looking hook in the library the
+            official v4-template depends on. It replays <code>Pool.swap</code> against a
+            start-of-block checkpoint, but only in one swap direction, so the gap between the
+            directions isolates the simulation.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th class="num">Gas per swap</th>
+                        <th class="num">Over baseline</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>No hook, 0→1</td>
+                        <td class="num">120,315</td>
+                        <td class="num">—</td>
+                    </tr>
+                    <tr>
+                        <td>AntiSandwichHook, 0→1, no replay</td>
+                        <td class="num">168,425</td>
+                        <td class="num">+48,110</td>
+                    </tr>
+                    <tr>
+                        <td>AntiSandwichHook, 1→0, with replay</td>
+                        <td class="num">184,090</td>
+                        <td class="num">+69,570</td>
+                    </tr>
+                    <tr>
+                        <td><strong>the replay alone</strong></td>
+                        <td class="num"></td>
+                        <td class="num"><strong>21,460</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>The arithmetic is 31 % of what this hook costs. The other 48,110 is checkpointing pool
+            state into the hook's own storage and settling an ERC-6909 fee, none of which gets
+            cheaper. Projected, the port <strong>loses money uncached and saves perhaps 4 %
+                cached</strong> — and this is the best candidate in that library.</p>
+        <p>An independent opcode-level profile of three deployed hooks agrees, and puts the problem
+            in one line:</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hook, over a hookless swap</th>
+                        <th class="num">Compute</th>
+                        <th class="num">Storage</th>
+                        <th class="num">Compute share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>AntiSandwich</td>
+                        <td class="num">23,616</td>
+                        <td class="num">38,400</td>
+                        <td class="num">37 %</td>
+                    </tr>
+                    <tr>
+                        <td>LimitOrder</td>
+                        <td class="num">4,777</td>
+                        <td class="num">2,200</td>
+                        <td class="num">67 %</td>
+                    </tr>
+                    <tr>
+                        <td>PanopticOracle</td>
+                        <td class="num">5,494</td>
+                        <td class="num">24,600</td>
+                        <td class="num">18 %</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>A plain v4 swap is itself 26,656 of compute against 48,100 of storage. <strong>A hook
+                would have to compute more than twice what the AMM does to be worth
+                moving.</strong></p>
+
+        <h2>5. A TWAMM, against the one in production <span class="pill">wins</span></h2>
+        <p><code>./bench-twamm.bash</code>, measured against
+            <code>akshatmittal/v4-twamm-hook</code> — the TWAMM by Uniswap Labs and Zaha Studio,
+            audited by ABDK and Certora, live on Base and Unichain. Both hooks on the same node,
+            same pool manager, same expiry grid, same order book.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th class="num">Rust</th>
+                        <th class="num">Production Solidity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Swap, pool idle</td>
+                        <td class="num loss">140,173</td>
+                        <td class="num">132,257</td>
+                    </tr>
+                    <tr>
+                        <td>Swap, one span of virtual orders</td>
+                        <td class="num win">305,104</td>
+                        <td class="num">339,612</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Per expiry crossed</strong></td>
+                        <td class="num win"><strong>26,924</strong></td>
+                        <td class="num"><strong>38,834</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>31 % cheaper per interval, 7,916 gas worse on an idle pool</strong>, and ahead
+            from the first span of work. That 7,916 is where the cost of entering a cached Stylus
+            hook comes from — measured, not quoted.</p>
+        <p>Isolating the arithmetic makes the split visible. Uniswap's own TWAMM runs on
+            <code>ABDKMathQuad</code>: IEEE 754 quadruple precision emulated in Solidity over
+            <code>bytes16</code>. Stylus forbids floating point outright, so the port is in fixed
+            point — and to keep that a language comparison rather than an algorithm comparison,
+            <code>TwammHook.sol</code> carries the identical fixed-point form alongside the
+            quad-float one. All three agree to two parts in 10<sup>18</sup>.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="num">Intervals</th>
+                        <th class="num">Solidity, quad floats</th>
+                        <th class="num">Solidity, fixed point</th>
+                        <th class="num">Rust, fixed point</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="num">1</td>
+                        <td class="num">23,587</td>
+                        <td class="num">14,011</td>
+                        <td class="num win">2,368</td>
+                    </tr>
+                    <tr>
+                        <td class="num">2</td>
+                        <td class="num">47,521</td>
+                        <td class="num">27,842</td>
+                        <td class="num win">4,723</td>
+                    </tr>
+                    <tr>
+                        <td class="num">4</td>
+                        <td class="num">94,458</td>
+                        <td class="num">55,950</td>
+                        <td class="num win">9,435</td>
+                    </tr>
+                    <tr>
+                        <td class="num">8</td>
+                        <td class="num">189,590</td>
+                        <td class="num">111,385</td>
+                        <td class="num win">18,860</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>Per interval: 23,715 gas in Solidity as written, 13,911 in Solidity done differently,
+            2,356 in Rust. <strong>1.7× is the algorithm and 6.0× is the language</strong> — the
+            largest language gain measured here on arithmetic a real hook runs.</p>
+        <p class="lead">This is not a clean comparison of one program compiled two ways. The two
+            hooks differ: this one settles once per catch-up where theirs settles per interval, and
+            theirs computes earnings factors for both order pools. The 6× applies to the arithmetic,
+            not to the storage wrapped around it.</p>
+
+        <h2>6. The pm-AMM's Gaussian solve <span class="pill">wins</span></h2>
+        <p>The pm-AMM's invariant is transcendental, so every swap must run a Gaussian solve. This is
+            the one workload here whose arithmetic genuinely cannot be optimised away.
+            <code>native-gaussian</code> is a bit-exact port of
+            <code>primitivefinance/solstat</code>, agreeing with the Solidity to the wei on chain.
+        </p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th class="num">Solidity</th>
+                        <th class="num">Rust</th>
+                        <th class="num">Ratio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Gaussian CDF</td>
+                        <td class="num">5,137</td>
+                        <td class="num win">2,082</td>
+                        <td class="num">2.47×</td>
+                    </tr>
+                    <tr>
+                        <td>Solve, 8 iterations</td>
+                        <td class="num">62,425</td>
+                        <td class="num win">27,659</td>
+                        <td class="num">2.26×</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>+26,850 gas per swap in Rust's favour, on every swap.</strong></p>
+
+        <h2>7. v4-core's own swap math <span class="pill">wins big</span></h2>
+        <p><code>./bench-v4-math.bash</code>. <code>SwapMath</code>, <code>TickMath</code>,
+            <code>SqrtPriceMath</code>, <code>FullMath</code> and <code>UnsafeMath</code>, ported
+            function for function and tested against v4-core's own vectors. The control is not a
+            reimplementation: <code>V4MathBench.sol</code> calls Uniswap's libraries directly.</p>
+        <p>The workload is <code>Pool.swap</code>'s loop without the storage — find the next
+            initialised tick, price the step, cross, repeat — which is what AntiSandwichHook and
+            Uniswap's own <code>SwapSimulator</code> replay on every swap.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="num">Ticks crossed</th>
+                        <th class="num">Solidity</th>
+                        <th class="num">Rust</th>
+                        <th class="num">Saving</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="num">4</td>
+                        <td class="num">42,451</td>
+                        <td class="num">46,522</td>
+                        <td class="num loss">−4,071</td>
+                    </tr>
+                    <tr>
+                        <td class="num">8</td>
+                        <td class="num">58,870</td>
+                        <td class="num win">48,380</td>
+                        <td class="num win">+10,490</td>
+                    </tr>
+                    <tr>
+                        <td class="num">32</td>
+                        <td class="num">155,342</td>
+                        <td class="num win">62,055</td>
+                        <td class="num win">+93,287</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>4,056 gas per tick against 570 — 7.1×</strong>, and a replay crossing six or more
+            ticks is a net win. This is bit-twiddling rather than big-number arithmetic — nineteen
+            shifts and a conditional multiply for a tick's price — and Solidity pays a 5-gas opcode
+            for every one of them with no cheaper way to write it.</p>
+
+        <h2>8. Post-quantum signature primitives <span class="pill">Solidity cannot</span></h2>
+        <p><code>./bench-crypto.bash</code>. Keccak-f[1600], SHAKE256 and ML-DSA's number-theoretic
+            transform — the two primitives a post-quantum signature check spends its gas on. Both
+            sides are pinned to NIST's SHAKE256 vectors and XKCP's permutation vector before
+            anything is timed, and the Solidity control is unrolled inline assembly, not the
+            readable version that would have made a strawman of it.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th class="num">Solidity</th>
+                        <th class="num">Rust</th>
+                        <th class="num">Ratio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>One 32-byte hash, through the built-in</td>
+                        <td class="num">184</td>
+                        <td class="num win">16</td>
+                        <td class="num">11.5×</td>
+                    </tr>
+                    <tr>
+                        <td>One Keccak-f[1600] permutation, by hand</td>
+                        <td class="num">101,662</td>
+                        <td class="num win">158</td>
+                        <td class="num win">643×</td>
+                    </tr>
+                    <tr>
+                        <td>SHAKE256, absorb 200 B, squeeze 1088 B</td>
+                        <td class="num">1,250,263</td>
+                        <td class="num win">2,559</td>
+                        <td class="num win">489×</td>
+                    </tr>
+                    <tr>
+                        <td>One forward NTT, 256 coefficients</td>
+                        <td class="num">244,873</td>
+                        <td class="num win">2,128</td>
+                        <td class="num win">115×</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>The first row is free money for any hook that hashes: the Stylus host's keccak is 11.5×
+            cheaper than the EVM opcode. The second row is the one that matters.
+            <code>keccak256</code> performs exactly one permutation internally, but it is Keccak-256
+            with the <code>0x01</code> pad compiled in, and SHAKE pads with <code>0x1f</code>. So
+            SHAKE cannot come from any built-in in either language, and the permutation has to be
+            written out. <strong>The EVM can do Keccak, but only through the one door it provides,
+                and SHAKE is not behind that door.</strong></p>
+        <p>Projected onto one ML-DSA-44 verification — about 90 permutations and 9 transforms — that
+            is <strong>11,353,437 gas in Solidity against 33,372 in Rust</strong>. A swap on Arbitrum
+            costs about 115,000 gas with no hook. Solidity would spend ninety-nine swaps' worth to
+            check one signature; Rust spends less than a third of one.</p>
+
+        <h2>What the eight add up to</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Workload</th>
+                        <th>Result in Rust</th>
+                        <th>Why</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Counter</td>
+                        <td class="loss">+34,938 gas per swap</td>
+                        <td>storage only, no compute at all</td>
+                    </tr>
+                    <tr>
+                        <td>StableSwap curve</td>
+                        <td class="loss">+25,544 gas per swap</td>
+                        <td>8,629 gas of arithmetic, needs ~62,000</td>
+                    </tr>
+                    <tr>
+                        <td>AntiSandwichHook</td>
+                        <td class="loss">~4 % cached, negative uncached</td>
+                        <td>arithmetic is 31 % of the hook</td>
+                    </tr>
+                    <tr>
+                        <td>TWAMM interval</td>
+                        <td class="win">31 % cheaper per expiry</td>
+                        <td>6.0× on the maths, enough of it to pay the entry</td>
+                    </tr>
+                    <tr>
+                        <td>Gaussian solve</td>
+                        <td class="win">+26,850 gas saved per swap</td>
+                        <td>irreducible transcendental work</td>
+                    </tr>
+                    <tr>
+                        <td>v4 swap replay</td>
+                        <td class="win">7.1× per tick crossed</td>
+                        <td>bit manipulation the EVM prices per opcode</td>
+                    </tr>
+                    <tr>
+                        <td>Keccak permutation, SHAKE, NTT</td>
+                        <td class="win">115× to 643×</td>
+                        <td>64-bit words, and no EVM opcode for the primitive</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>A bookkeeping hook is the wrong thing to port, and most hooks are bookkeeping hooks.
+            <strong>The finding is not that Stylus computes slowly — it does not — but that hooks do
+                not compute enough for it to matter.</strong> The ones that do compute enough are
+            the ones nobody currently deploys, because in Solidity they cost too much to run.</p>
+
+        <h2>Caveats</h2>
+        <p>Gas here is L2 execution gas only, with the L1 data-posting price set to zero. On a real
+            chain the L1 component is identical across the variants compared and dwarfs the
+            differences being measured.</p>
+        <p>Nothing here is measured inside <code>forge test</code>: forge cannot execute WASM, so
+            every Stylus figure comes from a transaction on a dev node. The TWAMM comparison is
+            between two implementations of the same design, not one program compiled two ways. The
+            TWAMM idle figure moved by about 9,000 gas between runs, because whether a swap lands in
+            the same second as the previous one decides if the hook has a span to execute at all;
+            the per-expiry numbers are differences over four expiries and are stable.</p>
+        <p class="lead">Every sweep, the full method, and the search through Uniswap's hook registry
+            that produced these candidates are in
+            <a href="https://github.com/youtpout/stylus-hook/blob/main/BENCHMARK.md">BENCHMARK.md</a>.</p>
+    </main>
+
+    <footer>
+        <p>Source and full documentation: <a
+                href="https://github.com/youtpout/stylus-hook">github.com/youtpout/stylus-hook</a>
+        </p>
+    </footer>
+</body>
+
+</html>
