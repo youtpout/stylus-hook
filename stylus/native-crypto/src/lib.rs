@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! The two primitives an ML-DSA signature check spends its gas on, priced against Solidity.
 //!
 //! SHAKE256 comes from no built-in: `native_keccak256` and the EVM opcode are both Keccak-256 with

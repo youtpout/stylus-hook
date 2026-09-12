@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! A Uniswap v4 hook, in pure Rust, that does nothing but arithmetic — with a dial for how much.
 //!
 //! Stylus trades a lower marginal cost of computation for a fixed cost per call, so below some

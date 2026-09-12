@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Montgomery multiplication in BN254's scalar field, to settle whether Stylus can beat `MULMOD`.
 //!
 //! `ruint`'s `mul_mod` answers with a 512-bit product and a division — 94 gas against the opcode's

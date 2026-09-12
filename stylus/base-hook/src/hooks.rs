@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! The `IHooks` entry points, with `BaseHook.sol` semantics. A hook implements [`HookConfig`], then
 //! only the callbacks it enables; the rest revert with `HookNotImplemented`.
 //!

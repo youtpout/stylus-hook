@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! A TWAMM as a Uniswap v4 hook, in pure Rust. Long-term orders sell at a constant rate per second
 //! and are folded into the pool lazily, in closed form. Fixed point at 1e18, since Stylus has no
 //! floating point, and `TwammHook.sol` carries the identical form. The closed form is Paradigm's

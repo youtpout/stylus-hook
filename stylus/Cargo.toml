@@ -7,7 +7,7 @@ default-members = ["base-hook", "base-hook-macros", "v4-math", "native-v4-math",
 [workspace.package]
 version = "0.2.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 homepage = "https://github.com/youtpout/stylus-hook"
 repository = "https://github.com/youtpout/stylus-hook"
 keywords = ["arbitrum", "ethereum", "stylus", "alloy", "uniswap", "hook"]

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! `FullMath`, as v4-core spells it: `a * b / denominator` with the product allowed past 256 bits.
 //!
 //! Solidity needs Remco Bloemen's trick because the EVM has no 512-bit division. None of that is

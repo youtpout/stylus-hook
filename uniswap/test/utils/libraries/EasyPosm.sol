@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+// A Uniswap v4 test helper, not written here. Kept under its own GPL-2.0-or-later terms.
 pragma solidity ^0.8.21;
 
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";

@@ -256,22 +256,15 @@ run. The address is fixed by the init code, so rebuilding the contract changes t
 
 ## Licensing
 
-This repository is MIT — see [LICENSE](LICENSE). Two files carry their own terms and say so in their
-headers:
+**MIT** — see [LICENSE](LICENSE), which also lists the handful of files that came from
+elsewhere and are kept under their own terms: ABDK's quad-float library (BSD-4-Clause), Offchain
+Labs' `StylusDeployer` (MIT), and three Uniswap v4 test helpers. Each says so in its own header,
+and everything under `uniswap/lib/` is a submodule carrying its own licence.
 
-| file | licence | why it is here |
-| --- | --- | --- |
-| [`uniswap/src/vendor/ABDKMathQuad.sol`](uniswap/src/vendor/ABDKMathQuad.sol) | BSD-4-Clause, © ABDK Consulting | IEEE 754 binary128 in software. Vendored to be measured, not used — it is what makes Uniswap's TWAMM cost what it does |
-| [`uniswap/script/bench/vendor/StylusDeployer.sol`](uniswap/script/bench/vendor/StylusDeployer.sol) | MIT, Offchain Labs | `cargo stylus` routes CREATE2 deployments through it, and it exists only on real Arbitrum chains |
-
-Both are permissive and impose nothing on the rest of the tree.
-
-Nothing under a copyleft or source-available licence is reproduced here, so the whole tree is MIT.
-Uniswap's own `TwammMath` is marked `UNLICENSED` inside a GPL-2.0 repository and is not used: both
-[`TwammHook.sol`](uniswap/src/TwammHook.sol) and [`native-twamm`](stylus/native-twamm) implement the
-published closed form (Paradigm, 2021) from the formula. A formula is not copyrightable and no code
-was copied, so neither file inherits that repository's licence. EulerSwap — BUSL-1.1 — is referenced
-in [BENCHMARK.md](BENCHMARK.md) for information, with none of its code copied.
+Nothing copyleft or source-available is reproduced in what ships. Uniswap's `TwammMath` is marked
+`UNLICENSED` and is not used: both [`TwammHook.sol`](uniswap/src/TwammHook.sol) and
+[`native-twamm`](stylus/native-twamm) implement the published closed form (Paradigm, 2021) from the
+formula, and a formula is not copyrightable.
 
 ## Where to look
 

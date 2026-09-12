@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! The attribute that gives a Stylus hook `BaseHook.sol`'s guarantee.
 //!
 //! Solidity inherits `onlyPoolManager`; Rust has no abstract types. A trait cannot hold the guard

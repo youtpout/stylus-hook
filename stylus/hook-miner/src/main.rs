@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Mines the CREATE2 salt that puts a Stylus contract on a Uniswap v4 hook address, and prints the
 //! `cargo stylus deploy --deployer-salt ...` command to run. See `stylus/base-hook/README.md`.
 

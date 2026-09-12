@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Calling back into the v4 singleton. A hook returning a non-zero delta has to balance its own
 //! books before the lock closes.
 //!

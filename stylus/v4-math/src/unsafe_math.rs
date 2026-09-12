@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! `UnsafeMath`, as v4-core spells it. The name is Uniswap's: these skip the division-by-zero
 //! check, so a zero denominator is the caller's problem.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! The pm-AMM's arithmetic in Rust, priced against the Solidity it was ported from. Its invariant
 //! is transcendental, so every swap runs a Newton solve and every iteration needs the Gaussian CDF
 //! and PDF. [`gaussian`] is a bit-exact port of `primitivefinance/solstat`, and `PmAmmMath.sol`

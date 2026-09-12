@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! A Uniswap v4 hook written entirely in Rust — no Solidity anywhere. The same hook as
 //! `uniswap/src/Counter.sol`, but the contract the `PoolManager` calls *is* this one.
 //!

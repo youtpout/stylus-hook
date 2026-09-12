@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! The arithmetic of a TWAMM interval, in 1e18 fixed point, because Stylus forbids floating point
 //! outright and `TwammHook.sol` carries the identical form — so the benchmark compares languages
 //! rather than algorithms. Both agree with the quad-float original to two parts in 10^18.

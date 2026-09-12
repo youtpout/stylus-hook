@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! `SqrtPriceMath`, as v4-core spells it: where a `sqrt(price)` lands after an amount moves, and
 //! the token deltas between two prices.
 //!

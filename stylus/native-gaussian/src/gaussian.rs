@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! The Gaussian CDF and PDF in 1e18 fixed point: a bit-exact port of `primitivefinance/solstat`,
 //! Solmate's `expWad` included, pinned by [`tests`] to values from the compiled Solidity.
 //!

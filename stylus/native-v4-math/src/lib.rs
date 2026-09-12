@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! v4-core's swap math as a Stylus contract, priced against the Solidity it was ported from.
 //!
 //! The arithmetic is [`stylus_v4_math`]; this crate is the ABI around it, matching

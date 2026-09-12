@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Hook permission flags, mirroring `Hooks.sol` in v4-core.
 //!
 //! Uniswap v4 decides which callbacks to invoke by reading the low 14 bits of the hook's address,

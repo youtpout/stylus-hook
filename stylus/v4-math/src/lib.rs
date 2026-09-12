@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Uniswap v4-core's swap math in Rust: [`full_math`], [`sqrt_price_math`], [`swap_math`] and
 //! [`tick_math`], ported function for function and tested against v4-core's own vectors.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! The Uniswap v4 value types a hook receives, mapped onto their Solidity ABI encodings.
 
 use alloy_primitives::{Address, FixedBytes, I256};

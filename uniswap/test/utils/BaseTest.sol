@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
+// A Uniswap v4 test helper, not written here. Kept under its own terms.
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";

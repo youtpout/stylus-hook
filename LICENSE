@@ -1,21 +1,60 @@
-MIT License
+Stylus Hook is MIT, and so is every file in it that was written for it.
 
-Copyright (c) 2026 youtpout
+    MIT License
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+    Copyright (c) 2026 youtpout
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+
+Files that came from elsewhere
+------------------------------
+
+A few files were written by other people and are kept under the terms they came
+with. They are the exception, and each one says so in its own header. Read the
+header, not this file, if the two ever disagree.
+
+    uniswap/src/vendor/ABDKMathQuad.sol
+        BSD-4-Clause, (c) 2019 ABDK Consulting. IEEE 754 binary128 in software.
+        Vendored to be measured, not used: it is what makes Uniswap's TWAMM cost
+        what it does.
+
+    uniswap/script/bench/vendor/StylusDeployer.sol
+        MIT, Offchain Labs. `cargo stylus` routes CREATE2 deployments through it,
+        and it exists only on real Arbitrum chains, so the benchmarks need a copy.
+
+    uniswap/test/utils/libraries/EasyPosm.sol
+        GPL-2.0-or-later. A Uniswap v4 test helper.
+
+    uniswap/test/utils/Deployers.sol
+    uniswap/test/utils/BaseTest.sol
+        No licence stated upstream. Uniswap v4 test helpers.
+
+Everything under uniswap/lib/ is a git submodule. Those are separate repositories
+and carry their own licences; nothing here relicenses them.
+
+
+What is not in here
+-------------------
+
+No copyleft or source-available code is reproduced in the parts of this repository
+that ship. Uniswap's own TwammMath is marked UNLICENSED and is not used: both
+uniswap/src/TwammHook.sol and stylus/native-twamm implement the published closed
+form (Paradigm, 2021) from the formula. EulerSwap is BUSL-1.1 and is referenced in
+BENCHMARK.md for information, with none of its code copied.

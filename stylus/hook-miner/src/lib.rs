@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Predicting and mining the address a `StylusDeployer` CREATE2 deployment lands on.
 //!
 //! v4 reads a hook's permissions out of the low 14 bits of its address, so a hook must be deployed

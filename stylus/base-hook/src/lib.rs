@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Uniswap v4 hooks in pure Rust, for Arbitrum Stylus.
 //!
 //! The Stylus counterpart of `BaseHook.sol`: the v4 value types, the permission flags v4 reads out
