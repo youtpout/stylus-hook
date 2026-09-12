@@ -16,12 +16,12 @@
     {
       "id": "03-blockers",
       "hold": 0.8,
-      "text": "Two things forced that, and neither was the idea. Version four was unreleased and needed transient storage Arbitrum did not have. And Stylus could not deploy to a mined address."
+      "text": "Two things forced that, and neither was the idea. Uniswap v4 was still being built. And Stylus was not on mainnet yet."
     },
     {
       "id": "04-changed",
       "hold": 0.7,
-      "text": "Both are fixed. Version four shipped, Arbitrum has transient storage, and cargo stylus now deploys through a CREATE2 deployer."
+      "text": "Both have shipped since. Version four is live. Stylus is on mainnet. And cargo stylus now deploys through a CREATE2 deployer."
     },
     {
       "id": "05-problem",

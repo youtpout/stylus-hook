@@ -110,31 +110,32 @@ body.video .slide{border:none;border-radius:0}
 <section class="slide" data-i="2">
 <div class="kicker">Why it stopped there</div>
 
-  <h2>Two blockers, neither of them ours</h2>
+  <h2>Both sides were pre-production</h2>
   <div class="cols">
-    <div class="card no"><h3>v4 was not finished</h3><p>v4-core needed transient storage, which
-    Arbitrum did not have. The 2024 repo had to vendor a <code>no-cancun</code> fork of the
-    protocol to run at all.</p></div>
-    <div class="card no"><h3>Stylus could not reach the address</h3><p>A hook must sit at an address
-    whose low 14 bits encode its permissions. <code>cargo stylus</code> had no CREATE2, so every
-    hook shipped as a Solidity shell in front of a Rust body.</p></div>
+    <div class="card no"><h3>Uniswap v4 was still being built</h3><p>Unreleased and moving. The
+    version of the day needed transient storage Arbitrum did not have, so the repo had to vendor a
+    <code>no-cancun</code> fork of the protocol to run at all.</p></div>
+    <div class="card no"><h3>Stylus was not on mainnet</h3><p>Testnet only. And it could not deploy
+    a contract to a mined CREATE2 address, which is the one thing a hook needs, so the hook had to
+    be Solidity.</p></div>
   </div>
-  <p class="body">Both protocols were young. The honest thing was to stop.</p>
+  <p class="body">You cannot finish a bridge between two things that are both still moving. The
+  honest call was to stop and wait.</p>
 <div class="foot"><span>stylus-hook</span><span>3 / 18</span></div>
 </section>
 <section class="slide" data-i="3">
 <div class="kicker">What changed</div>
 
-  <h2>Both protocols grew up</h2>
+  <h2>Both shipped</h2>
   <ul>
-    <li class="ok">Uniswap <b>v4.0.0</b> shipped and is live on Arbitrum</li>
-    <li class="ok">Arbitrum has had <b>transient storage since ArbOS 32</b>, so this runs against
-      upstream v4-core with no fork</li>
-    <li class="ok"><code>cargo stylus deploy</code> routes through <b>StylusDeployer</b>, which
-      does CREATE2 on a non-zero salt</li>
-    <li class="ok"><b>ArbOS 61</b> lets a contract exceed 24 KB across code fragments</li>
+    <li class="ok">Uniswap <b>v4.0.0</b> is released and live on Arbitrum</li>
+    <li class="ok"><b>Stylus is on mainnet</b>, at version 3 on Arbitrum One</li>
+    <li class="ok">Transient storage landed in <b>ArbOS 32</b>, so this runs against upstream
+      v4-core with no fork</li>
+    <li class="ok"><code>cargo stylus deploy</code> goes through <b>StylusDeployer</b>, which does
+      CREATE2 on a non-zero salt</li>
   </ul>
-  <p class="body">Every reason to stop in 2024 had been removed. It was time to finish it.</p>
+  <p class="body">Every reason to stop in 2024 had been removed. So we finished it.</p>
 <div class="foot"><span>stylus-hook</span><span>4 / 18</span></div>
 </section>
 <section class="slide" data-i="4">
