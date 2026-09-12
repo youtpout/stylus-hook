@@ -1,8 +1,0 @@
-[contract]
-
-# The hook's own work is trivial, so what it costs per call is dominated by loading the program:
-# ArbWasm prices `programInitGas` off the compiled size. Binaryen's -Oz is replayed identically
-# during `cargo stylus verify`, so the deployed bytes stay reproducible.
-[wasm-opt]
-version = "131"
-flags = ["-Oz", "--llvm-memory-copy-fill-lowering", "--enable-bulk-memory-opt", "--enable-sign-ext", "--enable-mutable-globals", "--enable-nontrapping-float-to-int"]

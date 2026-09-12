@@ -144,40 +144,6 @@ comparisons or a de Bruijn table, while `leading_zeros` in Rust lowers to WASM's
 > copied from it. EulerSwap is licensed BUSL-1.1, which restricts production use; it is referenced
 > in this document for information only.
 
-### Building a hook to clear the bar, and failing
-
-Every shipping hook profiled here is dominated by storage, so the obvious move was to build one that
-is not. `StableSwapHook.sol` and `stylus/native-stableswap` price a swap on a StableSwap curve:
-solving the invariant `D` takes about four Newton iterations and the output reserve `y` about eight
-more, so twelve iterations of 256-bit arithmetic per swap, with no storage beyond two reserves.
-`./bench-stableswap.bash` runs both, and the benchmark checks they quote the same output before
-measuring.
-
-| | gas per swap | over baseline |
-| --- | ---: | ---: |
-| no hook | 115,061 | — |
-| StableSwap in Solidity | 149,112 | +34,051 |
-| **StableSwap in Rust** | **174,656** | **+59,595** |
-
-**Rust loses by 25,544 gas.** So the next question is where that goes, and the answer is not where
-it first appears to be. Calling the pure functions directly, with no hook and no storage in the way:
-
-| | Solidity | Rust | ratio |
-| --- | ---: | ---: | ---: |
-| 100 × `a * b / c`, no overflow | 27,834 | 9,390 | 2.96× |
-| 400 × | 111,365 | 37,534 | 2.97× |
-| 1,000 × | 279,387 | 92,622 | 3.02× |
-| one StableSwap `getY` | 8,629 | below the estimate's resolution | — |
-
-Plain 256-bit multiply-and-divide is **three times cheaper in Rust**, flat across three orders of
-magnitude. The arithmetic is not the problem.
-
-The problem is that there is so little of it. **One `getY` — twelve Newton iterations — is 8,629
-gas.** Three times cheaper saves under 6,000, against a fixed cost of 19,724 to load the WASM
-program. That is nearly the whole 25,544, and it says the curve is
-nowhere near the ~62,000 gas of arithmetic the crossover needs. Twelve Newton iterations sounds like
-a lot and is not: the bar is closer to 220 plain multiply-divides, or seven `getY` calls, per swap.
-
 ### A structural tax on Stylus hooks, and how to avoid it
 
 Solidity hooks hold the pool manager in an `immutable`, which costs nothing to read. The Stylus SDK
@@ -192,9 +158,9 @@ build time:
 POOL_MANAGER=0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32 cargo stylus deploy ...
 ```
 
-Measured on StableSwap, the hook goes from 176,519 gas per swap to **174,417** — 2,102 saved, which
-is the cold `SLOAD` to the byte. On the counter, which gets two callbacks per swap and so paid a cold
-`SLOAD` and a warm one, 202,163 to **199,595** — 2,568.
+Measured on the counter, which gets two callbacks per swap and so paid a cold `SLOAD` and a warm
+one, the hook goes from 202,163 gas per swap to **199,595** — 2,568 saved, which is those two reads
+to the byte.
 
 Two things a storage slot cannot match. A `static` is not an alternative: it compiles, and a Stylus
 program is instantiated per call, so anything written to one is silently gone by the next call —
@@ -254,8 +220,8 @@ which is the middle row.
 Even so, the ratio was never the binding constraint. **The amount of arithmetic is.** Against the
 fixed cost of entering a Stylus contract — 7,916 gas for a cached hook, measured against the
 production TWAMM below — a 3× saving needs about 12,000 gas of Solidity arithmetic to break even.
-AntiSandwichHook has 21,000, a StableSwap curve 8,600, the counter hook essentially
-none, and the pm-AMM's Gaussian solve has 62,000.
+A twelve-iteration Newton curve solve has about 8,600, the counter hook essentially none, one TWAMM
+interval 13,900, and the pm-AMM's Gaussian solve 62,000.
 
 That is the finding. Not that Stylus computes slowly — it does not — but that **hooks do not compute
 enough** for it to matter.
@@ -289,72 +255,6 @@ program on every call — 5,432 once the contract is cached. That figure is high
 `native-counter` because this hook carries both workloads and `U512` arithmetic; the program is
 bigger, and `ArbWasm` charges by compiled size.
 
-## Pricing a real hook: AntiSandwichHook
-
-`./bench-antisandwich.bash` measures OpenZeppelin's
-[`AntiSandwichHook`](https://github.com/OpenZeppelin/uniswap-hooks/blob/master/src/general/AntiSandwichHook.sol),
-the most compute-looking hook in the library the official v4-template depends on. It checkpoints the
-pool at the top of each block and, for `zeroForOne == false` swaps, replays `Pool.swap` against that
-checkpoint so a trade cannot get a better price than the block started with. `zeroForOne == true`
-swaps skip the replay, so the gap between the two directions isolates the simulation.
-
-| | gas per swap | over baseline |
-| --- | ---: | ---: |
-| no hook, 0→1 | 120,315 | — |
-| no hook, 1→0 | 114,520 | — |
-| AntiSandwichHook, 0→1 (no replay) | 168,425 | +48,110 |
-| AntiSandwichHook, 1→0 (with replay) | 184,090 | +69,570 |
-| **the `Pool.swap` replay alone** | | **21,460** |
-
-So the arithmetic is **31 %** of what this hook costs. The other 48,110 is checkpointing pool state
-into the hook's own storage — `extsload` calls to the pool manager, then `SSTORE`s — and settling
-an ERC-6909 fee. None of that gets cheaper in Stylus.
-
-Projecting the port from the rates measured above: the replay at 2.8× would drop from 21,460 to
-about 7,700, saving ~13,800, against a Stylus entry fee of ~22,000 uncached or ~5,400 cached.
-**Porting this hook loses money uncached and saves perhaps 4 % cached.** Not the demonstration it
-looks like from the outside.
-
-The bar set by the `mulDiv` sweep is 89 operations, about 62,000 gas of Solidity arithmetic per
-call. AntiSandwichHook has ~21,000 — a third of it — and it is the *best* candidate in that
-library.
-
-Two caveats. The measured pool holds a single full-range position, so the replay crosses no ticks;
-a pool with concentrated liquidity would walk further and the replay would grow. And Uniswap's own
-snapshots put `swapSimulator_before_singleTick` at 28,803 against `multiTick` at 28,899, which
-suggests tick crossing adds much less than one might hope.
-
-### `block.number` does not mean what this hook thinks on Arbitrum
-
-The hook would not run at all until it was fixed. It keys its checkpoint on `block.number`, and on
-Arbitrum the `NUMBER` opcode does not return the block number — it returns the **L1** block number.
-Measured on Arbitrum One itself, not on a fork (a fork replays Arbitrum's state through a vanilla
-EVM and would not reproduce this):
-
-| | |
-| --- | ---: |
-| Solidity `block.number`, via `Multicall3.getBlockNumber()` | 25,912,325 |
-| Ethereum L1 height, read at the same moment | 25,912,326 |
-| `NodeInterface.blockL1Num(502057926)` | 25,912,325 |
-| Arbitrum L2 block, `eth_blockNumber` | 502,057,928 |
-
-Two consequences, one per environment.
-
-On a dev node there is no L1, so `block.number` is `0` while the L2 chain runs. The checkpoint also
-starts at 0, `_lastCheckpoint.blockNumber != currentBlock` is never true, the checkpoint is never
-taken, and `Pool.swap` runs against an empty state — the first `zeroForOne == false` swap reverts
-with `InvalidPrice()`. That is what `bench-antisandwich.bash` hit.
-
-On Arbitrum One the number does advance, so the hook runs, but it advances once per **L1** block.
-Arbitrum produces L2 blocks roughly every 250 ms, so the "beginning-of-block" reference price is
-held for about forty-eight L2 blocks rather than one. The protection is not absent — it is applied
-over a twelve-second window, during which honest price movement is also refused. That is a different
-economic instrument from the one the hook describes.
-
-`_getBlockNumber` is `virtual` precisely so this can be fixed, and
-[`ArbAntiSandwichMock`](uniswap/script/bench/ArbAntiSandwichMock.sol) overrides it onto
-`ArbSys.arbBlockNumber()`. A one-line change, but nothing in the hook tells you to make it.
-
 ## Which shipping hooks are worth porting
 
 `./profile-hooks.bash` answers that generically. It swaps through one pool per hook and traces the
@@ -367,7 +267,6 @@ are logged too, so calls are counted rather than summed — the numbers below ar
 | | compute | storage | keccak | calls | total gas |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | no hook | 26,656 | 48,100 | 684 | 11 | 114,608 |
-| AntiSandwich | 50,272 | 86,500 | 1,350 | 19 | 181,405 |
 | LimitOrder | 31,433 | 50,300 | 828 | 13 | 124,441 |
 | PanopticOracle | 32,150 | 72,700 | 912 | 13 | 147,642 |
 
@@ -375,14 +274,10 @@ What each one adds over the hookless swap:
 
 | hook | compute | storage | keccak | compute share |
 | --- | ---: | ---: | ---: | ---: |
-| **AntiSandwich** | **23,616** | 38,400 | 666 | 37 % |
 | LimitOrder | 4,777 | 2,200 | 144 | 67 % |
 | PanopticOracle | 5,494 | 24,600 | 228 | 18 % |
 
-The profiler and the direction trick agree on AntiSandwich — 23,616 against 21,460 — which is the
-main reason to trust either.
-
-None of them clears the 62,000-gas bar. The best is at a third of it. And note the first row: a
+Neither clears the 62,000-gas bar, and neither comes close. And note the first row: a
 plain v4 swap is itself 26,656 of compute against 48,100 of storage, so a hook would have to compute
 more than twice what the AMM does to be worth moving.
 
@@ -391,8 +286,8 @@ framework cost and not a fill; its 67 % compute share is of a very small number.
 hooks Uniswap publishes — `NativeBookHook` at 155k–221k, `ALFMultiplexer` at 235k, `DualPoolHook` at
 506k in their own snapshots — each need vaults, ladders and makers configured before their expensive
 path runs at all, so they are not in this table. `ALFMultiplexer` is the one worth setting up: it
-runs a `SwapSimulator` pass per routing candidate, and a simulation is roughly an AntiSandwich
-replay, so three or more candidates would clear the bar.
+runs a `SwapSimulator` pass per routing candidate, and one such pass is a `Pool.swap` replay at
+4,056 gas per tick crossed, so three candidates over a handful of ticks clear the bar comfortably.
 
 ### Candidates, ranked by protocol rather than by library
 
@@ -470,7 +365,7 @@ signal — a hook that fits comfortably is not doing much.
 BunniHook is the strongest candidate found anywhere, and its own repository backs that up. Bunni
 publishes gas snapshots: a swap through it costs **437,000–505,000 gas**, against roughly 115,000
 for a swap with no hook. So the hook adds 320,000–390,000 gas per swap — five times what
-AntiSandwichHook adds, and far into the range where arithmetic could plausibly dominate.
+a plain swap adds, and far into the range where arithmetic could plausibly dominate.
 
 Its swap path runs `rpow` repeatedly, which is why that operation is benchmarked above. But the
 answer that comes back is sobering: `rpow` at Q96 precision is only **1.65× cheaper** in Rust,
@@ -606,7 +501,6 @@ Measured by running each project's own test suite under `--gas-report`, rather t
 | [`robertleifke/forex-swap`][fx] | **4,266,005 avg, 11,283,644 max** | its own `ForexSwap.t.sol` |
 | [`Gnome101/Pm-AMM-Hook`][pm] | ~401,100 of arithmetic | 100 bisection steps × measured `cdf`+`pdf` |
 | [`akshatmittal/v4-twamm-hook`][tw] | 339,609 (one span) | `bench-twamm.bash` |
-| `AntiSandwichHook` (OpenZeppelin) | 168,429 | `bench-antisandwich.bash` |
 | baseline swap, no hook | 115,065 | every benchmark here |
 
 [fx]: https://github.com/robertleifke/forex-swap
@@ -646,13 +540,10 @@ Stylus port targets — and it collects eleven hooks. Surveyed for arithmetic:
 | `aggregator-hooks/*` (10 of them, two of which wrap Curve StableSwap) | nothing — the curve is an external call, `pool.get_dy(...)`. The same I/O-bound shape as EulerSwap. |
 | `alf/*` | the heaviest by far. `SwapSimulator.simulateSwapToPrice` replays v4's own tick-crossing swap loop on chain, and `NativeBookHook` and `ALFMultiplexer` walk bins and ladders per swap. |
 
-Only the last is a candidate, and it is the pattern already priced in this document: replaying
-`Pool.swap` is what `AntiSandwichHook` does, measured at **21,460 gas** of `mulDiv` and `sqrt` — above
-the bar, and the part of that hook worth porting.
-
-Worth stating plainly because it is easy to assume otherwise: **the StableSwap hook benchmarked in
-this document is not one of these.** `StableSwapHook.sol` was written here, from Curve's published
-formula, specifically to be arithmetic-heavy enough to clear the bar — and it still lost.
+Only the last is a candidate, and it is the pattern priced directly in *The workload that was
+already in the codebase* below: replaying `Pool.swap` costs **4,056 gas per tick crossed** in
+Solidity against 570 in Rust. `ALFMultiplexer` runs one such pass per routing candidate, so three
+candidates put it well over the bar.
 
 [pub]: https://github.com/Uniswap/v4-hooks-public
 
@@ -850,6 +741,45 @@ claims, no splitting a span at an initialised tick. Some unknown part of that 31
 have not done. What the measurement does establish is that a pure-Rust hook holds its own against a
 production Solidity one on the workload where Stylus should be strongest.
 
+### Concurrency: the axis that decides it
+
+The measurement above is one order stream over four expiries, and that is the quiet case. A pool
+anyone uses is not in it. TWAMM orders are placed independently by people who do not coordinate, so
+a live pool carries several streams ending at different times — and every one of them puts another
+occupied interval on the grid.
+
+That matters because of how the two costs are shaped. **The entry fee is paid once per swap
+regardless, and the per-interval saving is paid once per stream.** Catching a pool up is a loop over
+occupied intervals, so with `M` streams ending between two touches of the pool, the Rust hook is
+ahead by
+
+```
+11,910 × M − 7,916
+```
+
+from the two figures measured above: 11,910 gas saved per expiry crossed, against 7,916 worse on an
+idle pool. Break-even is at **0.66 of one expiry**, and everything past that is linear:
+
+| streams ending between two touches | projected saving |
+| ---: | ---: |
+| 1 | +3,994 |
+| 4 | +39,724 |
+| 8 | +87,364 |
+| 16 | +182,644 |
+
+**So the single-stream benchmark is the worst case Stylus will ever be measured in, and it already
+wins.** A busy pool is not a harder test for the port, it is an easier one — the fixed cost is
+amortised across every stream while the saving is not.
+
+`./bench-twamm-concurrent.bash` measures that directly rather than projecting it. For each `M` it
+places `M` streams expiring on consecutive grid points, lets them all come due with nobody touching
+the pool, and times the single swap that has to catch up across all `M` at once, on both hooks. The
+projection above is what the marginal costs already measured imply; the script is what checks it.
+
+One caveat the script cannot remove: it subtracts a single idle figure taken before the sweep, and
+each batch leaves earnings-factor state behind, so the per-stream column drifts slightly across
+rows. The totals are what to read.
+
 ### What the caching is, and why the warm number is the honest one
 
 A Stylus contract is compressed WASM, and the node must fetch, decompress and instantiate it before
@@ -937,7 +867,8 @@ inputs, same expected values, 60 tests.
 
 The workload is `walkSwap`: `Pool.swap`'s loop without the storage. Find the next initialised tick,
 price the step up to it, cross, repeat. Replaying that loop is what OpenZeppelin's
-`AntiSandwichHook` and Uniswap's own `alf/SwapSimulator` do on every swap.
+OpenZeppelin's `AntiSandwichHook` and Uniswap's own `alf/SwapSimulator` do on every swap. Neither is
+benchmarked here; this measures the replay itself, which is the part of them that would move.
 
 | ticks crossed | Solidity | Rust | ratio | saving |
 | ---: | ---: | ---: | ---: | ---: |
@@ -1056,6 +987,38 @@ assembly, because the readable versions spent most of their gas on bounds-checke
 rows are in the script's output so the choice is visible rather than asserted. A maximally tuned
 implementation might reach half the figure above again. It would change 643× to roughly 350×, and
 change nothing about the conclusion.
+
+## Other hooks that should win, and the measured rate that prices each
+
+Everything above is either measured end to end or ruled out. What follows is the shortlist that
+survives, with the rate from this document that governs each — an estimate in every case, but an
+estimate anchored to a number measured here rather than to a multiplier from a docs page.
+
+| hook design | what it runs per swap | the rate that prices it | verdict |
+| --- | --- | --- | --- |
+| **a router that simulates before it routes** — `alf/ALFMultiplexer` | one `SwapSimulator` pass per routing candidate | `Pool.swap` replay, **4,056 → 570 gas per tick, 7.1×** | 3 candidates × 8 ticks is ~97,000 gas of Solidity arithmetic, eight times the bar |
+| **a Pendle-style fixed-rate AMM** — `TokiHook` | prices in implied-yield space, so `exp` and `ln` in fixed point | the TWAMM interval is `2 sqrt + 1 exp` and runs **13,911 → 2,356, 6.0×** | one curve evaluation is about the break-even by itself |
+| **an options or perpetual hook pricing Black–Scholes** | a Gaussian CDF, and `exp`/`ln` around it | **CDF 5,137 → 2,082, and a solve 62,425 → 27,659** | the pm-AMM result, reached by a different route |
+| **a volatility oracle that computes rather than stores** | log returns and a square root per observation | `sqrt` **2,009 → 362, 5.6×** | depends entirely on whether it writes an observation, which does not move |
+| **Ed25519, P-256 / WebAuthn, Poseidon2 over Goldilocks** | field multiplication by the thousand | Goldilocks `mulmod` **89 → 19, 4.5×** | clears the bar several times over; see the two filters above |
+
+Three of those five are the same finding wearing different clothes: **a hook wins when it evaluates a
+transcendental or replays the AMM, and loses when it looks something up.** The two remaining
+unmeasured ones are `ALFMultiplexer` and `TokiHook`, and both are worth setting up.
+
+And the shapes that keep looking like candidates and are not:
+
+- **anything gated on a precompile.** `ecrecover`, SHA-256, MODEXP, BN254 and BLS12-381 are all live
+  on Arbitrum One, and Stylus calls them at the same price Solidity does. A Groth16 verifier is the
+  trap here: the pairing is precompiled and only the field layer moves, at 1.42×.
+- **anything I/O bound.** EulerSwap inverts a curve with a 255-bit square root and still spends 2 %
+  of its gas on arithmetic and the rest querying lending vaults. Aggregator hooks are worse: the
+  curve is somebody else's `get_dy`.
+- **anything storage bound.** An order book walks bins, and every bin is an `SLOAD`. `LimitOrder`
+  adds 4,777 gas of arithmetic against 2,200 of storage and still has nothing to win, because the
+  arithmetic is small in absolute terms.
+- **anything expensive because of the algorithm it picked.** Fix that first, in Solidity. The
+  `forex-swap` CDF above is a 405× penalty that no language change should be credited with.
 
 ## What this means for the project
 

@@ -79,7 +79,7 @@ grep -E "^  [a-zA-Z].*0x" "$WORK/deploy.log" | sed 's/^  //'
 # The Rust hook holds the pool manager as a build-time constant rather than in storage, so it costs
 # nothing to read on every callback. Its constructor still takes the address, purely to check it
 # against what was compiled in — a wrong $POOL_MANAGER then fails the deployment instead of
-# producing a hook that silently rejects every call. See stylus/native-stableswap/build.rs.
+# producing a hook that silently rejects every call. See stylus/native-twamm/build.rs.
 export POOL_MANAGER="$POOL_MANAGER"
 
 log "mining and deploying the Rust twin"

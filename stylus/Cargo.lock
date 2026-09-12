@@ -3717,16 +3717,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stylus-native-stableswap"
-version = "0.2.0"
-dependencies = [
- "alloy-primitives",
- "alloy-sol-types",
- "stylus-sdk",
- "stylus-uniswap-v4",
-]
-
-[[package]]
 name = "stylus-native-twamm"
 version = "0.2.0"
 dependencies = [

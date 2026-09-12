@@ -21,7 +21,6 @@ import {V4RouterDeployer} from "hookmate/artifacts/V4Router.sol";
 import {LimitOrderHookMock} from "@openzeppelin/uniswap-hooks/src/mocks/general/LimitOrderHookMock.sol";
 import {BaseOracleHookMock} from "@openzeppelin/uniswap-hooks/src/mocks/oracles/panoptic/BaseOracleHookMock.sol";
 
-import {ArbAntiSandwichMock} from "./ArbAntiSandwichMock.sol";
 import {NativeHookFixture} from "./NativeHookFixture.sol";
 
 /// @notice Deploys the shipping hooks worth pricing, each at a mined address, on one v4 stack.
@@ -49,7 +48,6 @@ contract DeployHookSurveyScript is Script {
         );
         router = IUniswapV4Router04(payable(V4RouterDeployer.deploy(address(poolManager), address(permit2))));
 
-        address antiSandwich = _mineAndDeployAntiSandwich(create2Deployer);
         address limitOrder = _mineAndDeployLimitOrder(create2Deployer);
         address oracle = _mineAndDeployOracle(create2Deployer);
 
@@ -71,21 +69,8 @@ contract DeployHookSurveyScript is Script {
         console.log("currency0        :", address(token0));
         console.log("currency1        :", address(token1));
         console.log("fixture          :", address(fixture));
-        console.log("AntiSandwich     :", antiSandwich);
         console.log("LimitOrder       :", limitOrder);
         console.log("PanopticOracle   :", oracle);
-    }
-
-    function _mineAndDeployAntiSandwich(address create2Deployer) private returns (address) {
-        uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
-        );
-        (address addr, bytes32 salt) = HookMiner.find(
-            create2Deployer, flags, type(ArbAntiSandwichMock).creationCode, abi.encode(poolManager)
-        );
-        ArbAntiSandwichMock hook = new ArbAntiSandwichMock{salt: salt}(poolManager);
-        require(address(hook) == addr, "anti-sandwich mismatch");
-        return addr;
     }
 
     function _mineAndDeployLimitOrder(address create2Deployer) private returns (address) {

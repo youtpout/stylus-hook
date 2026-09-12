@@ -230,127 +230,47 @@
             ones are paid for, so Rust's advantage narrows as the words fill up. It does not run
             out.</p>
 
-        <h2>3. A StableSwap curve <span class="pill">loses</span></h2>
-        <p><code>./bench-stableswap.bash</code>. This hook was written specifically to be
-            arithmetic-heavy enough to clear the bar: twelve Newton iterations of 256-bit arithmetic
-            per swap, solving the invariant <code>D</code> and then the output reserve
-            <code>y</code>, with no storage beyond two reserves.</p>
+        <h2>3. What shipping hooks actually spend their gas on <span class="pill">loses</span></h2>
+        <p><code>./profile-hooks.bash</code> answers the question generically rather than one hook at
+            a time. It swaps through one pool per hook and traces the transaction opcode by opcode,
+            summing gas by class, then subtracts the same swap through a pool with no hook. Only the
+            compute column moves in Stylus.</p>
         <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
-                        <th></th>
-                        <th class="num">Gas per swap</th>
-                        <th class="num">Over baseline</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>No hook</td>
-                        <td class="num">115,061</td>
-                        <td class="num">—</td>
-                    </tr>
-                    <tr>
-                        <td>StableSwap in Solidity</td>
-                        <td class="num">149,112</td>
-                        <td class="num">+34,051</td>
-                    </tr>
-                    <tr>
-                        <td>StableSwap in Rust</td>
-                        <td class="num">174,656</td>
-                        <td class="num loss">+59,595</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <p>It still lost, by 25,544 gas, and not because the arithmetic is slow — plain 256-bit
-            multiply-and-divide is three times cheaper in Rust, flat across three orders of
-            magnitude. One <code>getY</code>, all twelve iterations, is 8,629 gas in Solidity. Three
-            times cheaper saves under 6,000 against 19,724 to load the program.</p>
-        <p><strong>Twelve Newton iterations sounds like a lot and is not.</strong> The bar is closer
-            to seven <code>getY</code> calls per swap, or 220 plain multiply-divides.</p>
-
-        <h2>4. OpenZeppelin's AntiSandwichHook <span class="pill">loses</span></h2>
-        <p><code>./bench-antisandwich.bash</code>. The most compute-looking hook in the library the
-            official v4-template depends on. It replays <code>Pool.swap</code> against a
-            start-of-block checkpoint, but only in one swap direction, so the gap between the
-            directions isolates the simulation.</p>
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th></th>
-                        <th class="num">Gas per swap</th>
-                        <th class="num">Over baseline</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>No hook, 0→1</td>
-                        <td class="num">120,315</td>
-                        <td class="num">—</td>
-                    </tr>
-                    <tr>
-                        <td>AntiSandwichHook, 0→1, no replay</td>
-                        <td class="num">168,425</td>
-                        <td class="num">+48,110</td>
-                    </tr>
-                    <tr>
-                        <td>AntiSandwichHook, 1→0, with replay</td>
-                        <td class="num">184,090</td>
-                        <td class="num">+69,570</td>
-                    </tr>
-                    <tr>
-                        <td><strong>the replay alone</strong></td>
-                        <td class="num"></td>
-                        <td class="num"><strong>21,460</strong></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <p>The arithmetic is 31 % of what this hook costs. The other 48,110 is checkpointing pool
-            state into the hook's own storage and settling an ERC-6909 fee, none of which gets
-            cheaper. Projected, the port <strong>loses money uncached and saves perhaps 4 %
-                cached</strong> — and this is the best candidate in that library.</p>
-        <p>An independent opcode-level profile of three deployed hooks agrees, and puts the problem
-            in one line:</p>
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Hook, over a hookless swap</th>
+                        <th>Added over a hookless swap</th>
                         <th class="num">Compute</th>
                         <th class="num">Storage</th>
+                        <th class="num">Keccak</th>
                         <th class="num">Compute share</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>AntiSandwich</td>
-                        <td class="num">23,616</td>
-                        <td class="num">38,400</td>
-                        <td class="num">37 %</td>
-                    </tr>
-                    <tr>
                         <td>LimitOrder</td>
                         <td class="num">4,777</td>
                         <td class="num">2,200</td>
+                        <td class="num">144</td>
                         <td class="num">67 %</td>
                     </tr>
                     <tr>
                         <td>PanopticOracle</td>
                         <td class="num">5,494</td>
                         <td class="num">24,600</td>
+                        <td class="num">228</td>
                         <td class="num">18 %</td>
                     </tr>
                 </tbody>
             </table>
         </div>
-        <p>A plain v4 swap is itself 26,656 of compute against 48,100 of storage. <strong>A hook
-                would have to compute more than twice what the AMM does to be worth
-                moving.</strong></p>
-
-        <h2>5. A TWAMM, against the one in production <span class="pill">wins</span></h2>
+        <p>Neither comes close to the bar, and the baseline row of that trace is the more useful
+            number: <strong>a plain v4 swap is itself 26,656 of compute against 48,100 of
+                storage</strong>. A hook has to compute more than twice what the AMM does before
+            moving it is worth the entry fee.</p>
+        <p class="lead">LimitOrder was profiled with no orders resting, so its 67 % compute share is
+            a large fraction of a very small number.</p>
+        <h2>4. A TWAMM, against the one in production <span class="pill">wins</span></h2>
         <p><code>./bench-twamm.bash</code>, measured against
             <code>akshatmittal/v4-twamm-hook</code> — the TWAMM by Uniswap Labs and Zaha Studio,
             audited by ABDK and Certora, live on Base and Unichain. Both hooks on the same node,
@@ -438,7 +358,55 @@
             theirs computes earnings factors for both order pools. The 6× applies to the arithmetic,
             not to the storage wrapped around it.</p>
 
-        <h2>6. The pm-AMM's Gaussian solve <span class="pill">wins</span></h2>
+        <h3>Concurrency is the axis that decides it</h3>
+        <p>The measurement above is one order stream over four expiries, and that is the quiet case.
+            A pool anyone uses is not in it. Long-term orders are placed independently by people who
+            do not coordinate, so a live pool carries several streams ending at different times, and
+            every one of them puts another occupied interval on the grid.</p>
+        <p>That matters because of how the two costs are shaped. <strong>The entry fee is paid once
+                per swap regardless, and the per-interval saving is paid once per stream.</strong>
+            Catching a pool up is a loop over occupied intervals, so with M streams ending between
+            two touches of the pool the Rust hook is ahead by 11,910 × M − 7,916, from the two
+            figures measured above. Break-even is at two thirds of a single expiry, and everything
+            past it is linear.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="num">Streams ending between two touches</th>
+                        <th class="num">Projected saving</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="num">1</td>
+                        <td class="num win">+3,994</td>
+                    </tr>
+                    <tr>
+                        <td class="num">4</td>
+                        <td class="num win">+39,724</td>
+                    </tr>
+                    <tr>
+                        <td class="num">8</td>
+                        <td class="num win">+87,364</td>
+                    </tr>
+                    <tr>
+                        <td class="num">16</td>
+                        <td class="num win">+182,644</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>So the single-stream benchmark is the worst case Stylus will ever be measured in,
+                and it already wins.</strong> A busy pool is not a harder test for the port, it is an
+            easier one: the fixed cost is amortised across every stream while the saving is not.</p>
+        <p class="lead">Those four rows are a projection from marginal costs measured on this page,
+            not a measurement.
+            <code>./bench-twamm-concurrent.bash</code> measures them directly — for each M it places
+            M streams on consecutive grid points, lets them all come due with nobody touching the
+            pool, and times the single swap that catches up across all of them.</p>
+
+        <h2>5. The pm-AMM's Gaussian solve <span class="pill">wins</span></h2>
         <p>The pm-AMM's invariant is transcendental, so every swap must run a Gaussian solve. This is
             the one workload here whose arithmetic genuinely cannot be optimised away.
             <code>native-gaussian</code> is a bit-exact port of
@@ -472,14 +440,16 @@
         </div>
         <p><strong>+26,850 gas per swap in Rust's favour, on every swap.</strong></p>
 
-        <h2>7. v4-core's own swap math <span class="pill">wins big</span></h2>
+        <h2>6. v4-core's own swap math <span class="pill">wins big</span></h2>
         <p><code>./bench-v4-math.bash</code>. <code>SwapMath</code>, <code>TickMath</code>,
             <code>SqrtPriceMath</code>, <code>FullMath</code> and <code>UnsafeMath</code>, ported
             function for function and tested against v4-core's own vectors. The control is not a
             reimplementation: <code>V4MathBench.sol</code> calls Uniswap's libraries directly.</p>
         <p>The workload is <code>Pool.swap</code>'s loop without the storage — find the next
-            initialised tick, price the step, cross, repeat — which is what AntiSandwichHook and
-            Uniswap's own <code>SwapSimulator</code> replay on every swap.</p>
+            initialised tick, price the step, cross, repeat — which is what OpenZeppelin's
+            AntiSandwichHook and Uniswap's own <code>SwapSimulator</code> replay on every swap.
+            Neither is benchmarked here; this measures the replay itself, which is the part of them
+            that would move.</p>
         <div class="table-wrap">
             <table>
                 <thead>
@@ -517,7 +487,7 @@
             shifts and a conditional multiply for a tick's price — and Solidity pays a 5-gas opcode
             for every one of them with no cheaper way to write it.</p>
 
-        <h2>8. Post-quantum signature primitives <span class="pill">Solidity cannot</span></h2>
+        <h2>7. Post-quantum signature primitives <span class="pill">Solidity cannot</span></h2>
         <p><code>./bench-crypto.bash</code>. Keccak-f[1600], SHAKE256 and ML-DSA's number-theoretic
             transform — the two primitives a post-quantum signature check spends its gas on. Both
             sides are pinned to NIST's SHAKE256 vectors and XKCP's permutation vector before
@@ -573,7 +543,68 @@
             costs about 115,000 gas with no hook. Solidity would spend ninety-nine swaps' worth to
             check one signature; Rust spends less than a third of one.</p>
 
-        <h2>What the eight add up to</h2>
+        <h2>Other hooks that should win</h2>
+        <p>Everything above is measured end to end. What follows is the shortlist that survives the
+            same reasoning but has not been built yet, each priced by a rate measured on this page
+            rather than by a multiplier from a documentation page.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hook design</th>
+                        <th>What it runs per swap</th>
+                        <th>The measured rate that prices it</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>A router that simulates before it routes, such as Uniswap's
+                            <code>ALFMultiplexer</code></td>
+                        <td>One swap simulation per routing candidate</td>
+                        <td>The replay, at 4,056 → 570 gas per tick. Three candidates over eight
+                            ticks is ~97,000 gas of Solidity arithmetic, eight times the bar.</td>
+                    </tr>
+                    <tr>
+                        <td>A Pendle-style fixed-rate AMM, such as <code>TokiHook</code></td>
+                        <td>Prices in implied-yield space, so a fixed-point <code>exp</code> and
+                            <code>ln</code></td>
+                        <td>The TWAMM interval is two square roots and an exponential, at 13,911 →
+                            2,356. One curve evaluation is about break-even by itself.</td>
+                    </tr>
+                    <tr>
+                        <td>An options or perpetual hook pricing Black–Scholes</td>
+                        <td>A Gaussian CDF, with <code>exp</code> and <code>ln</code> around it</td>
+                        <td>The pm-AMM result reached by another route: CDF 5,137 → 2,082, solve
+                            62,425 → 27,659.</td>
+                    </tr>
+                    <tr>
+                        <td>Ed25519, WebAuthn / P-256, or Poseidon2 over Goldilocks</td>
+                        <td>Field multiplication by the thousand</td>
+                        <td>Goldilocks modular multiply at 89 → 19. None of these has an EVM
+                            precompile, and a few hundred operations clears the bar.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>Three of those are one finding in different clothes. <strong>A hook wins when it evaluates
+                a transcendental or replays the AMM, and loses when it looks something up.</strong>
+        </p>
+        <h3>And the shapes that keep looking like candidates and are not</h3>
+        <ul class="checks">
+            <li><strong>Anything gated on a precompile.</strong> <code>ecrecover</code>, SHA-256,
+                MODEXP, BN254 and BLS12-381 are all live on Arbitrum One and Stylus calls them at the
+                same price. A Groth16 verifier is the trap: the pairing is precompiled, and only the
+                field layer moves, at 1.42×.</li>
+            <li><strong>Anything input-output bound.</strong> EulerSwap inverts its curve with a
+                255-bit square root and still spends 2 % of its gas on arithmetic, the rest querying
+                lending vaults.</li>
+            <li><strong>Anything storage bound.</strong> An order book walks bins, and every bin is a
+                storage read.</li>
+            <li><strong>Anything expensive because of the algorithm it picked.</strong> Fix that
+                first, in Solidity, and see whether anything is left.</li>
+        </ul>
+
+        <h2>What these add up to</h2>
         <div class="table-wrap">
             <table>
                 <thead>
@@ -590,14 +621,9 @@
                         <td>storage only, no compute at all</td>
                     </tr>
                     <tr>
-                        <td>StableSwap curve</td>
-                        <td class="loss">+25,544 gas per swap</td>
-                        <td>8,629 gas of arithmetic, needs ~62,000</td>
-                    </tr>
-                    <tr>
-                        <td>AntiSandwichHook</td>
-                        <td class="loss">~4 % cached, negative uncached</td>
-                        <td>arithmetic is 31 % of the hook</td>
+                        <td>LimitOrder, PanopticOracle</td>
+                        <td class="loss">nothing to win</td>
+                        <td>4,800 and 5,500 gas of arithmetic, needs ~62,000</td>
                     </tr>
                     <tr>
                         <td>TWAMM interval</td>

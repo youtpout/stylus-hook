@@ -49,7 +49,8 @@
                 640× less.</p>
             <p>So a port pays off only when a hook does roughly <strong>12,000 gas of Solidity
                     arithmetic per call</strong> — about 45 <code>mulDiv</code>s, or 11
-                <code>rpow</code>s, or eleven times what a StableSwap curve solve needs. Below that
+                <code>rpow</code>s, or eleven times what a twelve-iteration Newton curve solve
+                needs. Below that
                 line a Rust hook loses, and loses reliably.</p>
         </div>
 
@@ -263,11 +264,6 @@
                         <td><code>native-crypto</code></td>
                         <td>Keccak-f[1600], SHAKE256 and ML-DSA's number-theoretic transform.</td>
                         <td><code>CryptoBench.sol</code>, in unrolled assembly</td>
-                    </tr>
-                    <tr>
-                        <td><code>native-stableswap</code></td>
-                        <td>A StableSwap curve, solved by Newton iteration on every swap.</td>
-                        <td><code>StableSwapHook.sol</code></td>
                     </tr>
                     <tr>
                         <td><code>native-compute</code></td>

@@ -53,7 +53,6 @@ open_pool() {
 }
 log "opening one pool per hook"
 open_pool 0x0000000000000000000000000000000000000000
-open_pool "$(addr_of 'AntiSandwich')"
 open_pool "$(addr_of 'LimitOrder')"
 open_pool "$(addr_of 'PanopticOracle')"
 
@@ -87,13 +86,13 @@ swap_tx() {
 }
 
 log "warming every pool"
-for i in 0 1 2 3; do swap_tx "$i" true >/dev/null; swap_tx "$i" false >/dev/null; done
+for i in 0 1 2; do swap_tx "$i" true >/dev/null; swap_tx "$i" false >/dev/null; done
 
 log "profiling one swap through each"
-declare -A NAME=( [0]="no hook" [1]="AntiSandwich" [2]="LimitOrder" [3]="PanopticOracle" )
+declare -A NAME=( [0]="no hook" [1]="LimitOrder" [2]="PanopticOracle" )
 printf '%-16s %10s %10s %10s %8s %10s\n' hook compute storage keccak calls total
 declare -a C S K
-for i in 0 1 2 3; do
+for i in 0 1 2; do
   read -r c s k l n g <<<"$(profile "$(swap_tx "$i" false)")"
   C[$i]=$c; S[$i]=$s; K[$i]=$k
   printf '%-16s %10s %10s %10s %8s %10s\n' "${NAME[$i]}" "$c" "$s" "$k" "$n" "$g"
@@ -101,7 +100,7 @@ done
 
 log "what each hook adds, over the same swap with no hook"
 printf '%-16s %10s %10s %10s %10s\n' hook compute storage keccak "compute %"
-for i in 1 2 3; do
+for i in 1 2; do
   dc=$(( C[i] - C[0] )); ds=$(( S[i] - S[0] )); dk=$(( K[i] - K[0] ))
   tot=$(( dc + ds + dk ))
   pct=0; [ "$tot" -gt 0 ] && pct=$(( dc * 100 / tot ))

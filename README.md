@@ -49,7 +49,6 @@ stylus/           Cargo workspace of the Rust side
   native-twamm/         a complete TWAMM: orders, expiries, settlement
   native-gaussian/      solstat's Gaussian, ported bit-exactly
   native-compute/       arithmetic sweeps, for the crossover
-  native-stableswap/    a StableSwap curve
   hook-miner/           mines the CREATE2 salt for a hook address
 ```
 
@@ -286,8 +285,9 @@ from the formula instead, and EulerSwap — BUSL-1.1 — is referenced in
 | A complete TWAMM in Rust: orders, expiries, settlement | [`stylus/native-twamm/src/lib.rs`](stylus/native-twamm/src/lib.rs) |
 | The workload that wins: solstat's Gaussian, ported bit-exactly | [`stylus/native-gaussian/src/gaussian.rs`](stylus/native-gaussian/src/gaussian.rs) |
 | Its Solidity twin, pinned to the same values | [`uniswap/src/PmAmmMath.sol`](uniswap/src/PmAmmMath.sol) |
-| Gas benchmarks | [`bench-pmamm.bash`](bench-pmamm.bash), [`bench-twamm.bash`](bench-twamm.bash), [`bench-compute.bash`](bench-compute.bash), [`bench-counter.bash`](bench-counter.bash), [`bench-stableswap.bash`](bench-stableswap.bash) |
-| Opcode profile of shipping hooks | [`profile-hooks.bash`](profile-hooks.bash), [`bench-antisandwich.bash`](bench-antisandwich.bash) |
+| Gas benchmarks | [`bench-pmamm.bash`](bench-pmamm.bash), [`bench-twamm.bash`](bench-twamm.bash), [`bench-compute.bash`](bench-compute.bash), [`bench-counter.bash`](bench-counter.bash) |
+| Opcode profile of shipping hooks | [`profile-hooks.bash`](profile-hooks.bash) |
+| A TWAMM under concurrent order flow | [`bench-twamm-concurrent.bash`](bench-twamm-concurrent.bash) |
 | v4-core's swap math in Rust, on Uniswap's own vectors | [`stylus/v4-math/src/swap_math.rs`](stylus/v4-math/src/swap_math.rs), [`tick_math.rs`](stylus/v4-math/src/tick_math.rs), [`sqrt_price_math.rs`](stylus/v4-math/src/sqrt_price_math.rs), [`full_math.rs`](stylus/v4-math/src/full_math.rs) |
 | `Pool.swap`'s loop, the workload that wins at 7.1× | [`stylus/native-v4-math/src/lib.rs`](stylus/native-v4-math/src/lib.rs) |
 | Its control, calling v4-core's libraries directly | [`uniswap/src/V4MathBench.sol`](uniswap/src/V4MathBench.sol) |

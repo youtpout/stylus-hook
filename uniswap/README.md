@@ -7,7 +7,6 @@ design.
 | --- | --- |
 | [`src/PmAmmMath.sol`](src/PmAmmMath.sol) | the pm-AMM's Gaussian solve — the twin of `stylus/native-gaussian`, pinned to the same values |
 | [`src/TwammHook.sol`](src/TwammHook.sol) | a TWAMM interval, in quad floats and in fixed point |
-| [`src/StableSwapHook.sol`](src/StableSwapHook.sol) | a StableSwap curve, for the arithmetic sweep |
 | [`src/ComputeHook.sol`](src/ComputeHook.sol) | pure arithmetic, to find the crossover |
 | [`src/Counter.sol`](src/Counter.sol) | the same hook in pure Solidity, as a baseline |
 
