@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! A Uniswap v4 hook written entirely in Rust — no Solidity anywhere.
+//! A Uniswap v4 hook written entirely in Rust — no Solidity anywhere. The same hook as
+//! `uniswap/src/Counter.sol`, but the contract the `PoolManager` calls *is* this one.
 //!
-//! This is the same hook as `uniswap/src/Counter.sol`, but the contract the `PoolManager` calls
-//! *is* the Stylus contract: there is no Solidity shell forwarding callbacks. It counts the four
-//! callbacks it enables, per pool.
-//!
-//! The address still has to encode the permission flags, so this contract must be deployed through
-//! a CREATE2 factory with a mined salt; [`Counter::validate`] checks the result.
+//! The address still has to encode the permission flags, so it is deployed through CREATE2 with a
+//! mined salt; the constructor checks the result.
 
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 

@@ -1,45 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-//! A time-weighted average market maker as a Uniswap v4 hook, in pure Rust for Arbitrum Stylus.
-//!
-//! Long-term orders sell one token into the pool at a constant rate per second. Nothing runs on a
-//! schedule: the orders are folded into the pool lazily, by whoever next touches it, and the price
-//! they arrive at is computed in closed form rather than simulated second by second.
-//!
-//! # Why this hook
-//!
-//! Every other hook benchmarked in this repository loses to its Solidity twin, because Stylus buys
-//! a lower marginal cost of computation at the price of a fixed cost per call, and a hook that
-//! counts swaps or reads a vault never does enough arithmetic to earn that back. TWAMM does. It is
-//! Uniswap's own v4-periphery example, its published cost is roughly 100,000 gas per expiry
-//! interval, and almost all of that is `ABDKMathQuad` — IEEE 754 binary128 emulated in software
-//! because the EVM has no floating point.
-//!
-//! Stylus has no floating point either, so this works in 1e18 fixed point (see [`math`]), and
-//! `uniswap/src/TwammHook.sol` carries the identical fixed-point form. The benchmark compares that
-//! pair, so what it measures is the language rather than the algorithm.
-//!
-//! # What talks to Solidity
-//!
-//! Nothing in this crate, except the ABI. There is no Solidity shell in front of it: the address is
-//! CREATE2-mined so its low bits carry the permission flags v4 reads, the ten `IHooks` callbacks
-//! are `stylus-uniswap-v4`'s, and the calls back into the singleton — `extsload`, `unlock`, `swap`,
-//! `sync`, `settle`, `take` — go through [`PoolManagerCalls`]. The pool manager is Solidity because
-//! it is Uniswap's; everything on this side of the boundary is Rust.
-//!
-//! # Simplifications
-//!
-//! Shared with the Solidity twin, so the comparison stays honest:
-//!
-//! * liquidity is taken as constant across an executed span. A production TWAMM splits the span at
-//!   every initialised tick the virtual price crosses.
-//! * earnings come from the closed form, and the AMM is then swapped to the price it predicts, so
-//!   pool fees and any tick crossing land on this contract's own balance.
-//! * orders may only expire on a fixed [`EXPIRATION_INTERVAL`] grid.
-//!
-//! Derived from the TWAMM design published by Paradigm (2021) and from Uniswap's `TWAMM.sol`
-//! example, which is GPL-2.0. No code is copied from it, but the architecture is recognisably
-//! theirs, so this file and its Solidity twin carry GPL-2.0-or-later rather than the repository's
-//! MIT.
+//! A TWAMM as a Uniswap v4 hook, in pure Rust. Long-term orders sell at a constant rate per second
+//! and are folded into the pool lazily, in closed form. Fixed point at 1e18, since Stylus has no
+//! floating point, and `TwammHook.sol` carries the identical form. The architecture follows
+//! Uniswap's GPL-2.0 `TWAMM.sol` example, hence the licence, though no code is copied from it.
 
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
@@ -559,12 +522,9 @@ impl TwammHook {
 
     /// Sends one ERC-20 call and insists it succeeded.
     ///
-    /// Written out rather than declared with `sol_interface!` because the generic encoder costs
-    /// several kilobytes of contract space, and this contract has to fit in one Stylus fragment to
-    /// be deployable at a mined address at all.
-    ///
-    /// A token that returns nothing is accepted, as `SafeERC20` does; one that returns a false
-    /// word is not.
+    /// Written out rather than through `sol_interface!`, whose generic encoder costs several
+    /// kilobytes — and this contract has to fit one Stylus fragment to be deployable at a mined
+    /// address. A token returning nothing is accepted, as `SafeERC20` does; a false word is not.
     fn erc20_call(&mut self, token: Address, calldata: Vec<u8>) -> Result<(), Vec<u8>> {
         let context = Call::new_mutating(self);
         let returned = call(self.vm(), context, token, &calldata)
@@ -633,12 +593,11 @@ impl TwammHook {
         next
     }
 
-    /// Walks the clock forward one expiry at a time, because the sell rates change at each one and
-    /// the closed form is only valid while they hold constant. Every span updates both earnings
-    /// factors; the real pool price is pushed once, at the end.
-    /// `unlocked` says whether the pool manager's lock is already held. Inside a hook callback it
-    /// is — v4 took it before calling us, and taking it again reverts with `AlreadyUnlocked`.
-    /// Outside one it is not, and the swap has to happen inside a fresh `unlock`.
+    /// Walks the clock forward one expiry at a time, since the sell rates change at each and the
+    /// closed form only holds while they are constant. The pool price is pushed once, at the end.
+    ///
+    /// `unlocked` says whether the manager's lock is already held: inside a callback it is, and
+    /// taking it again reverts with `AlreadyUnlocked`.
     fn execute_virtual_orders_inner(
         &mut self,
         key: &PoolKey,

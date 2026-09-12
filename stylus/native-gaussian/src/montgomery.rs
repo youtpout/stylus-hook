@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Montgomery multiplication in BN254's scalar field, to settle whether Stylus can beat `MULMOD`.
 //!
-//! The EVM has modular multiplication as a single opcode, `MULMOD`, at 8 gas. WASM has nothing of
-//! the sort, and `ruint`'s `mul_mod` answers with a 512-bit product followed by a 512-by-256
-//! division — measured at 94 gas against Solidity's 88, which says field arithmetic is not worth
-//! porting.
-//!
-//! But no cryptography library multiplies that way. They keep values in Montgomery form, where the
-//! reduction is a few multiply-accumulates and no division at all. That is what this is: CIOS
-//! Montgomery, 4 limbs, for a fixed modulus. If the EVM's opcode still wins against *this*, then
-//! every 256-bit prime field — Poseidon over BN254, P-256 signature verification, any SNARK
-//! verifier — is genuinely out of reach, and the only fields worth porting are the small ones.
+//! `ruint`'s `mul_mod` answers with a 512-bit product and a division — 94 gas against the opcode's
+//! 88. But no cryptography library multiplies that way: they stay in Montgomery form, where the
+//! reduction is multiply-accumulates and no division. This is CIOS, 4 limbs, fixed modulus.
 
 /// BN254's scalar field modulus, little-endian limbs.
 pub const P: [u64; 4] = [

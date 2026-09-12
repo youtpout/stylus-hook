@@ -5,31 +5,10 @@ import {Gaussian} from "solstat/Gaussian.sol";
 import {FixedPointMathLib} from "solstat/../lib/solmate/src/utils/FixedPointMathLib.sol";
 
 /// @title PmAmmMath
-/// @notice The Solidity side of the pm-AMM arithmetic benchmark. Exposes `solstat`'s Gaussian and a
-///         Newton solve of the pm-AMM invariant, with the same ABI as `stylus/native-gaussian`.
-///
-/// @dev Why this workload. Every hook benchmarked in this repository loses to its Solidity twin,
-///      because Stylus trades a lower marginal cost of computation for a fixed cost per call. TWAMM
-///      looked like the exception until the version actually deployed turned out to use plain
-///      integer `mulDiv`. The pm-AMM is a better bet for one reason: its arithmetic cannot be
-///      removed. With `z = (y - x) / L`, Paradigm's invariant is
-///
-///        f(y)  = (y - x)·Phi(z) + L·phi(z) - y
-///        f'(y) = Phi(z) - 1
-///
-///      which is transcendental in `y`. No closed form exists, so a solve is mandatory, and every
-///      iteration needs the Gaussian CDF and PDF. The derivative collapsing to `Phi(z) - 1` is a
-///      gift — the two `z·phi(z)` terms cancel — but a full Gaussian evaluation is still needed per
-///      step.
-///
-///      `Gnome101/Pm-AMM-Hook`, the one v4 hook that implements a pm-AMM, solves this by 100-step
-///      bisection: 200 Gaussian evaluations per swap. That is not what is measured here. A benchmark
-///      against a lazy implementation measures nothing, and this repository has already made that
-///      mistake once with TWAMM. Newton is the honest floor.
-///
-///      `solstat` is referenced as a submodule rather than vendored: its files carry `SPDX: MIT` but
-///      the repository ships an AGPL-3.0 `LICENSE`, and that contradiction is not one to inherit.
-///      Its `erfc` is the Chebyshev fit from Numerical Recipes 3e p265, over Solmate's `expWad`.
+/// @notice The Solidity side of the pm-AMM arithmetic benchmark: solstat's Gaussian and a Newton
+///         solve of the invariant, with the same ABI as `stylus/native-gaussian`.
+/// @dev The invariant is transcendental in `y`, so a solve is mandatory and every iteration needs
+///      the Gaussian CDF and PDF. Newton rather than bisection, which is the honest floor.
 contract PmAmmMath {
     using FixedPointMathLib for int256;
 
@@ -47,10 +26,8 @@ contract PmAmmMath {
 
     /// @notice `n` iterations of `a * b / c`, wrapping, with the operand magnitude left to the
     ///         caller.
-    /// @dev The EVM charges 5 gas for `MUL` and 5 for `DIV` whatever the operands are. A 256-bit
-    ///      integer in WASM is four 64-bit limbs, and `ruint` short-circuits on the ones that are
-    ///      zero — so the same expression should cost Rust much more when the operands are wide than
-    ///      when they are narrow. This is the dial to test that with.
+    /// @dev The EVM charges 5 gas for `MUL` and `DIV` whatever the operands are, while `ruint`
+    ///      short-circuits on zero limbs — so this is the dial for testing operand width.
     function mulDivLoop(uint256 n, uint256 a, uint256 b, uint256 c) external pure returns (uint256 acc) {
         unchecked {
             for (uint256 i = 0; i < n; ++i) {

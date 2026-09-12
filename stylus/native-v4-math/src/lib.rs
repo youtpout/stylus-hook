@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! v4-core's swap math as a Stylus contract, to be priced against the Solidity it was ported from.
+//! v4-core's swap math as a Stylus contract, priced against the Solidity it was ported from.
 //!
-//! The arithmetic lives in [`stylus_v4_math`], which is tested against v4-core's own vectors. This
-//! crate is only the ABI around it, shaped to match `uniswap/src/V4MathBench.sol` call for call —
-//! and that twin calls the real `SwapMath`, `TickMath` and `FullMath`, not a reimplementation. So
-//! the control side of this benchmark is Uniswap's production code.
-//!
-//! [`V4Math::walk_swap`] is the number that matters. It is `Pool.swap`'s loop without the storage:
-//! find the next initialised tick, price the step up to it, cross, repeat. Replaying that loop is
-//! what OpenZeppelin's `AntiSandwichHook` and Uniswap's own `alf/SwapSimulator` do on every swap,
-//! and it is pure arithmetic — which is the one shape of hook where Stylus can win.
+//! The arithmetic is [`stylus_v4_math`]; this crate is the ABI around it, matching
+//! `uniswap/src/V4MathBench.sol` call for call — and that twin calls the real `SwapMath`,
+//! `TickMath` and `FullMath`, so the control side is Uniswap's production code.
 
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
@@ -159,12 +153,11 @@ impl V4Math {
 
     // --- the workload --------------------------------------------------------------------------
 
-    /// `Pool.swap`'s loop, without the storage: price a step up to the next initialised tick, cross
-    /// it, repeat until the amount runs out or the limit is reached.
+    /// `Pool.swap`'s loop without the storage: price a step to the next initialised tick, cross,
+    /// repeat until the amount runs out or the limit is reached.
     ///
-    /// Every multiple of `tick_spacing` is taken as initialised, which is the dense case and so the
-    /// honest upper bound on how many steps a swap takes. Returns the price reached and the three
-    /// totals, so neither side can have the loop optimised away.
+    /// Every multiple of `tick_spacing` counts as initialised, the dense case. Returns the price
+    /// and three totals, so neither side can have the loop optimised away.
     #[allow(clippy::too_many_arguments)]
     pub fn walk_swap(
         &self,

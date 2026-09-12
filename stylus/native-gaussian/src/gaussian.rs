@@ -1,25 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! The Gaussian CDF and PDF in 1e18 fixed point, ported from Solidity bit for bit.
+//! The Gaussian CDF and PDF in 1e18 fixed point: a bit-exact port of `primitivefinance/solstat`,
+//! Solmate's `expWad` included, pinned by [`tests`] to values from the compiled Solidity.
 //!
-//! # What this is a port of
-//!
-//! `primitivefinance/solstat`'s `Gaussian`, which is the only Gaussian a Uniswap v4 hook has been
-//! written against (`Gnome101/Pm-AMM-Hook` uses it to solve the pm-AMM invariant). Its `erfc` is the
-//! Chebyshev fit from Numerical Recipes 3e p265, and it leans on Solmate's `expWad`, which is ported
-//! here too — there is no way to match the Solidity output without it, since every constant and
-//! every truncation has to line up.
-//!
-//! Bit-exactness is the point. A benchmark between two implementations of *different* accuracy is
-//! not a language comparison, it is a precision trade dressed up as one, and this repository has
-//! already made that mistake once with TWAMM. So [`tests`] pins every function against values taken
-//! from the compiled Solidity, and the two agree to the wei across the domain.
-//!
-//! # Why the arithmetic looks like that
-//!
-//! EVM `mul` wraps and `sar`/`sdiv` round differently from each other — `sar` toward negative
-//! infinity, `sdiv` toward zero. Solmate's `expWad` runs unchecked and relies on both. So every
-//! multiply below is a [`I256::wrapping_mul`], every `>>` is an arithmetic shift, and every `/` is a
-//! truncating division, chosen to match what the EVM does rather than what is natural in Rust.
+//! Hence the arithmetic below — wrapping multiplies, arithmetic shifts, truncating division — which
+//! matches what the EVM does rather than what is natural in Rust.
 
 use alloy_primitives::{I256, U256};
 

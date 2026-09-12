@@ -261,12 +261,10 @@ mod tests {
         );
     }
 
-    /// v4-core's round-trip property: a tick's own price, the midpoint of its range, and one wei
-    /// below the next tick must all map back to it, and the next tick's price to the next tick.
+    /// v4-core's round-trip property, valid only up to `MAX_TICK - 2`.
     ///
-    /// Only valid up to `MAX_TICK - 2`. v4-core's own fuzz test bounds the tick at `MAX_TICK - 1`,
-    /// where the last assertion asks for the tick of `MAX_SQRT_PRICE` — which both
-    /// implementations reject by design. Forge has simply never guessed that one input.
+    /// v4-core's own fuzz test bounds at `MAX_TICK - 1`, where the last assertion asks for the tick
+    /// of `MAX_SQRT_PRICE`, which both implementations reject by design. See FEEDBACK.md.
     fn assert_round_trip(tick: i32) {
         let at = get_sqrt_price_at_tick(tick).unwrap();
         let next = get_sqrt_price_at_tick(tick + 1).unwrap();

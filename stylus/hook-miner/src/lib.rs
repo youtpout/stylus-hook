@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Predicting and mining the address a `StylusDeployer` CREATE2 deployment lands on.
 //!
-//! Uniswap v4 reads a hook's permissions out of the low 14 bits of its address, so a hook must be
-//! deployed to a mined address. `cargo stylus deploy` routes deployments through the on-chain
-//! [`StylusDeployer`], which uses CREATE2 when given a non-zero salt — so a Stylus contract can
-//! land on a hook address without any Solidity deployer of its own.
-//!
-//! [`StylusDeployer`]: https://github.com/OffchainLabs/nitro-contracts/blob/main/src/stylus/StylusDeployer.sol
+//! v4 reads a hook's permissions out of the low 14 bits of its address, so a hook must be deployed
+//! to a mined one. `cargo stylus deploy` routes through StylusDeployer, which uses CREATE2 on a
+//! non-zero salt, so no Solidity deployer is needed.
 
 use alloy_primitives::{address, keccak256, Address, B256, U256};
 
@@ -56,10 +53,8 @@ pub fn predict_address(
 
 /// Searches for a salt whose *plain* CREATE2 address carries exactly `flags` in its low 14 bits.
 ///
-/// For an ordinary CREATE2 factory rather than `StylusDeployer`: the salt is used verbatim, and any
-/// constructor arguments are already appended to `init_code`. This is what a Solidity hook needs,
-/// and it is here so the benchmark can put a third-party hook on a valid address without importing
-/// its source into this project.
+/// For an ordinary factory rather than `StylusDeployer`: the salt is used verbatim and constructor
+/// arguments are already appended to `init_code`. This is what a Solidity hook needs.
 pub fn mine_create2(
     deployer: Address,
     init_code_hash: B256,

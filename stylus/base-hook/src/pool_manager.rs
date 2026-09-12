@@ -1,26 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Calling back into the v4 singleton from a hook.
+//! Calling back into the v4 singleton. A hook returning a non-zero delta has to balance its own
+//! books before the lock closes.
 //!
-//! A hook that only observes swaps never needs this. A hook that takes a share of one does: v4
-//! settles in deltas, so returning a non-zero `BeforeSwapDelta` or `BalanceDelta` obliges the hook
-//! to balance its own books with [`PoolManagerCalls::take`], [`PoolManagerCalls::settle`] and
-//! friends before the lock closes.
-//!
-//! Import the trait where the callbacks are implemented; it is blanket-implemented for every hook
-//! that declares a [`HookConfig`].
-//!
-//! # Why the calldata is written out by hand
-//!
-//! An earlier version of this module encoded each call through `alloy_sol_types::SolCall`, which is
-//! the obvious way to do it and reads better than what is here now. It cost about eight kilobytes
-//! of contract space: one monomorphised encoder and decoder per call, plus the token machinery
-//! underneath them. That is most of a Stylus fragment, and a hook that spills into a second
-//! fragment cannot be deployed at a mined address at all — `cargo stylus get-initcode` refuses
-//! fragmented contracts, and without an initcode there is no CREATE2 address to mine.
-//!
-//! Every call below has a fixed shape known at compile time, so the encoding is a handful of
-//! `extend_from_slice` calls. The tests at the bottom check each one byte for byte against what
-//! `SolCall` would have produced, which is the property that actually matters.
+//! The calldata is written by hand rather than through `SolCall`, which cost about 8 KB of contract
+//! space; the tests below check each encoding byte for byte against what `SolCall` would produce.
 
 use alloc::vec::Vec;
 

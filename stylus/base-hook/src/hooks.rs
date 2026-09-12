@@ -1,21 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! The `IHooks` entry points, as a Stylus trait with `BaseHook.sol` semantics.
+//! The `IHooks` entry points, with `BaseHook.sol` semantics. A hook implements [`HookConfig`], then
+//! only the callbacks it enables; the rest revert with `HookNotImplemented`.
 //!
-//! A hook implements [`HookConfig`] to declare its pool manager and permissions, then implements
-//! only the callbacks it enables — every other callback keeps its default body, which reverts with
-//! `HookNotImplemented`, exactly as the Solidity `BaseHook` does.
-//!
-//! # Guards
-//!
-//! Solidity's `BaseHook` makes its entry points `external onlyPoolManager`, so a hook author cannot
-//! forget the check. Rust has no abstract types to inherit that from, so
-//! [`guarded_hooks`](stylus_uniswap_v4_macros::guarded_hooks) inserts it instead — put it above
-//! `#[public]` on the `impl IHooks` block and every callback gains
-//! [`HookGuards::require_pool_manager`], plus [`HookGuards::require_valid_pool`] where it takes a
-//! `PoolKey`.
-//!
-//! Only on that block, though. A hook's own entry points — an order book, a claim — must *not*
-//! require the pool manager.
+//! Put [`guarded_hooks`](stylus_uniswap_v4_macros::guarded_hooks) above `#[public]` on the
+//! `impl IHooks` block, and only there — a hook's own entry points must not require the manager.
 
 use alloc::vec::Vec;
 
@@ -96,12 +84,9 @@ pub trait HookGuards: HookConfig + HostAccess {
 
     /// Reverts unless this contract's own address encodes exactly [`HookConfig::permissions`].
     ///
-    /// The Solidity `BaseHook` asserts this in its constructor and so should a Stylus hook: call it
-    /// from `#[constructor]`. A hook at an address that does not carry its flags is not a hook —
-    /// v4 will simply never invoke the callbacks it thinks it implements.
-    ///
-    /// This is also what makes a hook undeployable by a plain `cargo stylus deploy`: the address
-    /// has to be mined first. See `stylus/hook-miner`.
+    /// Call it from `#[constructor]`, as Solidity's `BaseHook` does. It is also why a plain
+    /// `cargo stylus deploy` cannot deploy a hook: the address has to be mined first, see
+    /// `stylus/hook-miner`.
     fn validate_hook_address(&self) -> Result<(), Vec<u8>> {
         let address = self.vm().contract_address();
         if !is_valid_hook_address(address, &self.permissions()) {
@@ -250,12 +235,11 @@ pub trait IHooks: HookConfig {
 /// The zero deltas a callback returns when it does not take a share of the swap.
 pub const NO_DELTA: I256 = ZERO_DELTA;
 
-/// The callback the pool manager makes on whoever called [`unlock`].
+/// The callback the pool manager makes on whoever called
+/// [`unlock`](crate::pool_manager::PoolManagerCalls::unlock).
 ///
-/// Only a hook that unlocks the manager itself needs this — inside a swap or liquidity callback the
-/// manager is already unlocked. Implement it alongside [`IHooks`] and list it in `#[implements]`.
-///
-/// [`unlock`]: crate::pool_manager::PoolManagerCalls::unlock
+/// Only a hook that unlocks the manager itself needs this. Implement it alongside [`IHooks`] and
+/// list it in `#[implements]`.
 #[public]
 pub trait IUnlockCallback: HookConfig {
     fn unlock_callback(&mut self, data: Bytes) -> Result<Bytes, Vec<u8>> {
@@ -269,12 +253,10 @@ mod tests {
     use super::*;
     use stylus_sdk::function_selector;
 
-    /// The selectors v4-core dispatches on, taken from the compiled `IHooks.sol`
-    /// (`forge inspect IHooks methodIdentifiers`).
+    /// The selectors v4-core dispatches on, from the compiled `IHooks.sol`.
     ///
-    /// This is the load-bearing property of the whole crate: a hook written in Rust is only a hook
-    /// if the `PoolManager`'s calls land on the right methods, so the Rust ABI must hash to exactly
-    /// the same four bytes as the Solidity interface.
+    /// The load-bearing property of this crate: a Rust hook is only a hook if the Rust ABI hashes
+    /// to the same four bytes as the Solidity interface.
     #[test]
     fn selectors_match_uniswap_ihooks() {
         assert_eq!(

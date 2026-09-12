@@ -1,23 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! The two primitives a post-quantum signature needs, priced against Solidity.
+//! The two primitives an ML-DSA signature check spends its gas on, priced against Solidity.
 //!
-//! A hook that verifies an ML-DSA signature spends nearly all of its gas in two places: SHAKE256,
-//! and a number-theoretic transform over a 23-bit prime. Neither is reachable from the EVM at a
-//! sensible price, and for one of them the reason is structural rather than a matter of degree.
-//!
-//! **SHAKE256 cannot be obtained from any built-in hash.** Stylus has `native_keccak256` and the EVM
-//! has the `KECCAK256` opcode; both are Keccak-256 with the `0x01` pad compiled in. SHAKE pads with
-//! `0x1f` and squeezes an arbitrary length. So both languages have to run Keccak-f[1600] themselves:
-//! 24 rounds of 64-bit rotations over 25 lanes. That is one WASM instruction per rotation against
-//! four EVM opcodes and a mask.
-//!
-//! **The NTT is a word-size problem.** `q = 8380417` is 23 bits wide. The EVM has one word and it is
-//! 256 bits, so every butterfly pays a full `MULMOD`.
-//!
-//! [`Crypto::keccak_sdk_loop`] is here as the control the numbers have to be read against: it calls
-//! the SDK's `keccak`, which goes to the host. If the hand-rolled permutation is not far below the
-//! Solidity one, the idea is dead — and if the host hash is far below both, that says how much of the
-//! cost is the permutation rather than the plumbing.
+//! SHAKE256 comes from no built-in: `native_keccak256` and the EVM opcode are both Keccak-256 with
+//! the `0x01` pad compiled in, and SHAKE pads with `0x1f`, so the permutation has to be written out.
+//! The NTT's prime is 23 bits wide, so every butterfly on the EVM pays a full 256-bit `MULMOD`.
 
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 

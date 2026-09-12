@@ -1,35 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! The pm-AMM's arithmetic in pure Rust, to be priced against the Solidity it was ported from.
-//!
-//! # Why this workload
-//!
-//! Every hook this repository has benchmarked so far loses, because Stylus trades a lower marginal
-//! cost of computation for a fixed cost per call, and a hook that counts swaps or reads a vault
-//! never does enough arithmetic to earn that back. TWAMM looked like the exception until the version
-//! actually deployed turned out to use plain integer `mulDiv`.
-//!
-//! The pm-AMM is a better bet for one reason: its arithmetic cannot be removed. With `z = (y-x)/L`,
-//! Paradigm's invariant is
-//!
-//! ```text
-//! f(y)  = (y - x)·Phi(z) + L·phi(z) - y
-//! f'(y) = Phi(z) - 1
-//! ```
-//!
-//! which is transcendental in `y`. There is no closed form, so a solve is mandatory, and every
-//! iteration of it needs the Gaussian CDF and PDF. The derivative collapsing to `Phi(z) - 1` is a
-//! gift — the two `z·phi(z)` terms cancel — but it still costs a full Gaussian evaluation per step.
-//!
-//! # What is being compared
-//!
-//! [`gaussian`] is a bit-exact port of `primitivefinance/solstat`, the library the one existing
-//! pm-AMM hook uses, down to Solmate's `expWad` underneath it. `uniswap/src/PmAmmMath.sol` calls
-//! that same Solidity library and runs the same Newton solve. So the two sides compute identical
-//! numbers by identical steps, and what the benchmark measures is the language.
-//!
-//! The existing hook solves by 100-step bisection, which is 200 Gaussian evaluations per swap. That
-//! is not what is measured here: benchmarking against a lazy implementation measures nothing, and
-//! this repository has already made that mistake once. Newton is the honest floor.
+//! The pm-AMM's arithmetic in Rust, priced against the Solidity it was ported from. Its invariant
+//! is transcendental, so every swap runs a Newton solve and every iteration needs the Gaussian CDF
+//! and PDF. [`gaussian`] is a bit-exact port of `primitivefinance/solstat`, and `PmAmmMath.sol`
+//! calls that same library through the same solve.
 
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
@@ -83,12 +56,10 @@ impl PmAmmMath {
         acc
     }
 
-    /// `n` modular multiplications in a ~254-bit prime field — BN254's scalar field, the one
-    /// Poseidon and every BN254 SNARK verifier work in.
+    /// `n` modular multiplications in BN254's scalar field.
     ///
     /// The EVM has `MULMOD` as one opcode at 8 gas. WASM has nothing of the sort, so this is
-    /// `ruint`'s `mul_mod`: a 512-bit product followed by a reduction. This is the dial that says
-    /// whether porting field arithmetic to Stylus is worth anything.
+    /// `ruint`'s `mul_mod`: a 512-bit product and a reduction.
     pub fn mulmod_loop(&self, n: U256, a: U256, b: U256, m: U256) -> U256 {
         let mut acc = U256::ZERO;
         let mut i = U256::ZERO;
@@ -120,9 +91,7 @@ impl PmAmmMath {
     /// `n` Montgomery multiplications in BN254's scalar field — how a cryptography library actually
     /// multiplies, with no division anywhere.
     ///
-    /// Compared against Solidity's `MULMOD` opcode, this is the measurement that decides whether any
-    /// 256-bit prime field is worth porting: Poseidon over BN254, P-256 signature verification, a
-    /// SNARK verifier's field layer.
+    /// Against Solidity's `MULMOD`, this decides whether any 256-bit prime field is worth porting.
     pub fn montmul_loop(&self, n: U256, a: U256, b: U256) -> U256 {
         let aa = a.into_limbs();
         let bb = b.into_limbs();

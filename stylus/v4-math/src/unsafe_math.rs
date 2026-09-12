@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! `UnsafeMath`, as v4-core spells it.
+//! `UnsafeMath`, as v4-core spells it. The name is Uniswap's: these skip the division-by-zero
+//! check, so a zero denominator is the caller's problem.
 //!
-//! The name is Uniswap's: these skip the division-by-zero check, so a zero denominator is the
-//! caller's problem. In Solidity that means raw `div`; here it means `checked_div` is deliberately
-//! not used, and a zero `y` panics the way an EVM `div` would return zero — the one place this port
-//! cannot match exactly, and the reason every caller in this crate guards the denominator first.
+//! Here a zero `y` panics where an EVM `div` returns zero — the one place this port cannot match,
+//! and the reason every caller in this crate guards the denominator first.
 
 use alloy_primitives::U256;
 

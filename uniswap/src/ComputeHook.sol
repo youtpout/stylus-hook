@@ -11,17 +11,10 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/type
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @title ComputeHook
-/// @notice A hook that does nothing but arithmetic, with a dial for how much of it.
-///
-/// It exists to find the point where a hook is better off in Stylus. Stylus buys a lower marginal
-/// cost of computation at the price of a fixed cost per call; below some amount of work the fixed
-/// cost wins and Solidity is cheaper. `stylus/native-compute` runs the identical loop in Rust, and
-/// `bench-compute.bash` sweeps `rounds` across both to find where the lines cross.
-///
-/// @dev The loop is xorshift64, chosen because it is a handful of shifts and xors per round with no
-///      memory traffic and no storage — the closest thing to measuring raw compute through a hook.
-///      Each language uses the word size it is good at, which is the honest comparison: the EVM has
-///      no cheaper option than its 256-bit word, and WASM has no 256-bit word at all.
+/// @notice A hook that does nothing but arithmetic, with a dial for how much of it, to find where
+///         a hook is better off in Stylus. `stylus/native-compute` runs the identical loop.
+/// @dev xorshift64: a few shifts and xors per round, no memory traffic and no storage. Each side
+///      uses the word size it is good at, which is the comparison that matters.
 contract ComputeHook is BaseHook {
     uint256 public rounds;
     uint64 public lastResult;
@@ -129,12 +122,10 @@ contract ComputeHook is BaseHook {
         return acc;
     }
 
-    /// @notice Integer square root, Babylonian with a bit-length seed — the same shape as solady's
-    ///         and as EulerSwap's `Sqrt.sol`.
-    /// @dev EulerSwap inverts its curve with the quadratic formula, so every swap takes the square
-    ///      root of a discriminant its own comments put in the 255-bit range. The seed needs the
-    ///      bit length, which the EVM has no opcode for — solady spends a de Bruijn table on it,
-    ///      while WASM has `i64.clz`. That asymmetry is the point of this mode.
+    /// @notice Integer square root, Babylonian with a bit-length seed — solady's shape, and
+    ///         EulerSwap's `Sqrt.sol`.
+    /// @dev EulerSwap's curve inversion takes one per swap over a 255-bit discriminant. The seed
+    ///      needs a bit length, which the EVM has no opcode for and WASM has as `i64.clz`.
     function isqrt(uint256 x) public pure returns (uint256 z) {
         if (x == 0) return 0;
         uint256 r = 1;

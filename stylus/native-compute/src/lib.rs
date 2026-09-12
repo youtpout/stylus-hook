@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! A Uniswap v4 hook, in pure Rust, that does nothing but arithmetic — with a dial for how much.
 //!
-//! Stylus buys a lower marginal cost of computation at the price of a fixed cost per call: loading
-//! the WASM program, and crossing from the EVM into the WASM runtime. Below some amount of work the
-//! fixed cost wins and the same hook is cheaper in Solidity. This hook and its Solidity twin,
-//! `uniswap/src/ComputeHook.sol`, run the identical loop so `bench-compute.bash` can sweep the dial
-//! and find where the lines cross.
+//! Stylus trades a lower marginal cost of computation for a fixed cost per call, so below some
+//! amount of work Solidity is cheaper. `uniswap/src/ComputeHook.sol` runs the identical loop and
+//! `bench-compute.bash` sweeps the dial to find where the lines cross.
 
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
@@ -188,10 +186,8 @@ impl ComputeHook {
 
     /// Integer square root of a full-range value.
     ///
-    /// EulerSwap inverts its curve with the quadratic formula, so every swap takes the square root
-    /// of a discriminant its own comments put in the 255-bit range. Each language uses its natural
-    /// implementation: Solidity a Babylonian iteration seeded from the bit length, which the EVM has
-    /// no opcode for, and Rust `ruint`'s, which reaches `i64.clz` in WASM.
+    /// EulerSwap's curve inversion takes one per swap, over a 255-bit discriminant. Solidity seeds
+    /// Babylonian from the bit length, which the EVM has no opcode for; Rust reaches `i64.clz`.
     pub fn isqrt(&self, x: U256) -> U256 {
         if x.is_zero() {
             return U256::ZERO;
@@ -229,10 +225,8 @@ impl ComputeHook {
 
     /// `mulDiv` on 256-bit words, `n` times. Must agree with `ComputeHook.sol`.
     ///
-    /// This is the atom Uniswap's own swap math is built from — `computeSwapStep`, `SqrtPriceMath`
-    /// and every tick-walking simulation are mostly chains of it. A 256-bit multiply and divide is
-    /// one EVM opcode each; WASM has no 256-bit word and has to do it over limbs. This is the case
-    /// that decides whether porting real AMM math to Stylus buys anything.
+    /// The atom Uniswap's swap math is built from. Multiply and divide are one EVM opcode each;
+    /// WASM has no 256-bit word and works over limbs.
     pub fn work_mul_div(&self, n: U256) -> U256 {
         let mut a = U256::from_str_radix(
             "9E3779B97F4A7C15C2B2AE3D27D4EB4F165667B19E3779F9165667B19E3779F9",

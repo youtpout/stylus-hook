@@ -1,13 +1,8 @@
-//! The ML-DSA (Dilithium) number-theoretic transform.
+//! The ML-DSA (Dilithium) number-theoretic transform, over the 23-bit prime `q = 8380417`.
 //!
-//! The modulus is `q = 8380417`, twenty-three bits wide. That is the whole story: the EVM has one
-//! word size and it is 256 bits, so a 23-bit modular multiply costs a full `MULMOD`. A `u32` multiply
-//! into a `u64` is one WASM instruction.
-//!
-//! Two versions are here. [`ntt`] uses `%`, which is what the Solidity twin's `mulmod` does, so the
-//! two produce identical output and the comparison is a language comparison. [`ntt_montgomery`] is
-//! how a real implementation multiplies -- no division anywhere -- and is measured separately,
-//! because Solidity has nothing to compare it against: `MULMOD` already reduces for free.
+//! [`ntt`] uses `%`, matching the Solidity twin's `mulmod`, so the two agree byte for byte and the
+//! comparison is a language comparison. [`ntt_montgomery`] is how a real implementation multiplies
+//! and is measured separately, since `MULMOD` already reduces for free.
 
 /// ML-DSA's prime, `2^23 - 2^13 + 1`.
 pub const Q: u32 = 8380417;

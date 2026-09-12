@@ -41,12 +41,10 @@ pub fn get_sqrt_price_target(
     }
 }
 
-/// How far a swap gets before it runs out of either the amount specified or the price target.
+/// How far a swap gets before it runs out of the amount specified or the price target.
 ///
-/// `amount_remaining` follows v4's sign convention: negative is exact input, positive exact output.
-/// `fee_pips` must already be validated as at most [`MAX_SWAP_FEE`], which is what `LPFeeLibrary`
-/// guarantees; exact-output callers must additionally stay strictly below it, because a 100% fee
-/// has no finite input.
+/// `amount_remaining` follows v4's sign convention: negative is exact input. `fee_pips` must
+/// already be at most [`MAX_SWAP_FEE`], and exact-output callers strictly below it.
 pub fn compute_swap_step(
     sqrt_price_current: U256,
     sqrt_price_target: U256,

@@ -3,12 +3,9 @@ pragma solidity ^0.8.26;
 
 /// @title The Solidity control for `stylus/native-crypto`
 /// @notice The two primitives an ML-DSA signature needs, written the way Solidity would write them.
-///
-/// @dev Neither can use a built-in. `keccak256` is Keccak-256 with the `0x01` pad compiled in, and
-/// SHAKE256 pads with `0x1f` and squeezes an arbitrary length, so the permutation has to be run by
-/// hand here exactly as it does on the Rust side. `mulmod` is Solidity at its best for the transform:
-/// one opcode that multiplies and reduces, which is why the Rust twin also has a `%` version to be
-/// compared against it.
+/// @dev Neither can use a built-in: `keccak256` has the `0x01` pad compiled in and SHAKE pads with
+///      `0x1f`, so the permutation is run by hand on both sides. `mulmod` is one opcode, which is
+///      why the Rust twin also carries a `%` version to be compared against it.
 contract CryptoBench {
     uint32 internal constant Q = 8380417;
     uint256 internal constant SHAKE256_RATE = 136;
@@ -140,10 +137,8 @@ contract CryptoBench {
 
     /// @dev Every table the permutation needs, built once per external call.
     ///
-    /// Building them per round, or recomputing `% 5` inside the round, costs more than the
-    /// permutation itself -- the first version of this contract spent 1.5M gas on one permutation for
-    /// exactly that reason. A fully assembly-unrolled implementation would still beat this; what is
-    /// measured below is a competent straightforward implementation on both sides.
+    /// Building them per round costs more than the permutation itself: the first version of this
+    /// contract spent 1.5M gas on one permutation for exactly that reason.
     struct Tables {
         uint64[24] rc;
         uint256[25] rho;
@@ -209,12 +204,9 @@ contract CryptoBench {
     }
 
     /// @dev The same permutation through raw `mload`/`mstore`, which is how Keccak is written in
-    /// Solidity in practice.
-    ///
-    /// The readable version above spends most of its gas on bounds checks rather than on the
-    /// permutation -- 662k against this one. Skipping them is not a micro-optimisation here, it is the
-    /// difference between a strawman and a fair control, so this is the version the benchmark uses.
-    /// `test_keccakF_theTwoImplementationsAgree` holds the two to the same output.
+    ///      Solidity in practice. The readable version above spends most of its gas on bounds
+    ///      checks — 662k against this one — so skipping them is the difference between a strawman
+    ///      and a fair control. `test_keccakF_theTwoImplementationsAgree` pins the two together.
     function _keccakFAsm(uint64[25] memory a, Tables memory t) private pure {
         uint64[25] memory b;
         uint64[24] memory rc = t.rc;

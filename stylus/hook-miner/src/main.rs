@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Mines the CREATE2 salt that puts a Stylus contract on a Uniswap v4 hook address.
-//!
-//! ```text
-//! cargo stylus get-initcode --contract stylus-native-counter > initcode.hex
-//! cargo run -p stylus-hook-miner -- \
-//!     --initcode-file initcode.hex \
-//!     --permissions before-swap,after-swap,before-add-liquidity,before-remove-liquidity \
-//!     --constructor-signature 'stylus_constructor(address)' \
-//!     --constructor-args 0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32
-//! ```
-//!
-//! It prints the `cargo stylus deploy --deployer-salt ...` command to run.
+//! Mines the CREATE2 salt that puts a Stylus contract on a Uniswap v4 hook address, and prints the
+//! `cargo stylus deploy --deployer-salt ...` command to run. See `stylus/base-hook/README.md`.
 
 use std::{fs, process::ExitCode};
 

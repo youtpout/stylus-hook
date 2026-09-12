@@ -1,14 +1,8 @@
-// Bakes the pool manager address into the contract as a compile-time constant.
+// Bakes the pool manager address in as a compile-time constant.
 //
-// Solidity hooks hold it in an `immutable` and read it for free. The Stylus SDK has no immutable,
-// so a constructor argument can only go to storage and every callback pays a cold SLOAD to check
-// its caller. A `const` costs nothing to read — it lives in the WASM code — at the price of being
-// fixed at build time rather than deploy time.
-//
-// That is a fair trade for a hook: the address has to be mined against the init code anyway, so the
-// contract is already rebuilt per deployment.
-//
-//   POOL_MANAGER=0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32 cargo stylus deploy ...
+// The Stylus SDK has no `immutable`, so a constructor argument could only go to storage and every
+// callback would pay a cold SLOAD to check its caller. A `const` lives in the WASM and is free, at
+// the price of being fixed at build time — which costs nothing, since the address is mined anyway.
 use std::{env, fs, path::Path};
 
 fn main() {

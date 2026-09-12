@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-//! The arithmetic of a TWAMM interval, in 1e18 fixed point.
+//! The arithmetic of a TWAMM interval, in 1e18 fixed point, because Stylus forbids floating point
+//! outright and `TwammHook.sol` carries the identical form — so the benchmark compares languages
+//! rather than algorithms. Both agree with the quad-float original to two parts in 10^18.
 //!
-//! Uniswap's TWAMM works in IEEE 754 binary128, emulated in software by `ABDKMathQuad` because the
-//! EVM has no floating point. Stylus has none either — a contract that so much as converts an
-//! integer to an `f64` is refused at activation — so this works in fixed point instead, and
-//! `uniswap/src/TwammHook.sol` carries the identical fixed-point form so that what gets benchmarked
-//! is the language and not the algorithm. Both agree with the quad-float original to two parts in
-//! 10^18.
-//!
-//! Everything here is a free function over `U256`/`I256` with no storage and no host access, so it
-//! can be tested natively and reasoned about on its own.
+//! Free functions over `U256`/`I256`, no storage and no host access, so they test natively.
 
 use alloy_primitives::{I256, U256};
 
@@ -123,20 +117,10 @@ pub fn to_sqrt_x96(sqrt_price: U256) -> U256 {
 }
 
 /// The price the pool reaches after `elapsed` seconds of both order pools selling into it, and what
-/// each of them earned getting there.
+/// each earned getting there.
 ///
-/// Units, which are the easiest thing to get wrong here: `sqrt_price` is WAD-scaled, `liquidity`
-/// is raw — a `uint128` exactly as v4 stores it — and the two rates are WAD-scaled tokens per
-/// second. The returns are `(new_sqrt_price, earned_by_0_for_1, earned_by_1_for_0)` with the price
-/// WAD-scaled and both earnings raw, the first pool being paid in token1 and the second in token0.
-///
-/// Reserves are `x = L/sqrt(P)` and `y = L*sqrt(P)`, and liquidity is taken as constant across the
-/// span. Conservation then fixes the earnings from the price move alone:
-///
-/// ```text
-/// earned_by_0_for_1 = sold1 + y_before - y_after
-/// earned_by_1_for_0 = sold0 + x_before - x_after
-/// ```
+/// `sqrt_price` and the rates are WAD-scaled, `liquidity` is raw as v4 stores it, and the earnings
+/// come back raw. Reserves are `x = L/sqrt(P)` and `y = L*sqrt(P)`, liquidity constant across the span.
 pub fn advance(
     sqrt_price: U256,
     liquidity: U256,
@@ -175,20 +159,10 @@ pub fn advance(
     (next, earned0, earned1)
 }
 
-/// The closed-form TWAMM price, for a span where both pools are selling.
+/// The closed-form TWAMM price for a span where both pools are selling (Paradigm, 2021).
 ///
-/// Unlike [`advance`], `liquidity` here is WAD-scaled, because that is what makes `pow`
+/// `liquidity` is WAD-scaled here, unlike in [`advance`], because that is what makes `pow`
 /// dimensionless against WAD-scaled sell rates.
-///
-/// The published solution (Paradigm, 2021), implemented from the formula:
-///
-/// ```text
-/// sqrtSellRate  = sqrt(rate0 * rate1)
-/// sqrtSellRatio = sqrt(rate1 / rate0)
-/// pow           = 2 * sqrtSellRate * elapsed / liquidity
-/// c             = (sqrtSellRatio - sqrtPrice) / (sqrtSellRatio + sqrtPrice)
-/// newSqrtPrice  = sqrtSellRatio * (e^pow - c) / (e^pow + c)
-/// ```
 pub fn two_sided(
     sqrt_price: U256,
     liquidity: U256,

@@ -1,12 +1,8 @@
 //! Keccak-f[1600] and SHAKE256, by hand.
 //!
-//! Not because a hash is missing — Stylus has `native_keccak256` and the EVM has the `KECCAK256`
-//! opcode, and both are Keccak-256 with the `0x01` pad wired in. SHAKE256 pads with `0x1f` and
-//! squeezes an arbitrary length, so neither built-in can produce it. Anything built on SHAKE — every
-//! ML-DSA, ML-KEM and SLH-DSA operation — has to run the permutation itself.
-//!
-//! That is the whole point of the measurement: the permutation is 24 rounds of 64-bit rotations on
-//! 25 lanes, and a 64-bit rotation is one WASM instruction and four EVM opcodes plus a mask.
+//! Not for want of a hash: `native_keccak256` and the EVM opcode are both Keccak-256 with the
+//! `0x01` pad wired in, and SHAKE pads with `0x1f`, so neither can produce it. The permutation is
+//! 24 rounds of 64-bit rotations — one WASM instruction each, four EVM opcodes and a mask.
 
 /// Round constants, from the FIPS 202 LFSR.
 static RC: [u64; 24] = [

@@ -13,24 +13,9 @@ import {ABDKMathQuad} from "./vendor/ABDKMathQuad.sol";
 
 /// @title TwammHook
 /// @notice The arithmetic of a TWAMM interval, priced as a v4 hook. The Solidity twin of
-///         `stylus/native-twamm`.
-///
-/// @dev Uniswap shipped a TWAMM hook as a v4-periphery example and recorded its cost: 489,927 gas
-///      for one interval and about 100,000 for each one after. That is the only workload in
-///      BENCHMARK.md above the crossover where a Stylus port pays for itself, and the reason is
-///      what the arithmetic is made of — IEEE 754 quadruple-precision floating point, emulated in
-///      software because the EVM has none.
-///
-///      The closed form below is the published TWAMM solution (Paradigm, 2021), implemented here
-///      from the formula. Uniswap's own implementation is GPL-2.0 and its TwammMath is marked
-///      UNLICENSED, so none of it is reproduced; only ABDK's float library is vendored, under its
-///      own BSD-4-Clause terms.
-///
-///        sqrtSellRate  = sqrt(rate0 * rate1)
-///        sqrtSellRatio = sqrt(rate1 / rate0)
-///        pow           = 2 * sqrtSellRate * elapsed / liquidity
-///        c             = (sqrtSellRatio - sqrtPrice) / (sqrtSellRatio + sqrtPrice)
-///        newSqrtPrice  = sqrtSellRatio * (e^pow - c) / (e^pow + c)
+///         `stylus/native-twamm`, carrying both the quad-float and the fixed-point form.
+/// @dev The closed form is the published TWAMM solution (Paradigm, 2021), implemented from the
+///      formula. Uniswap's own TwammMath is UNLICENSED, so none of it is reproduced here.
 contract TwammHook is BaseHook {
     using ABDKMathQuad for bytes16;
     using ABDKMathQuad for uint256;
@@ -93,10 +78,9 @@ contract TwammHook is BaseHook {
 
     // --- the same interval, in integer fixed point -------------------------------------------
     //
-    // Stylus forbids floating-point WASM outright, so a Rust TWAMM cannot use hardware floats and
-    // has to work in fixed point. Comparing that against the quad-float version above would measure
-    // an algorithmic change, not a language one — so the fixed-point form is implemented here too,
-    // identically, and it is this pair the benchmark compares.
+    // Stylus forbids floating-point WASM, so a Rust TWAMM must work in fixed point. Comparing that
+    // against the quad-float version above would measure an algorithmic change rather than a
+    // language one, so the fixed-point form is implemented here too and it is this pair we compare.
 
     int256 private constant WAD = 1e18;
     /// @dev ln(2), scaled by 1e18.

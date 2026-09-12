@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! `FullMath`, as v4-core spells it: `a * b / denominator` with the product allowed to exceed 256
-//! bits, and the result required not to.
+//! `FullMath`, as v4-core spells it: `a * b / denominator` with the product allowed past 256 bits.
 //!
-//! Solidity gets there through Remco Bloemen's trick — recover the high word with
-//! `mulmod(a, b, not(0))`, then divide by inverting the denominator modulo 2^256, because the EVM has
-//! no 512-bit division. None of that is necessary here: `widening_mul` gives the exact 512-bit
-//! product and `ruint` can divide it. The result is the same value by a shorter route, which is the
-//! whole reason this port exists.
+//! Solidity needs Remco Bloemen's trick because the EVM has no 512-bit division. None of that is
+//! necessary here: `widening_mul` gives the exact product and `ruint` divides it. Same value by a
+//! shorter route, which is the reason this port exists.
 
 use alloy_primitives::{U256, U512};
 
@@ -27,8 +24,7 @@ fn narrow(value: U512) -> Option<U256> {
 ///
 /// # Panics
 ///
-/// If `denominator` is zero, or if the result would not fit in 256 bits — matching the `require`
-/// and the implicit overflow in v4-core's `mulDiv`.
+/// On a zero denominator, or a result over 256 bits, as v4-core's `mulDiv` does.
 #[inline]
 pub fn mul_div(a: U256, b: U256, denominator: U256) -> U256 {
     assert!(!denominator.is_zero(), "FullMath: division by zero");
@@ -41,8 +37,7 @@ pub fn mul_div(a: U256, b: U256, denominator: U256) -> U256 {
 ///
 /// # Panics
 ///
-/// As [`mul_div`], and also if rounding up would carry the result past 256 bits — v4-core's
-/// `require(++result > 0)`.
+/// As [`mul_div`], and if rounding up carries past 256 bits — v4-core's `require(++result > 0)`.
 #[inline]
 pub fn mul_div_rounding_up(a: U256, b: U256, denominator: U256) -> U256 {
     assert!(!denominator.is_zero(), "FullMath: division by zero");

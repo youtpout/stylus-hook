@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! The attribute that gives a Stylus hook `BaseHook.sol`'s guarantee.
 //!
-//! Solidity inherits `onlyPoolManager` from an abstract contract. Rust has no abstract types, and
-//! the two obvious substitutes both fail on Stylus: a trait cannot hold the guard because that makes
-//! it non-dyn-compatible, which `#[implements]` requires, and a declarative macro has to write all
-//! ten entry points, which costs about 30 % of a contract's size.
-//!
-//! A procedural macro has neither problem. It edits the callbacks the hook already wrote, so
-//! `#[public]` sees ordinary code and nothing is emitted for callbacks that do not exist.
+//! Solidity inherits `onlyPoolManager`; Rust has no abstract types. A trait cannot hold the guard
+//! without breaking dyn-compatibility, and a declarative macro must write all ten entry points at
+//! about 30 % of a contract's size. A proc macro edits the callbacks the hook already wrote.
 
 use proc_macro::TokenStream;
 use quote::quote;

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! `SqrtPriceMath`, as v4-core spells it: where a `sqrt(price)` lands after an amount goes in or out,
-//! and the token deltas between two prices.
+//! `SqrtPriceMath`, as v4-core spells it: where a `sqrt(price)` lands after an amount moves, and
+//! the token deltas between two prices.
 //!
-//! Rounding is the whole substance of this module, and it is not symmetric: token0 rounds up and
-//! token1 rounds down, so the pool never rounds in the trader's favour. Each function keeps v4-core's
-//! direction exactly, because a hook that replays a swap and disagrees by one wei disagrees.
+//! Rounding is the substance and it is asymmetric — token0 up, token1 down — so the pool never
+//! rounds toward the trader. Each function keeps v4-core's direction exactly.
 
 use alloy_primitives::{uint, U256};
 
