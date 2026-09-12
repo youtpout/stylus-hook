@@ -1,0 +1,5 @@
+0 logo-options 1600 900
+1 opt-a-badge 1024 1024
+2 opt-b-spear 1024 1024
+3 opt-c-bits 1024 1024
+4 opt-d-minimal 1024 1024
