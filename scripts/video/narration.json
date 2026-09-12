@@ -1,0 +1,97 @@
+{
+  "voice": "en-US-AndrewMultilingualNeural",
+  "rate": "+10%",
+  "note": "One entry per deck slide, in order. `hold` is trailing silence so a chart or table can be read before the cut. Slides are docs/deck.html?video#N, zero-indexed.",
+  "segments": [
+    {
+      "id": "01-title",
+      "hold": 0.56,
+      "text": "This is Stylus Hook. Uniswap v4 hooks written entirely in Rust, compiled to WebAssembly, and run on Arbitrum Stylus. No Solidity anywhere inside the hook."
+    },
+    {
+      "id": "02-origin",
+      "hold": 0.56,
+      "text": "It started at Scaling Ethereum in 2024, where it won the Arbitrum Stylus track. That version proved a hook could run on Stylus. It could not prove that it should."
+    },
+    {
+      "id": "03-blockers",
+      "hold": 0.63,
+      "text": "It stopped there for two reasons, and neither was the idea. Uniswap v4 was unreleased, and needed transient storage Arbitrum did not have. And Stylus could not reach a mined address, so every hook shipped behind a Solidity shell."
+    },
+    {
+      "id": "04-changed",
+      "hold": 0.63,
+      "text": "Both protocols have since grown up. Version four shipped. Arbitrum got transient storage. Cargo stylus now deploys through a CREATE2 deployer. Every reason to stop had been removed."
+    },
+    {
+      "id": "05-problem",
+      "hold": 0.63,
+      "text": "Uniswap asks a hook for two things. Answer the IHooks interface, which Stylus gets for free. And live at an address whose low fourteen bits encode its callbacks. The interface was never the obstacle. The address was."
+    },
+    {
+      "id": "06-built",
+      "hold": 0.63,
+      "text": "So we built three pieces. A Stylus port of BaseHook with all ten callbacks. A macro that inserts the guards Solidity gets from inheritance. And a miner for the CREATE2 salt."
+    },
+    {
+      "id": "07-steps",
+      "hold": 0.56,
+      "text": "Writing one is five steps. Declare your storage and permissions, validate the mined address in the constructor, implement the callbacks, then mine the salt and deploy."
+    },
+    {
+      "id": "08-proof",
+      "hold": 0.7,
+      "text": "And this is the receipt. A script stands up an Arbitrum node, mines the address, deploys the Rust hook, and has a real pool manager drive every callback it declares."
+    },
+    {
+      "id": "09-priced",
+      "hold": 0.7,
+      "text": "So is it worth doing? Stylus is not faster than Solidity. It is differently priced. Entering costs about eight thousand gas more. Storage is identical. Arithmetic is three to six hundred times cheaper."
+    },
+    {
+      "id": "10-crossover",
+      "hold": 0.7,
+      "text": "Run the identical loop in both languages and sweep how much of it there is. The two cross at eighty nine operations. Below that line, Solidity wins."
+    },
+    {
+      "id": "11-dont",
+      "hold": 0.7,
+      "text": "Which is why most hooks should stay in Solidity. A hook that only keeps books costs nearly three times more in Rust. And anything resting on a precompile gains nothing at all."
+    },
+    {
+      "id": "12-do",
+      "hold": 0.7,
+      "text": "When it does pay, this is why. The E V M pays for a two hundred and fifty six bit word whether the work needs one or not. Storage barely moves. Real arithmetic moves a great deal."
+    },
+    {
+      "id": "13-twamm",
+      "hold": 0.7,
+      "text": "Here is the case that matters, measured against the TWAMM that is live on Base and Unichain. People place long term orders independently, and nobody coordinates when they end. Several running at once is the ordinary state of a busy pool."
+    },
+    {
+      "id": "14-shape",
+      "hold": 0.7,
+      "text": "And that shape is the argument. The entry fee is paid once per swap. The saving is paid once per stream. At thirty two concurrent orders, Solidity spends two point eight five million gas on one swap. Rust spends one point eight nine."
+    },
+    {
+      "id": "15-cannot",
+      "hold": 0.7,
+      "text": "There is also one thing Solidity cannot do at all. The E V M can hash with Keccak, but only through the one door it provides, and SHAKE is not behind it. One post quantum signature check costs eleven million gas in Solidity. In Rust, thirty three thousand."
+    },
+    {
+      "id": "16-traps",
+      "hold": 0.7,
+      "text": "Two traps account for most of the gap between a Stylus hook that wins and one that loses. An optimisation level that fails silently at deployment, and constants built from strings. Each was worth an order of magnitude."
+    },
+    {
+      "id": "17-feedback",
+      "hold": 0.7,
+      "text": "Porting a protocol is the harshest way to read it. We found a failing input in v4 core's own tick math fuzz test, that the fuzzer has never drawn out of one point seven seven million. The fix is one character."
+    },
+    {
+      "id": "18-close",
+      "hold": 1.4,
+      "text": "Everything is open source. The hook base, the address miner, the benchmarks, and the feedback. If you want to write a Uniswap v4 hook in Rust, the hard parts are done."
+    }
+  ]
+}

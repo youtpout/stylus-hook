@@ -11,3 +11,6 @@ node_modules/
 
 # Secrets
 .env
+
+# Rendered video: regenerate with ./scripts/video/build.sh
+scripts/video/out/
