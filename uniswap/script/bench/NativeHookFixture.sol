@@ -175,6 +175,51 @@ contract NativeHookFixture {
         IProductionTwamm(hook).submitOrder(ProdSubmitOrderParams(key, zeroForOne, duration, amountIn));
     }
 
+    /// @notice Places one long-term order per expiry, across `count` consecutive grid points.
+    /// @dev The concurrency sweep needs many streams live at once, and one transaction per order
+    ///      swamps a dev node long before the interesting row is reached: 32 streams in both
+    ///      directions on both hooks is 128 round trips, and the node degrades to a block every few
+    ///      minutes under that. Looping in here makes it one transaction per hook per direction.
+    function submitTwammOrderBatch(
+        uint256 index,
+        address hook,
+        bool zeroForOne,
+        uint256 firstExpiration,
+        uint256 grid,
+        uint256 count,
+        uint256 amountIn
+    ) external {
+        PoolKey memory key = keys[index];
+        Currency sold = zeroForOne ? key.currency0 : key.currency1;
+        IApprove(Currency.unwrap(sold)).approve(hook, type(uint256).max);
+        for (uint256 k = 0; k < count; ++k) {
+            ITwammOrders(hook).submitOrder(key, zeroForOne, firstExpiration + k * grid, amountIn);
+        }
+    }
+
+    /// @notice {submitTwammOrderBatch} against the production hook's duration-based ABI.
+    /// @dev It rounds the duration onto its own grid off `block.timestamp`, and every order in the
+    ///      batch shares one timestamp, so the expiries land on the same points as the Rust hook's.
+    function submitProductionTwammOrderBatch(
+        uint256 index,
+        address hook,
+        bool zeroForOne,
+        uint256 firstExpiration,
+        uint256 grid,
+        uint256 count,
+        uint256 amountIn
+    ) external {
+        PoolKey memory key = keys[index];
+        Currency sold = zeroForOne ? key.currency0 : key.currency1;
+        IApprove(Currency.unwrap(sold)).approve(hook, type(uint256).max);
+        uint256 interval = (block.timestamp / grid) * grid;
+        for (uint256 k = 0; k < count; ++k) {
+            IProductionTwamm(hook).submitOrder(
+                ProdSubmitOrderParams(key, zeroForOne, firstExpiration + k * grid - interval, amountIn)
+            );
+        }
+    }
+
     /// @notice Withdraws what a long-term order has earned so far.
     function claimTwammProceeds(uint256 index, address hook, bool zeroForOne, uint256 expiration) external {
         ITwammOrders(hook).claimProceeds(keys[index], zeroForOne, expiration);

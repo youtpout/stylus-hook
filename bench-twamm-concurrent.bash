@@ -31,7 +31,7 @@ LIQUIDITY=1000000000000000000000
 SWAP_AMOUNT=1000000000000000000
 ORDER_SIZE=${ORDER_SIZE:-1000000000000000000}
 # The concurrency levels to sweep: how many order streams end between two touches of the pool.
-STREAMS=${STREAMS:-"1 2 4 8 16"}
+STREAMS=${STREAMS:-"8 16 32"}
 # A nitro dev node has no `evm_increaseTime`, so the only way past an expiry is to wait for it.
 # Five seconds a step rather than the sixty the contract defaults to.
 export EXPIRATION_INTERVAL=${EXPIRATION_INTERVAL:-5}
@@ -120,25 +120,28 @@ swap_gas() {
 wait_past() {
   local target=$1
   while [ "$(cast block latest -f timestamp --rpc-url "$RPC")" -le "$target" ]; do
-    sleep 1
+    sleep 3
     cast send $ARB_OWNER "setL1PricePerUnit(uint256)" 0 \
       --rpc-url "$RPC" --private-key $KEY >/dev/null
   done
 }
 
-submit_rust() {  # zeroForOne, absolute expiration
-  cast send "$FIXTURE" "submitTwammOrder(uint256,address,bool,uint256,uint256)" \
-    1 "$RUST_HOOK" "$1" "$2" "$ORDER_SIZE" --rpc-url "$RPC" --private-key $KEY >/dev/null
+# One transaction per hook per direction, however many streams. Sending them individually is what
+# stopped an earlier version of this sweep from ever reaching the 8-stream row: 4M round trips per
+# row, and a dev node that slowed to a block every few minutes under the load.
+submit_rust() {  # zeroForOne, first expiration, count
+  cast send "$FIXTURE" \
+    "submitTwammOrderBatch(uint256,address,bool,uint256,uint256,uint256,uint256)" \
+    1 "$RUST_HOOK" "$1" "$2" "$GRID" "$3" "$ORDER_SIZE" \
+    --rpc-url "$RPC" --private-key $KEY --gas-limit 60000000 >/dev/null
 }
-# The production hook takes a duration and rounds it onto its own grid, so the duration has to be
-# recomputed against the clock at the moment the order is mined.
-submit_prod() {  # zeroForOne, absolute expiration
-  local t it dur
-  t=$(cast block latest -f timestamp --rpc-url "$RPC")
-  it=$(( t / GRID * GRID ))
-  dur=$(( $2 - it ))
-  cast send "$FIXTURE" "submitProductionTwammOrder(uint256,address,bool,uint256,uint256)" \
-    2 "$PROD_HOOK" "$1" "$dur" "$ORDER_SIZE" --rpc-url "$RPC" --private-key $KEY >/dev/null
+# The production hook takes a duration rather than an absolute expiration and rounds it onto its own
+# grid, so the fixture converts inside the batch, off one `block.timestamp` shared by every order.
+submit_prod() {  # zeroForOne, first expiration, count
+  cast send "$FIXTURE" \
+    "submitProductionTwammOrderBatch(uint256,address,bool,uint256,uint256,uint256,uint256)" \
+    2 "$PROD_HOOK" "$1" "$2" "$GRID" "$3" "$ORDER_SIZE" \
+    --rpc-url "$RPC" --private-key $KEY --gas-limit 60000000 >/dev/null
 }
 
 log "warming every pool and caching the Stylus program"
@@ -165,22 +168,18 @@ for M in $STREAMS; do
   swap_gas 1 >/dev/null; swap_gas 2 >/dev/null
 
   now=$(cast block latest -f timestamp --rpc-url "$RPC")
-  # This batch sends 4M transactions before the first expiry may come due, and each one is a round
-  # trip to the node. Under-budget that lead and the orders land in the past, which the hooks reject
-  # rather than silently mis-price — so the lead is generous and checked afterwards.
-  lead=$(( 40 + 10 * M ))
+  # Four transactions now, whatever M is, but they still have to be mined before the first expiry
+  # comes due: an order that lands in the past is rejected rather than silently mis-priced.
+  lead=$(( 40 + M ))
   base=$(( (now + lead) / GRID * GRID ))
-  last=$(( base + M * GRID ))
+  last=$(( base + (M - 1) * GRID ))
 
-  for k in $(seq 1 "$M"); do
-    e=$(( base + k * GRID ))
-    submit_rust true "$e";  submit_rust false "$e"
-    submit_prod true "$e";  submit_prod false "$e"
-  done
+  submit_rust true "$base" "$M";  submit_rust false "$base" "$M"
+  submit_prod true "$base" "$M";  submit_prod false "$base" "$M"
 
   after=$(cast block latest -f timestamp --rpc-url "$RPC")
   if [ "$after" -ge "$base" ]; then
-    echo "submitting $((4 * M)) orders took longer than the ${lead}s lead; raise it and re-run" >&2
+    echo "submitting the orders took longer than the ${lead}s lead; raise it and re-run" >&2
     exit 1
   fi
 

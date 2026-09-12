@@ -359,10 +359,18 @@
             not to the storage wrapped around it.</p>
 
         <h3>Concurrency is the axis that decides it</h3>
-        <p>The measurement above is one order stream over four expiries, and that is the quiet case.
-            A pool anyone uses is not in it. Long-term orders are placed independently by people who
-            do not coordinate, so a live pool carries several streams ending at different times, and
-            every one of them puts another occupied interval on the grid.</p>
+        <p>The measurement above is one order stream over four expiries, and that is the quiet
+            case. <strong>A pool anyone uses is never in it.</strong></p>
+        <p>A TWAMM exists so people can sell size over time without moving the price, which is a
+            thing many participants want to do at once and independently. Nobody coordinates their
+            end times. So on a protocol with real volume the normal state of a pool is several
+            long-term orders running concurrently, ending on different grid points, and a swap
+            arriving after any gap in activity has to catch up across all of them in one call.
+            <strong>Simultaneous streams are not the stress case for a TWAMM. They are the ordinary
+                case, and the busier the protocol the more of them there are.</strong></p>
+        <p>That is exactly where Stylus separates from Solidity, for a structural reason rather than
+            an incidental one. Every stream puts another occupied interval on the grid, and catching
+            the pool up is a loop over occupied intervals.</p>
         <p>That matters because of how the two costs are shaped. <strong>The entry fee is paid once
                 per swap regardless, and the per-interval saving is paid once per stream.</strong>
             Catching a pool up is a loop over occupied intervals, so with M streams ending between
@@ -376,50 +384,84 @@
             <table>
                 <thead>
                     <tr>
-                        <th class="num">Streams ending between two touches</th>
+                        <th class="num">Streams at once</th>
                         <th class="num">Rust</th>
                         <th class="num">Production Solidity</th>
                         <th class="num">Saving</th>
+                        <th class="num">Share of the swap</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td class="num">idle, no orders</td>
+                        <td class="num">idle</td>
                         <td class="num">147,365</td>
                         <td class="num">132,321</td>
                         <td class="num loss">−15,044</td>
+                        <td class="num">—</td>
                     </tr>
                     <tr>
                         <td class="num">1</td>
                         <td class="num">340,930</td>
                         <td class="num">351,474</td>
                         <td class="num win">+10,544</td>
+                        <td class="num">3 %</td>
                     </tr>
                     <tr>
                         <td class="num">2</td>
                         <td class="num">353,116</td>
                         <td class="num">377,841</td>
                         <td class="num win">+24,725</td>
+                        <td class="num">7 %</td>
                     </tr>
                     <tr>
                         <td class="num">4</td>
                         <td class="num">466,890</td>
                         <td class="num">545,831</td>
                         <td class="num win">+78,941</td>
+                        <td class="num">14 %</td>
+                    </tr>
+                    <tr>
+                        <td class="num">8</td>
+                        <td class="num">695,352</td>
+                        <td class="num">880,744</td>
+                        <td class="num win">+185,392</td>
+                        <td class="num">21 %</td>
+                    </tr>
+                    <tr>
+                        <td class="num">16</td>
+                        <td class="num">1,056,606</td>
+                        <td class="num">1,517,471</td>
+                        <td class="num win">+460,865</td>
+                        <td class="num">30 %</td>
+                    </tr>
+                    <tr>
+                        <td class="num">32</td>
+                        <td class="num">1,891,213</td>
+                        <td class="num">2,849,561</td>
+                        <td class="num win">+958,348</td>
+                        <td class="num win">34 %</td>
                     </tr>
                 </tbody>
             </table>
         </div>
         <p>A swap through a hookless pool on the same node is 115,129.</p>
+        <p><strong>At 32 concurrent streams the Solidity hook spends 2.85 million gas on a swap and
+                the Rust one spends 1.89 million.</strong> The saving is more than eight times what
+            an entire hookless swap costs, and it is still growing.</p>
+        <p>Read the marginal cost rather than the totals. Each additional concurrent stream costs
+            52,163 gas in Rust against 83,256 in Solidity, so the gap widens by about 31,000 per
+            stream with no ceiling in sight. The per-stream figure falls on both sides as streams
+            pile up, because the one-off costs of a swap spread wider, but it falls faster in Rust:
+            what does not amortise is the arithmetic, and that is the part Stylus makes cheap.</p>
         <p><strong>So the single-stream measurement is the worst case Stylus will ever be shown in,
                 and it already wins.</strong> A busy pool is not a harder test for the port, it is an
-            easier one: the fixed cost is amortised across every stream while the saving is not. The
-            saving also grows faster than linearly, because the control settles once per interval
-            where this hook settles once per catch-up.</p>
-        <p class="lead">The sweep was configured for 1, 2, 4, 8 and 16 streams and stopped after
-            four. The dev node degrades as the order book grows, which is a property of a
-            single-threaded dev node rather than of either hook, so the two larger rows are absent
-            rather than estimated.</p>
+            easier one. The saving also grows faster than linearly, because the control settles once
+            per interval where this hook settles once per catch-up.</p>
+        <p class="lead">Rows 1 to 4 and rows 8 to 32 come from two runs on separate nodes, whose idle
+            baselines agree to within 64 gas. The second batches order submission inside the fixture,
+            which is what makes the larger rows reachable: 128 separate round trips degrade a
+            single-threaded dev node to a block every few minutes long before the interesting row
+            arrives.</p>
 
         <h2>5. The pm-AMM's Gaussian solve <span class="pill">wins</span></h2>
         <p>The pm-AMM's invariant is transcendental, so every swap must run a Gaussian solve. This is

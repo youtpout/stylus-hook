@@ -743,10 +743,19 @@ production Solidity one on the workload where Stylus should be strongest.
 
 ### Concurrency: the axis that decides it
 
-The measurement above is one order stream over four expiries, and that is the quiet case. A pool
-anyone uses is not in it. TWAMM orders are placed independently by people who do not coordinate, so
-a live pool carries several streams ending at different times — and every one of them puts another
-occupied interval on the grid.
+The measurement above is one order stream over four expiries, and that is the quiet case. **A pool
+anyone uses is never in it.**
+
+A TWAMM exists to let people sell size over time without moving the price, which is a thing many
+participants want to do at once and independently. Nobody coordinates their end times. So on a
+protocol with real volume the normal state of a pool is several long-term orders running
+concurrently, ending on different grid points, and a swap arriving after any gap in activity has to
+catch up across all of them in one call. **Simultaneous streams are not the stress case for a
+TWAMM. They are the ordinary case, and the busier the protocol the more of them there are.**
+
+That is exactly the regime where Stylus separates from Solidity, and the reason is structural rather
+than incidental. Every one of those streams puts another occupied interval on the grid, and catching
+the pool up is a loop over occupied intervals.
 
 That matters because of how the two costs are shaped. **The entry fee is paid once per swap
 regardless, and the per-interval saving is paid once per stream.** Catching a pool up is a loop over
@@ -765,26 +774,39 @@ streams expiring on consecutive grid points, lets them all come due with nobody 
 and times the single swap that catches up across all `M` at once. Both hooks on the same node, same
 grid, same order sizes, Rust program cached:
 
-| streams ending between two touches | Rust | production Solidity | saving |
-| ---: | ---: | ---: | ---: |
-| idle, no orders | 147,365 | 132,321 | −15,044 |
-| 1 | 340,930 | 351,474 | **+10,544** |
-| 2 | 353,116 | 377,841 | **+24,725** |
-| 4 | 466,890 | 545,831 | **+78,941** |
+| streams ending between two touches | Rust | production Solidity | saving | saving as a share of the swap |
+| ---: | ---: | ---: | ---: | ---: |
+| idle, no orders | 147,365 | 132,321 | −15,044 | — |
+| 1 | 340,930 | 351,474 | **+10,544** | 3 % |
+| 2 | 353,116 | 377,841 | **+24,725** | 7 % |
+| 4 | 466,890 | 545,831 | **+78,941** | 14 % |
+| 8 | 695,352 | 880,744 | **+185,392** | 21 % |
+| 16 | 1,056,606 | 1,517,471 | **+460,865** | 30 % |
+| 32 | 1,891,213 | 2,849,561 | **+958,348** | **34 %** |
 
 A swap through a hookless pool on the same node is 115,129.
 
+**At 32 concurrent streams the Solidity hook spends 2.85 million gas on a swap and the Rust one
+spends 1.89 million.** The saving is 958,348 — more than eight times what an entire hookless swap
+costs — and it is still growing.
+
+Two things to read off the marginal cost rather than the totals. Each additional concurrent stream
+costs **52,163 gas in Rust against 83,256 in Solidity**, so the gap widens by about 31,000 per
+stream with no sign of a ceiling. And the per-stream column falls on both sides as `M` grows,
+because the one-off costs of the swap are spread wider — but it falls faster in Rust, because the
+part that does not amortise is the arithmetic, and that is the part Stylus makes cheap.
+
 **So the single-stream measurement is the worst case Stylus will ever be shown in, and it already
 wins.** A busy pool is not a harder test for the port, it is an easier one: the fixed cost is
-amortised across every stream while the saving is not. And the saving grows faster than the linear
-projection — 78,941 at four streams against 39,724 projected — because the control settles once per
-interval where this hook settles once per catch-up, so its per-interval work compounds too.
+amortised across every stream while the saving is not. The saving also grows faster than the linear
+projection — 958,348 at 32 streams against 373,204 projected — because the control settles once per
+interval where this hook settles once per catch-up, so its per-interval work compounds as well.
 
-The sweep was configured for 1, 2, 4, 8 and 16 and stopped after four. The dev node degrades as the
-order book grows: by the 8-stream row it was producing a block every few minutes, which is a
-property of a single-threaded dev node rather than of either hook. The three rows measured are
-enough to show the shape; the two larger ones are not in this table because they were not
-measured.
+Rows 1 to 4 and rows 8 to 32 come from two runs on separate nodes; their idle baselines agree to
+within 64 gas. The second run batches order submission inside the fixture, which is what makes the
+larger rows reachable at all: one transaction per hook per direction instead of `4M` of them, since
+128 separate round trips degrade a single-threaded dev node to a block every few minutes long before
+the interesting row is reached.
 
 One caveat the script cannot remove: it subtracts a single idle figure taken before the sweep, and
 each batch leaves earnings-factor state behind, so the per-stream column drifts slightly across
