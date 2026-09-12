@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! A TWAMM as a Uniswap v4 hook, in pure Rust. Long-term orders sell at a constant rate per second
 //! and are folded into the pool lazily, in closed form. Fixed point at 1e18, since Stylus has no
-//! floating point, and `TwammHook.sol` carries the identical form. The architecture follows
-//! Uniswap's GPL-2.0 `TWAMM.sol` example, hence the licence, though no code is copied from it.
+//! floating point, and `TwammHook.sol` carries the identical form. The closed form is Paradigm's
+//! published solution (2021), implemented from the formula; no code is copied from Uniswap's.
 
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 

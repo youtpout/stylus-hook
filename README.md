@@ -266,11 +266,12 @@ headers:
 
 Both are permissive and impose nothing on the rest of the tree.
 
-Nothing under a copyleft or source-available licence is reproduced here. In particular Uniswap's own
-`TwammMath` is marked `UNLICENSED` inside a GPL-2.0 repository, so
-[`TwammHook.sol`](uniswap/src/TwammHook.sol) implements the published closed form (Paradigm, 2021)
-from the formula instead, and EulerSwap — BUSL-1.1 — is referenced in
-[BENCHMARK.md](BENCHMARK.md) for information with none of its code copied.
+Nothing under a copyleft or source-available licence is reproduced here, so the whole tree is MIT.
+Uniswap's own `TwammMath` is marked `UNLICENSED` inside a GPL-2.0 repository and is not used: both
+[`TwammHook.sol`](uniswap/src/TwammHook.sol) and [`native-twamm`](stylus/native-twamm) implement the
+published closed form (Paradigm, 2021) from the formula. A formula is not copyrightable and no code
+was copied, so neither file inherits that repository's licence. EulerSwap — BUSL-1.1 — is referenced
+in [BENCHMARK.md](BENCHMARK.md) for information, with none of its code copied.
 
 ## Where to look
 
